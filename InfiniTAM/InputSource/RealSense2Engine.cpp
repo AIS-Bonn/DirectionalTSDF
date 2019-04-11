@@ -6,6 +6,8 @@
 
 #include <cstdio>
 #include <stdexcept>
+#include <memory>
+#include <cstring>
 
 #include <iostream>
 #include <iomanip>

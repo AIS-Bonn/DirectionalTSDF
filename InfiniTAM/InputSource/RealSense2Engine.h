@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <memory>
 #include "ImageSourceEngine.h"
 
 #ifdef COMPILE_WITH_RealSense2
