@@ -22,8 +22,14 @@ ENDIF()
 
 IF(NOT MSVC_IDE)
   SET(CFLAGS_WARN "-Wall -Wextra -Wno-unused-parameter -Wno-strict-aliasing")
-  SET(CMAKE_CXX_FLAGS "-fPIC -O3 -march=native ${CFLAGS_WARN} ${CMAKE_CXX_FLAGS}")
-  #SET(CMAKE_CXX_FLAGS "-fPIC -g ${CFLAGS_WARN} ${CMAKE_CXX_FLAGS}")
+  SET(CMAKE_CXX_FLAGS "-fPIC -march=native ${CFLAGS_WARN} ${CMAKE_CXX_FLAGS}")
+#  SET(CMAKE_CXX_FLAGS "-fPIC -O0 -g ${CFLAGS_WARN} ${CMAKE_CXX_FLAGS}")
+ENDIF()
+
+IF(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  SET(CMAKE_CXX_FLAGS "-O0 -g ${CMAKE_CXX_FLAGS}")
+ELSE()
+  SET(CMAKE_CXX_FLAGS "-O3")
 ENDIF()
 
 #########################
