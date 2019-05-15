@@ -23,6 +23,10 @@ namespace ITMLib
 	class ITMSceneReconstructionEngine
 	{
 	public:
+		explicit ITMSceneReconstructionEngine(bool directionalTSDF)
+			:directionalTSDF(directionalTSDF)
+		{ }
+
 		/** Clear and reset a scene to set up a new empty
 		    one.
 		*/
@@ -43,5 +47,8 @@ namespace ITMLib
 
 		ITMSceneReconstructionEngine(void) { }
 		virtual ~ITMSceneReconstructionEngine(void) { }
+
+	protected:
+		bool directionalTSDF;
 	};
 }

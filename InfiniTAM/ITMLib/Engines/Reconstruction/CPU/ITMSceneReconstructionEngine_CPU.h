@@ -9,9 +9,12 @@ namespace ITMLib
 {
 	template<class TVoxel, class TIndex>
 	class ITMSceneReconstructionEngine_CPU : public ITMSceneReconstructionEngine < TVoxel, TIndex >
-	{};
+	{
+	public:
+		explicit ITMSceneReconstructionEngine_CPU(bool directionalTSDF);
+	};
 
-	template<class TVoxel>
+template<class TVoxel>
 	class ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash> : public ITMSceneReconstructionEngine < TVoxel, ITMVoxelBlockHash >
 	{
 	protected:
@@ -27,8 +30,8 @@ namespace ITMLib
 		void IntegrateIntoScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view, const ITMTrackingState *trackingState,
 			const ITMRenderState *renderState);
 
-		ITMSceneReconstructionEngine_CPU(void);
-		~ITMSceneReconstructionEngine_CPU(void);
+		ITMSceneReconstructionEngine_CPU(bool directionalTSDF);
+		~ITMSceneReconstructionEngine_CPU();
 	};
 
 	template<class TVoxel>
@@ -42,8 +45,5 @@ namespace ITMLib
 
 		void IntegrateIntoScene(ITMScene<TVoxel, ITMPlainVoxelArray> *scene, const ITMView *view, const ITMTrackingState *trackingState,
 			const ITMRenderState *renderState);
-
-		ITMSceneReconstructionEngine_CPU(void);
-		~ITMSceneReconstructionEngine_CPU(void);
 	};
 }

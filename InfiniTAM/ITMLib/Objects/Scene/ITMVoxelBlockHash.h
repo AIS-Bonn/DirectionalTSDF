@@ -13,7 +13,7 @@
 #include "../../../ORUtils/MemoryBlockPersister.h"
 
 #define SDF_BLOCK_SIZE 8				// SDF block size
-#define SDF_BLOCK_SIZE3 512				// SDF_BLOCK_SIZE3 = SDF_BLOCK_SIZE * SDF_BLOCK_SIZE * SDF_BLOCK_SIZE
+#define SDF_BLOCK_SIZE3 (SDF_BLOCK_SIZE * SDF_BLOCK_SIZE * SDF_BLOCK_SIZE)
 
 #define SDF_LOCAL_BLOCK_NUM 0x40000		// Number of locally stored blocks, currently 2^17
 
@@ -45,6 +45,9 @@ struct ITMHashEntry
 		- <-1 identifies an unallocated block
 	*/
 	int ptr;
+
+	/** Corresponding TSDF direction. */
+	uint8_t direction;
 };
 
 namespace ITMLib
@@ -67,7 +70,7 @@ namespace ITMLib
 
 		/** Maximum number of total entries. */
 		static const CONSTPTR(int) noTotalEntries = SDF_BUCKET_NUM + SDF_EXCESS_LIST_SIZE;
-		static const CONSTPTR(int) voxelBlockSize = SDF_BLOCK_SIZE * SDF_BLOCK_SIZE * SDF_BLOCK_SIZE;
+		static const CONSTPTR(int) voxelBlockSize = SDF_BLOCK_SIZE3;
 
 #ifndef __METALC__
 	private:

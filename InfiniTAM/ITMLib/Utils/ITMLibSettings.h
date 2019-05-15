@@ -37,7 +37,13 @@ namespace ITMLib
 			LIBMODE_BASIC,
 			LIBMODE_BASIC_SURFELS,
 			LIBMODE_LOOPCLOSURE
-		}LibMode;
+		} LibMode;
+
+		typedef enum
+		{
+			TSDFMODE_DEFAULT,
+			TSDFMODE_DIRECTIONAL,
+		} TSDFMode;
 
 		/// Select the type of device to use
 		DeviceType deviceType;
@@ -54,6 +60,7 @@ namespace ITMLib
 		FailureMode behaviourOnFailure;
 		SwappingMode swappingMode;
 		LibMode libMode;
+		TSDFMode tsdfMode;
 
 		const char *trackerConfig;
 

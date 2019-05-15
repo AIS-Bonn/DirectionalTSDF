@@ -6,8 +6,16 @@
 #include "../../../Objects/RenderStates/ITMRenderState_VH.h"
 using namespace ITMLib;
 
+template<class TVoxel, class TIndex>
+ITMSceneReconstructionEngine_CPU<TVoxel, TIndex>::ITMSceneReconstructionEngine_CPU(bool directionalTSDF)
+	:ITMSceneReconstructionEngine<TVoxel, TIndex>(directionalTSDF)
+{
+
+}
+
 template<class TVoxel>
-ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHash>::ITMSceneReconstructionEngine_CPU(void) 
+ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHash>::ITMSceneReconstructionEngine_CPU(bool directionalTSDF)
+	: ITMSceneReconstructionEngine<TVoxel,ITMVoxelBlockHash>(directionalTSDF)
 {
 	int noTotalEntries = ITMVoxelBlockHash::noTotalEntries;
 	entriesAllocType = new ORUtils::MemoryBlock<unsigned char>(noTotalEntries, MEMORYDEVICE_CPU);
@@ -169,9 +177,19 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 	{
 		int y = locId / depthImgSize.x;
 		int x = locId - y * depthImgSize.x;
-		buildHashAllocAndVisibleTypePP(entriesAllocType, entriesVisibleType, x, y, blockCoords, depth, invM_d,
-			invProjParams_d, mu, depthImgSize, oneOverVoxelSize, hashTable, scene->sceneParams->viewFrustum_min,
-			scene->sceneParams->viewFrustum_max);
+		if (this->directionalTSDF)
+		{
+			Vector4f *depthNormal = view->depthNormal->GetData(MEMORYDEVICE_CPU);
+			buildHashAllocAndVisibleTypePPDirectional(entriesAllocType, entriesVisibleType, x, y, blockCoords, depth, depthNormal,
+			                               invM_d, invProjParams_d, mu, depthImgSize, oneOverVoxelSize, hashTable,
+			                               scene->sceneParams->viewFrustum_min, scene->sceneParams->viewFrustum_max);
+		}
+		else
+		{
+			buildHashAllocAndVisibleTypePP(entriesAllocType, entriesVisibleType, x, y, blockCoords, depth, invM_d,
+				invProjParams_d, mu, depthImgSize, oneOverVoxelSize, hashTable, scene->sceneParams->viewFrustum_min,
+				scene->sceneParams->viewFrustum_max);
+		}
 	}
 
 	if (onlyUpdateVisibleList) useSwapping = false;
@@ -307,14 +325,6 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 	scene->localVBA.lastFreeBlockId = lastFreeVoxelBlockId;
 	scene->index.SetLastFreeExcessListId(lastFreeExcessListId);
 }
-
-template<class TVoxel>
-ITMSceneReconstructionEngine_CPU<TVoxel,ITMPlainVoxelArray>::ITMSceneReconstructionEngine_CPU(void) 
-{}
-
-template<class TVoxel>
-ITMSceneReconstructionEngine_CPU<TVoxel,ITMPlainVoxelArray>::~ITMSceneReconstructionEngine_CPU(void) 
-{}
 
 template<class TVoxel>
 void ITMSceneReconstructionEngine_CPU<TVoxel,ITMPlainVoxelArray>::ResetScene(ITMScene<TVoxel, ITMPlainVoxelArray> *scene)

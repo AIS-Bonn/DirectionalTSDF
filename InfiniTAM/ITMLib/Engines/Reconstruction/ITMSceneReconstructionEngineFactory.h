@@ -26,18 +26,22 @@ struct ITMSceneReconstructionEngineFactory
    * \param deviceType  The device on which the scene reconstruction engine should operate.
    */
   template <typename TVoxel, typename TIndex>
-  static ITMSceneReconstructionEngine<TVoxel,TIndex> *MakeSceneReconstructionEngine(ITMLibSettings::DeviceType deviceType)
+  static ITMSceneReconstructionEngine<TVoxel,TIndex> *MakeSceneReconstructionEngine(
+    ITMLibSettings::DeviceType deviceType,
+    ITMLibSettings::TSDFMode tsdfMode)
   {
     ITMSceneReconstructionEngine<TVoxel,TIndex> *sceneRecoEngine = NULL;
+
+    bool directionalTSDF = (tsdfMode == ITMLibSettings::TSDFMode::TSDFMODE_DIRECTIONAL);
 
     switch(deviceType)
     {
       case ITMLibSettings::DEVICE_CPU:
-        sceneRecoEngine = new ITMSceneReconstructionEngine_CPU<TVoxel,TIndex>;
+        sceneRecoEngine = new ITMSceneReconstructionEngine_CPU<TVoxel,TIndex>(directionalTSDF);
         break;
       case ITMLibSettings::DEVICE_CUDA:
 #ifndef COMPILE_WITHOUT_CUDA
-        sceneRecoEngine = new ITMSceneReconstructionEngine_CUDA<TVoxel,TIndex>;
+        sceneRecoEngine = new ITMSceneReconstructionEngine_CUDA<TVoxel,TIndex>(directionalTSDF);
 #endif
         break;
       case ITMLibSettings::DEVICE_METAL:

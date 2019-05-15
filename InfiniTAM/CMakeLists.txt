@@ -29,7 +29,7 @@ ENDIF()
 IF(CMAKE_BUILD_TYPE STREQUAL "Debug")
   SET(CMAKE_CXX_FLAGS "-O0 -g ${CMAKE_CXX_FLAGS}")
 ELSE()
-  SET(CMAKE_CXX_FLAGS "-O3")
+  SET(CMAKE_CXX_FLAGS "-O3 ${CMAKE_CXX_FLAGS}")
 ENDIF()
 
 #########################
@@ -43,6 +43,8 @@ ENDIF()
 ######################
 # Add subdirectories #
 ######################
+
+INCLUDE_DIRECTORIES(./)
 
 ADD_SUBDIRECTORY(Apps)
 ADD_SUBDIRECTORY(FernRelocLib)

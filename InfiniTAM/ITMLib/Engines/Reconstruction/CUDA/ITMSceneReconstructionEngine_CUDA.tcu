@@ -19,17 +19,17 @@ namespace
 
 template<class TVoxel, bool stopMaxW>
 __global__ void integrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry *hashTable, int *noVisibleEntryIDs,
-	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, const float *confidence, Vector2i imgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d, 
+	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, const float *confidence, Vector2i imgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d,
 	Vector4f projParams_rgb, float _voxelSize, float mu, int maxW);
 
 template<class TVoxel, bool stopMaxW>
 __global__ void integrateIntoScene_device(TVoxel *voxelArray, const ITMPlainVoxelArray::ITMVoxelArrayInfo *arrayInfo,
-	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, const float *confidence, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d, 
+	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, const float *confidence, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d,
 	Vector4f projParams_rgb, float _voxelSize, float mu, int maxW);
 
 __global__ void buildHashAllocAndVisibleType_device(uchar *entriesAllocType, uchar *entriesVisibleType, Vector4s *blockCoords, const float *depth,
-	Matrix4f invM_d, Vector4f projParams_d, float mu, Vector2i _imgSize, float _voxelSize, ITMHashEntry *hashTable, float viewFrustum_min,
-	float viewFrustrum_max);
+	const Vector4f *depthNormal, Matrix4f invM_d, Vector4f projParams_d, float mu, Vector2i _imgSize, float _voxelSize, ITMHashEntry *hashTable,
+	float viewFrustum_min, float viewFrustrum_max, bool directionalTSDF);
 
 __global__ void allocateVoxelBlocksList_device(int *voxelAllocationList, int *excessAllocationList, ITMHashEntry *hashTable, int noTotalEntries,
 	AllocationTempData *allocData, uchar *entriesAllocType, uchar *entriesVisibleType, Vector4s *blockCoords);
@@ -47,9 +47,16 @@ __global__ void buildVisibleList_device(ITMHashEntry *hashTable, ITMHashSwapStat
 }
 
 // host methods
+template<class TVoxel, class TIndex>
+ITMSceneReconstructionEngine_CUDA<TVoxel, TIndex>::ITMSceneReconstructionEngine_CUDA(bool directionalTSDF)
+	:ITMSceneReconstructionEngine<TVoxel, TIndex>(directionalTSDF)
+{
+
+}
 
 template<class TVoxel>
-ITMSceneReconstructionEngine_CUDA<TVoxel,ITMVoxelBlockHash>::ITMSceneReconstructionEngine_CUDA(void) 
+ITMSceneReconstructionEngine_CUDA<TVoxel,ITMVoxelBlockHash>::ITMSceneReconstructionEngine_CUDA(bool directionalTSDF)
+	: ITMSceneReconstructionEngine<TVoxel,ITMVoxelBlockHash>(directionalTSDF)
 {
 	ORcudaSafeCall(cudaMalloc((void**)&allocationTempData_device, sizeof(AllocationTempData)));
 	ORcudaSafeCall(cudaMallocHost((void**)&allocationTempData_host, sizeof(AllocationTempData)));
@@ -60,7 +67,7 @@ ITMSceneReconstructionEngine_CUDA<TVoxel,ITMVoxelBlockHash>::ITMSceneReconstruct
 }
 
 template<class TVoxel>
-ITMSceneReconstructionEngine_CUDA<TVoxel,ITMVoxelBlockHash>::~ITMSceneReconstructionEngine_CUDA(void) 
+ITMSceneReconstructionEngine_CUDA<TVoxel,ITMVoxelBlockHash>::~ITMSceneReconstructionEngine_CUDA(void)
 {
 	ORcudaSafeCall(cudaFreeHost(allocationTempData_host));
 	ORcudaSafeCall(cudaFree(allocationTempData_device));
@@ -92,7 +99,7 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel,ITMVoxelBlockHash>::ResetScene(ITM
 }
 
 template<class TVoxel>
-void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateSceneFromDepth(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view, 
+void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateSceneFromDepth(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view,
 	const ITMTrackingState *trackingState, const ITMRenderState *renderState, bool onlyUpdateVisibleList, bool resetVisibleList)
 {
 	Vector2i depthImgSize = view->depth->noDims;
@@ -115,6 +122,7 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 	float mu = scene->sceneParams->mu;
 
 	float *depth = view->depth->GetData(MEMORYDEVICE_CUDA);
+	Vector4f *depthNormal = view->depthNormal->GetData(MEMORYDEVICE_CUDA);
 	int *voxelAllocationList = scene->localVBA.GetAllocationList();
 	int *excessAllocationList = scene->index.GetExcessAllocationList();
 	ITMHashEntry *hashTable = scene->index.GetEntries();
@@ -150,9 +158,9 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 		ORcudaKernelCheck;
 	}
 
-	buildHashAllocAndVisibleType_device << <gridSizeHV, cudaBlockSizeHV >> >(entriesAllocType_device, entriesVisibleType, 
-		blockCoords_device, depth, invM_d, invProjParams_d, mu, depthImgSize, oneOverVoxelSize, hashTable,
-		scene->sceneParams->viewFrustum_min, scene->sceneParams->viewFrustum_max);
+	buildHashAllocAndVisibleType_device << <gridSizeHV, cudaBlockSizeHV >> >(entriesAllocType_device, entriesVisibleType,
+		blockCoords_device, depth, depthNormal, invM_d, invProjParams_d, mu, depthImgSize, oneOverVoxelSize, hashTable,
+		scene->sceneParams->viewFrustum_min, scene->sceneParams->viewFrustum_max, this->directionalTSDF);
 	ORcudaKernelCheck;
 
 	bool useSwapping = scene->globalCache != NULL;
@@ -180,7 +188,7 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 
 	if (useSwapping)
 	{
-		reAllocateSwappedOutVoxelBlocks_device << <gridSizeAL, cudaBlockSizeAL >> >(voxelAllocationList, hashTable, noTotalEntries, 
+		reAllocateSwappedOutVoxelBlocks_device << <gridSizeAL, cudaBlockSizeAL >> >(voxelAllocationList, hashTable, noTotalEntries,
 			(AllocationTempData*)allocationTempData_device, entriesVisibleType);
 		ORcudaKernelCheck;
 	}
@@ -307,7 +315,7 @@ namespace
 
 template<class TVoxel, bool stopMaxW>
 __global__ void integrateIntoScene_device(TVoxel *voxelArray, const ITMPlainVoxelArray::ITMVoxelArrayInfo *arrayInfo,
-	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, const float *confidence, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d, 
+	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, const float *confidence, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d,
 	Vector4f projParams_rgb, float _voxelSize, float mu, int maxW)
 {
 	int x = blockIdx.x*blockDim.x+threadIdx.x;
@@ -317,7 +325,7 @@ __global__ void integrateIntoScene_device(TVoxel *voxelArray, const ITMPlainVoxe
 	Vector4f pt_model; int locId;
 
 	locId = x + y * arrayInfo->size.x + z * arrayInfo->size.x * arrayInfo->size.y;
-	
+
 	if (stopMaxW) if (voxelArray[locId].w_depth == maxW) return;
 //	if (approximateIntegration) if (voxelArray[locId].w_depth != 0) return;
 
@@ -331,7 +339,7 @@ __global__ void integrateIntoScene_device(TVoxel *voxelArray, const ITMPlainVoxe
 
 template<class TVoxel, bool stopMaxW>
 __global__ void integrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry *hashTable, int *visibleEntryIDs,
-	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, const float *confidence, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d, 
+	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, const float *confidence, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d,
 	Vector4f projParams_rgb, float _voxelSize, float mu, int maxW)
 {
 	Vector3i globalPos;
@@ -359,20 +367,27 @@ __global__ void integrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry *
 	pt_model.z = (float)(globalPos.z + z) * _voxelSize;
 	pt_model.w = 1.0f;
 
-	ComputeUpdatedVoxelInfo<TVoxel::hasColorInformation, TVoxel::hasConfidenceInformation, TVoxel>::compute(localVoxelBlock[locId], 
+	ComputeUpdatedVoxelInfo<TVoxel::hasColorInformation, TVoxel::hasConfidenceInformation, TVoxel>::compute(localVoxelBlock[locId],
 		pt_model, M_d, projParams_d, M_rgb, projParams_rgb, mu, maxW, depth, confidence, depthImgSize, rgb, rgbImgSize);
 }
 
 __global__ void buildHashAllocAndVisibleType_device(uchar *entriesAllocType, uchar *entriesVisibleType, Vector4s *blockCoords, const float *depth,
-	Matrix4f invM_d, Vector4f projParams_d, float mu, Vector2i _imgSize, float _voxelSize, ITMHashEntry *hashTable, float viewFrustum_min,
-	float viewFrustum_max)
+	const Vector4f *depthNormal, Matrix4f invM_d, Vector4f projParams_d, float mu, Vector2i _imgSize, float _voxelSize, ITMHashEntry *hashTable,
+	float viewFrustum_min, float viewFrustum_max, bool directionalTSDF)
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
 
 	if (x > _imgSize.x - 1 || y > _imgSize.y - 1) return;
 
-	buildHashAllocAndVisibleTypePP(entriesAllocType, entriesVisibleType, x, y, blockCoords, depth, invM_d,
-		projParams_d, mu, _imgSize, _voxelSize, hashTable, viewFrustum_min, viewFrustum_max);
+	if (directionalTSDF)
+	{
+		buildHashAllocAndVisibleTypePPDirectional(entriesAllocType, entriesVisibleType, x, y, blockCoords, depth, depthNormal, invM_d,
+		                               projParams_d, mu, _imgSize, _voxelSize, hashTable, viewFrustum_min, viewFrustum_max);
+	} else
+	{
+		buildHashAllocAndVisibleTypePP(entriesAllocType, entriesVisibleType, x, y, blockCoords, depth, invM_d,
+			projParams_d, mu, _imgSize, _voxelSize, hashTable, viewFrustum_min, viewFrustum_max);
+	}
 }
 
 __global__ void setToType3(uchar *entriesVisibleType, int *visibleEntryIDs, int noVisibleEntries)
@@ -468,7 +483,7 @@ __global__ void reAllocateSwappedOutVoxelBlocks_device(int *voxelAllocationList,
 
 template<bool useSwapping>
 __global__ void buildVisibleList_device(ITMHashEntry *hashTable, ITMHashSwapState *swapStates, int noTotalEntries,
-	int *visibleEntryIDs, AllocationTempData *allocData, uchar *entriesVisibleType, 
+	int *visibleEntryIDs, AllocationTempData *allocData, uchar *entriesVisibleType,
 	Matrix4f M_d, Vector4f projParams_d, Vector2i depthImgSize, float voxelSize)
 {
 	int targetIdx = threadIdx.x + blockIdx.x * blockDim.x;
