@@ -2,13 +2,13 @@
 # CMakeLists.txt for ITMLib #
 #############################
 
-INCLUDE_DIRECTORIES(./)
-
 ###########################
 # Specify the target name #
 ###########################
 
 SET(targetname ITMLib)
+
+INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
 
 ################################
 # Specify the libraries to use #

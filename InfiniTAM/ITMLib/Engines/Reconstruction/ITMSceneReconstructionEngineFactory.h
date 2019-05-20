@@ -27,21 +27,20 @@ struct ITMSceneReconstructionEngineFactory
    */
   template <typename TVoxel, typename TIndex>
   static ITMSceneReconstructionEngine<TVoxel,TIndex> *MakeSceneReconstructionEngine(
-    ITMLibSettings::DeviceType deviceType,
-    ITMLibSettings::TSDFMode tsdfMode)
+    const ITMLibSettings &settings)
   {
     ITMSceneReconstructionEngine<TVoxel,TIndex> *sceneRecoEngine = NULL;
 
-    bool directionalTSDF = (tsdfMode == ITMLibSettings::TSDFMode::TSDFMODE_DIRECTIONAL);
-
-    switch(deviceType)
+    switch(settings.deviceType)
     {
       case ITMLibSettings::DEVICE_CPU:
-        sceneRecoEngine = new ITMSceneReconstructionEngine_CPU<TVoxel,TIndex>(directionalTSDF);
+        sceneRecoEngine = new ITMSceneReconstructionEngine_CPU<TVoxel,TIndex>(
+        	settings.tsdfMode, settings.fusionMode, settings.fusionMetric);
         break;
       case ITMLibSettings::DEVICE_CUDA:
 #ifndef COMPILE_WITHOUT_CUDA
-        sceneRecoEngine = new ITMSceneReconstructionEngine_CUDA<TVoxel,TIndex>(directionalTSDF);
+        sceneRecoEngine = new ITMSceneReconstructionEngine_CUDA<TVoxel,TIndex>(
+					settings.tsdfMode, settings.fusionMode, settings.fusionMetric);
 #endif
         break;
       case ITMLibSettings::DEVICE_METAL:

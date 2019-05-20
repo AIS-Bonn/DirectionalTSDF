@@ -182,7 +182,7 @@ static void GenericRaycast(const ITMScene<TVoxel, TIndex> *scene, const Vector2i
 	Vector4f *pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CPU);
 	const TVoxel *voxelData = scene->localVBA.GetVoxelBlocks();
 	const typename ITMVoxelBlockHash::IndexData *voxelIndex = scene->index.getIndexData();
-	uchar *entriesVisibleType = NULL;
+	HashEntryVisibilityType *entriesVisibleType = NULL;
 	if (updateVisibleList&&(dynamic_cast<const ITMRenderState_VH*>(renderState)!=NULL))
 	{
 		entriesVisibleType = ((ITMRenderState_VH*)renderState)->GetEntriesVisibleType();

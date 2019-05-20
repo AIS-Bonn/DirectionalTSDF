@@ -1,16 +1,11 @@
 // Copyright 2014-2017 Oxford University Innovation Limited and the authors of InfiniTAM
 
+#include <ITMLib/Utils/ITMLibSettings.h>
 #include "ITMSceneReconstructionEngine_CUDA.h"
 
 #include "../Shared/ITMSceneReconstructionEngine_Shared.h"
 #include "../../../Objects/RenderStates/ITMRenderState_VH.h"
 #include "../../../Utils/ITMCUDAUtils.h"
-
-struct AllocationTempData {
-	int noAllocatedVoxelEntries;
-	int noAllocatedExcessEntries;
-	int noVisibleEntries;
-};
 
 using namespace ITMLib;
 
@@ -27,36 +22,39 @@ __global__ void integrateIntoScene_device(TVoxel *voxelArray, const ITMPlainVoxe
 	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, const float *confidence, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d,
 	Vector4f projParams_rgb, float _voxelSize, float mu, int maxW);
 
-__global__ void buildHashAllocAndVisibleType_device(uchar *entriesAllocType, uchar *entriesVisibleType, Vector4s *blockCoords, const float *depth,
+__global__ void buildHashAllocAndVisibleType_device(HashEntryAllocType *entriesAllocType, HashEntryVisibilityType *entriesVisibleType, Vector4s *blockCoords, const float *depth,
 	const Vector4f *depthNormal, Matrix4f invM_d, Vector4f projParams_d, float mu, Vector2i _imgSize, float _voxelSize, ITMHashEntry *hashTable,
-	float viewFrustum_min, float viewFrustrum_max, bool directionalTSDF);
+	float viewFrustum_min, float viewFrustum_max, ITMLibSettings::TSDFMode tsdfMode, ITMLibSettings::FusionMetric fusionMetric);
 
 __global__ void allocateVoxelBlocksList_device(int *voxelAllocationList, int *excessAllocationList, ITMHashEntry *hashTable, int noTotalEntries,
-	AllocationTempData *allocData, uchar *entriesAllocType, uchar *entriesVisibleType, Vector4s *blockCoords);
+	AllocationTempData *allocData, HashEntryAllocType *entriesAllocType, HashEntryVisibilityType *entriesVisibleType, Vector4s *blockCoords);
 
 __global__ void reAllocateSwappedOutVoxelBlocks_device(int *voxelAllocationList, ITMHashEntry *hashTable, int noTotalEntries,
-	AllocationTempData *allocData, uchar *entriesVisibleType);
+	AllocationTempData *allocData, HashEntryVisibilityType *entriesVisibleType);
 
-__global__ void setToType3(uchar *entriesVisibleType, int *visibleEntryIDs, int noVisibleEntries);
+__global__ void setToType3(HashEntryVisibilityType *entriesVisibleType, int *visibleEntryIDs, int noVisibleEntries);
 
 template<bool useSwapping>
-__global__ void buildVisibleList_device(ITMHashEntry *hashTable, ITMHashSwapState *swapStates, int noTotalEntries,
-	int *visibleEntryIDs, AllocationTempData *allocData, uchar *entriesVisibleType,
-	Matrix4f M_d, Vector4f projParams_d, Vector2i depthImgSize, float voxelSize);
+__global__ void buildVisibleList_kernel(ITMHashEntry* hashTable, ITMHashSwapState* swapStates, int noTotalEntries,
+                                        int* visibleEntryIDs, AllocationTempData* allocData,
+                                        HashEntryVisibilityType* entriesVisibleType,
+                                        Matrix4f M_d, Vector4f projParams_d, Vector2i depthImgSize, float voxelSize);
 
 }
 
 // host methods
 template<class TVoxel, class TIndex>
-ITMSceneReconstructionEngine_CUDA<TVoxel, TIndex>::ITMSceneReconstructionEngine_CUDA(bool directionalTSDF)
-	:ITMSceneReconstructionEngine<TVoxel, TIndex>(directionalTSDF)
+ITMSceneReconstructionEngine_CUDA<TVoxel, TIndex>::ITMSceneReconstructionEngine_CUDA(ITMLibSettings::TSDFMode tsdfMode,
+			ITMLibSettings::FusionMode fusionMode, ITMLibSettings::FusionMetric fusionMetric)
+	:ITMSceneReconstructionEngine<TVoxel, TIndex>(tsdfMode, fusionMode, fusionMetric)
 {
 
 }
 
 template<class TVoxel>
-ITMSceneReconstructionEngine_CUDA<TVoxel,ITMVoxelBlockHash>::ITMSceneReconstructionEngine_CUDA(bool directionalTSDF)
-	: ITMSceneReconstructionEngine<TVoxel,ITMVoxelBlockHash>(directionalTSDF)
+ITMSceneReconstructionEngine_CUDA<TVoxel,ITMVoxelBlockHash>::ITMSceneReconstructionEngine_CUDA(ITMLibSettings::TSDFMode tsdfMode,
+			ITMLibSettings::FusionMode fusionMode, ITMLibSettings::FusionMetric fusionMetric)
+	: ITMSceneReconstructionEngine<TVoxel,ITMVoxelBlockHash>(tsdfMode, fusionMode, fusionMetric)
 {
 	ORcudaSafeCall(cudaMalloc((void**)&allocationTempData_device, sizeof(AllocationTempData)));
 	ORcudaSafeCall(cudaMallocHost((void**)&allocationTempData_host, sizeof(AllocationTempData)));
@@ -122,7 +120,10 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 	float mu = scene->sceneParams->mu;
 
 	float *depth = view->depth->GetData(MEMORYDEVICE_CUDA);
-	Vector4f *depthNormal = view->depthNormal->GetData(MEMORYDEVICE_CUDA);
+	Vector4f *depthNormal = nullptr;
+	if (this->tsdfMode == ITMLibSettings::TSDFMode::TSDFMODE_DIRECTIONAL or
+	    this->fusionMetric == ITMLibSettings::FusionMetric::FUSIONMETRIC_POINT_TO_PLANE)
+		 depthNormal = view->depthNormal->GetData(MEMORYDEVICE_CUDA);
 	int *voxelAllocationList = scene->localVBA.GetAllocationList();
 	int *excessAllocationList = scene->index.GetExcessAllocationList();
 	ITMHashEntry *hashTable = scene->index.GetEntries();
@@ -131,7 +132,7 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 	int noTotalEntries = scene->index.noTotalEntries;
 
 	int *visibleEntryIDs = renderState_vh->GetVisibleEntryIDs();
-	uchar *entriesVisibleType = renderState_vh->GetEntriesVisibleType();
+	HashEntryVisibilityType *entriesVisibleType = renderState_vh->GetEntriesVisibleType();
 
 	dim3 cudaBlockSizeHV(16, 16);
 	dim3 gridSizeHV((int)ceil((float)depthImgSize.x / (float)cudaBlockSizeHV.x), (int)ceil((float)depthImgSize.y / (float)cudaBlockSizeHV.y));
@@ -142,7 +143,7 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 	dim3 cudaBlockSizeVS(256, 1);
 	dim3 gridSizeVS((int)ceil((float)renderState_vh->noVisibleEntries / (float)cudaBlockSizeVS.x));
 
-	float oneOverVoxelSize = 1.0f / (voxelSize * SDF_BLOCK_SIZE);
+	float blockSize = voxelSize * SDF_BLOCK_SIZE;
 
 	AllocationTempData *tempData = (AllocationTempData*)allocationTempData_host;
 	tempData->noAllocatedVoxelEntries = scene->localVBA.lastFreeBlockId;
@@ -159,8 +160,9 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 	}
 
 	buildHashAllocAndVisibleType_device << <gridSizeHV, cudaBlockSizeHV >> >(entriesAllocType_device, entriesVisibleType,
-		blockCoords_device, depth, depthNormal, invM_d, invProjParams_d, mu, depthImgSize, oneOverVoxelSize, hashTable,
-		scene->sceneParams->viewFrustum_min, scene->sceneParams->viewFrustum_max, this->directionalTSDF);
+		blockCoords_device, depth, depthNormal, invM_d, invProjParams_d, mu, depthImgSize, blockSize, hashTable,
+		scene->sceneParams->viewFrustum_min, scene->sceneParams->viewFrustum_max,
+		this->tsdfMode, this->fusionMetric);
 	ORcudaKernelCheck;
 
 	bool useSwapping = scene->globalCache != NULL;
@@ -175,17 +177,18 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 
 	if (useSwapping)
 	{
-		buildVisibleList_device<true> << <gridSizeAL, cudaBlockSizeAL >> >(hashTable, swapStates, noTotalEntries, visibleEntryIDs,
+		buildVisibleList_kernel<true> << <gridSizeAL, cudaBlockSizeAL >> >(hashTable, swapStates, noTotalEntries, visibleEntryIDs,
 			(AllocationTempData*)allocationTempData_device, entriesVisibleType, M_d, projParams_d, depthImgSize, voxelSize);
 		ORcudaKernelCheck;
 	}
 	else
 	{
-		buildVisibleList_device<false> << <gridSizeAL, cudaBlockSizeAL >> >(hashTable, swapStates, noTotalEntries, visibleEntryIDs,
+		buildVisibleList_kernel<false> << <gridSizeAL, cudaBlockSizeAL >> >(hashTable, swapStates, noTotalEntries, visibleEntryIDs,
 			(AllocationTempData*)allocationTempData_device, entriesVisibleType, M_d, projParams_d, depthImgSize, voxelSize);
 		ORcudaKernelCheck;
 	}
 
+	//reallocate deleted entries from previous swap operation
 	if (useSwapping)
 	{
 		reAllocateSwappedOutVoxelBlocks_device << <gridSizeAL, cudaBlockSizeAL >> >(voxelAllocationList, hashTable, noTotalEntries,
@@ -371,34 +374,29 @@ __global__ void integrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry *
 		pt_model, M_d, projParams_d, M_rgb, projParams_rgb, mu, maxW, depth, confidence, depthImgSize, rgb, rgbImgSize);
 }
 
-__global__ void buildHashAllocAndVisibleType_device(uchar *entriesAllocType, uchar *entriesVisibleType, Vector4s *blockCoords, const float *depth,
-	const Vector4f *depthNormal, Matrix4f invM_d, Vector4f projParams_d, float mu, Vector2i _imgSize, float _voxelSize, ITMHashEntry *hashTable,
-	float viewFrustum_min, float viewFrustum_max, bool directionalTSDF)
+__global__ void buildHashAllocAndVisibleType_device(HashEntryAllocType *entriesAllocType, HashEntryVisibilityType *entriesVisibleType,
+	                                                  Vector4s *blockCoords, const float *depth, const Vector4f *depthNormal,
+	                                                  Matrix4f invM_d, Vector4f projParams_d, float mu, Vector2i _imgSize,
+	                                                  float _voxelSize, ITMHashEntry *hashTable, float viewFrustum_min, float viewFrustum_max,
+	                                                  ITMLibSettings::TSDFMode tsdfMode, ITMLibSettings::FusionMetric fusionMetric)
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
 
 	if (x > _imgSize.x - 1 || y > _imgSize.y - 1) return;
 
-	if (directionalTSDF)
-	{
-		buildHashAllocAndVisibleTypePPDirectional(entriesAllocType, entriesVisibleType, x, y, blockCoords, depth, depthNormal, invM_d,
-		                               projParams_d, mu, _imgSize, _voxelSize, hashTable, viewFrustum_min, viewFrustum_max);
-	} else
-	{
-		buildHashAllocAndVisibleTypePP(entriesAllocType, entriesVisibleType, x, y, blockCoords, depth, invM_d,
-			projParams_d, mu, _imgSize, _voxelSize, hashTable, viewFrustum_min, viewFrustum_max);
-	}
+	buildHashAllocAndVisibleTypePP(entriesAllocType, entriesVisibleType, x, y, blockCoords, depth, depthNormal,
+		invM_d, projParams_d, mu, _imgSize, _voxelSize, hashTable, viewFrustum_min, viewFrustum_max, tsdfMode, fusionMetric);
 }
 
-__global__ void setToType3(uchar *entriesVisibleType, int *visibleEntryIDs, int noVisibleEntries)
+__global__ void setToType3(HashEntryVisibilityType *entriesVisibleType, int *visibleEntryIDs, int noVisibleEntries)
 {
 	int entryId = threadIdx.x + blockIdx.x * blockDim.x;
 	if (entryId > noVisibleEntries - 1) return;
-	entriesVisibleType[visibleEntryIDs[entryId]] = 3;
+	entriesVisibleType[visibleEntryIDs[entryId]] = PREVIOUSLY_VISIBLE;
 }
 
 __global__ void allocateVoxelBlocksList_device(int *voxelAllocationList, int *excessAllocationList, ITMHashEntry *hashTable, int noTotalEntries,
-	AllocationTempData *allocData, uchar *entriesAllocType, uchar *entriesVisibleType, Vector4s *blockCoords)
+	AllocationTempData *allocData, HashEntryAllocType *entriesAllocType, HashEntryVisibilityType *entriesVisibleType, Vector4s *blockCoords)
 {
 	int targetIdx = threadIdx.x + blockIdx.x * blockDim.x;
 	if (targetIdx > noTotalEntries - 1) return;
@@ -424,7 +422,7 @@ __global__ void allocateVoxelBlocksList_device(int *voxelAllocationList, int *ex
 		else
 		{
 			// Mark entry as not visible since we couldn't allocate it but buildHashAllocAndVisibleTypePP changed its state.
-			entriesVisibleType[targetIdx] = 0;
+			entriesVisibleType[targetIdx] = INVISIBLE;
 
 			// Restore the previous value to avoid leaks.
 			atomicAdd(&allocData->noAllocatedVoxelEntries, 1);
@@ -450,7 +448,7 @@ __global__ void allocateVoxelBlocksList_device(int *voxelAllocationList, int *ex
 
 			hashTable[SDF_BUCKET_NUM + exlOffset] = hashEntry; //add child to the excess list
 
-			entriesVisibleType[SDF_BUCKET_NUM + exlOffset] = 1; //make child visible
+			entriesVisibleType[SDF_BUCKET_NUM + exlOffset] = VISIBLE_IN_MEMORY; //make child visible
 		}
 		else
 		{
@@ -465,7 +463,7 @@ __global__ void allocateVoxelBlocksList_device(int *voxelAllocationList, int *ex
 }
 
 __global__ void reAllocateSwappedOutVoxelBlocks_device(int *voxelAllocationList, ITMHashEntry *hashTable, int noTotalEntries,
-	AllocationTempData *allocData, /*int *noAllocatedVoxelEntries,*/ uchar *entriesVisibleType)
+	AllocationTempData *allocData, /*int *noAllocatedVoxelEntries,*/ HashEntryVisibilityType *entriesVisibleType)
 {
 	int targetIdx = threadIdx.x + blockIdx.x * blockDim.x;
 	if (targetIdx > noTotalEntries - 1) return;
@@ -482,9 +480,10 @@ __global__ void reAllocateSwappedOutVoxelBlocks_device(int *voxelAllocationList,
 }
 
 template<bool useSwapping>
-__global__ void buildVisibleList_device(ITMHashEntry *hashTable, ITMHashSwapState *swapStates, int noTotalEntries,
-	int *visibleEntryIDs, AllocationTempData *allocData, uchar *entriesVisibleType,
-	Matrix4f M_d, Vector4f projParams_d, Vector2i depthImgSize, float voxelSize)
+__global__ void buildVisibleList_kernel(ITMHashEntry* hashTable, ITMHashSwapState* swapStates, int noTotalEntries,
+                                        int* visibleEntryIDs, AllocationTempData* allocData,
+                                        HashEntryVisibilityType* entriesVisibleType,
+                                        Matrix4f M_d, Vector4f projParams_d, Vector2i depthImgSize, float voxelSize)
 {
 	int targetIdx = threadIdx.x + blockIdx.x * blockDim.x;
 	if (targetIdx > noTotalEntries - 1) return;
@@ -493,30 +492,12 @@ __global__ void buildVisibleList_device(ITMHashEntry *hashTable, ITMHashSwapStat
 	shouldPrefix = false;
 	__syncthreads();
 
-	unsigned char hashVisibleType = entriesVisibleType[targetIdx];
-	const ITMHashEntry & hashEntry = hashTable[targetIdx];
+	buildVisibleList<useSwapping>(hashTable, swapStates, noTotalEntries, visibleEntryIDs,
+	                              allocData, entriesVisibleType, M_d, projParams_d, depthImgSize, voxelSize,
+	                              targetIdx);
 
-	if (hashVisibleType == 3)
-	{
-		bool isVisibleEnlarged, isVisible;
-
-		if (useSwapping)
-		{
-			checkBlockVisibility<true>(isVisible, isVisibleEnlarged, hashEntry.pos, M_d, projParams_d, voxelSize, depthImgSize);
-			if (!isVisibleEnlarged) hashVisibleType = 0;
-		} else {
-			checkBlockVisibility<false>(isVisible, isVisibleEnlarged, hashEntry.pos, M_d, projParams_d, voxelSize, depthImgSize);
-			if (!isVisible) hashVisibleType = 0;
-		}
-		entriesVisibleType[targetIdx] = hashVisibleType;
-	}
-
+	HashEntryVisibilityType hashVisibleType = entriesVisibleType[targetIdx];
 	if (hashVisibleType > 0) shouldPrefix = true;
-
-	if (useSwapping)
-	{
-		if (hashVisibleType > 0 && swapStates[targetIdx].state != 2) swapStates[targetIdx].state = 1;
-	}
 
 	__syncthreads();
 

@@ -11,7 +11,8 @@ namespace ITMLib
 	class ITMSceneReconstructionEngine_CUDA : public ITMSceneReconstructionEngine < TVoxel, TIndex >
 	{
 	public:
-		explicit ITMSceneReconstructionEngine_CUDA(bool directionalTSDF);
+		explicit ITMSceneReconstructionEngine_CUDA(ITMLibSettings::TSDFMode tsdfMode,
+			ITMLibSettings::FusionMode fusionMode, ITMLibSettings::FusionMetric fusionMetric);
 	};
 
 template<class TVoxel>
@@ -20,7 +21,7 @@ template<class TVoxel>
 	private:
 		void *allocationTempData_device;
 		void *allocationTempData_host;
-		unsigned char *entriesAllocType_device;
+		HashEntryAllocType *entriesAllocType_device;
 		Vector4s *blockCoords_device;
 
 	public:
@@ -32,7 +33,8 @@ template<class TVoxel>
 		void IntegrateIntoScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view, const ITMTrackingState *trackingState,
 			const ITMRenderState *renderState);
 
-		explicit ITMSceneReconstructionEngine_CUDA(bool directionalTSDF);
+		explicit ITMSceneReconstructionEngine_CUDA(ITMLibSettings::TSDFMode tsdfMode,
+			ITMLibSettings::FusionMode fusionMode, ITMLibSettings::FusionMetric fusionMetric);
 		~ITMSceneReconstructionEngine_CUDA();
 	};
 

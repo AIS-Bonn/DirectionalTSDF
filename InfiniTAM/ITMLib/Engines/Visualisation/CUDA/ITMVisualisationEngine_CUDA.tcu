@@ -186,7 +186,7 @@ static void GenericRaycast(const ITMScene<TVoxel, TIndex> *scene, const Vector2i
 	float voxelSize = scene->sceneParams->voxelSize;
 	float oneOverVoxelSize = 1.0f / voxelSize;
 
-	uchar *entriesVisibleType = NULL;
+	HashEntryVisibilityType *entriesVisibleType = NULL;
 	if (updateVisibleList&&(dynamic_cast<const ITMRenderState_VH*>(renderState)!=NULL))
 	{
 		entriesVisibleType = ((ITMRenderState_VH*)renderState)->GetEntriesVisibleType();

@@ -7,6 +7,7 @@
 #include "ITMRenderState.h"
 #include "../Scene/ITMVoxelBlockHash.h"
 #include "../../../ORUtils/MemoryBlock.h"
+#include "ITMLib/Engines/Reconstruction/Interface/ITMSceneReconstructionEngine.h"
 
 namespace ITMLib
 {
@@ -28,7 +29,7 @@ namespace ITMLib
 		currently being processed by integration
 		and tracker.
 		*/
-		ORUtils::MemoryBlock<uchar> *entriesVisibleType;
+		ORUtils::MemoryBlock<HashEntryVisibilityType> *entriesVisibleType;
            
 	public:
 		/** Number of entries in the live list. */
@@ -40,7 +41,7 @@ namespace ITMLib
 			this->memoryType = memoryType;
 
 			visibleEntryIDs = new ORUtils::MemoryBlock<int>(SDF_LOCAL_BLOCK_NUM, memoryType);
-			entriesVisibleType = new ORUtils::MemoryBlock<uchar>(noTotalEntries, memoryType);
+			entriesVisibleType = new ORUtils::MemoryBlock<HashEntryVisibilityType>(noTotalEntries, memoryType);
 
 			noVisibleEntries = 0;
 		}
@@ -58,7 +59,7 @@ namespace ITMLib
 		/** Get the list of "visible entries", that are
 		currently processed by integration and tracker.
 		*/
-		uchar *GetEntriesVisibleType(void) { return entriesVisibleType->GetData(memoryType); }
+		HashEntryVisibilityType *GetEntriesVisibleType(void) { return entriesVisibleType->GetData(memoryType); }
 
 #ifdef COMPILE_WITH_METAL
 		const void* GetVisibleEntryIDs_MB(void) { return visibleEntryIDs->GetMetalBuffer(); }

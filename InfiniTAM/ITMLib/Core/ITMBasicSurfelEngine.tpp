@@ -213,7 +213,6 @@ ITMTrackingState::TrackingResult ITMBasicSurfelEngine<TSurfel>::ProcessFrame(ITM
 	}
 
 	//relocalisation
-	int addKeyframeIdx = -1;
 	if (settings->behaviourOnFailure == ITMLibSettings::FAILUREMODE_RELOCALISE)
 	{
 		if (trackerResult == ITMTrackingState::TRACKING_GOOD && relocalisationCount > 0) relocalisationCount--;

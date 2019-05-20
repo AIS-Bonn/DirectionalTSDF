@@ -147,8 +147,9 @@ ITMTrackingState::TrackingResult ITMMultiEngine<TVoxel, TIndex>::ProcessFrame(IT
 	ITMTrackingState::TrackingResult primaryLocalMapTrackingResult;
 
 	// prepare image and turn it into a depth image
-	if (imuMeasurement == NULL) viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter);
-	else viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, imuMeasurement);
+	bool modelSensorNoise = (settings->tsdfMode==ITMLibSettings::TSDFMode::TSDFMODE_DIRECTIONAL);
+	if (imuMeasurement == NULL) viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, modelSensorNoise);
+	else viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, imuMeasurement, modelSensorNoise);
 
 	// find primary data, if available
 	int primaryDataIdx = mActiveDataManager->findPrimaryDataIdx();

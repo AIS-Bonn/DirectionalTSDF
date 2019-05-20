@@ -45,6 +45,18 @@ namespace ITMLib
 			TSDFMODE_DIRECTIONAL,
 		} TSDFMode;
 
+		typedef enum
+		{
+			FUSIONMODE_VOXEL_PROJECTION,
+			FUSIONMODE_RAY_CASTING
+		} FusionMode;
+
+		typedef enum
+		{
+			FUSIONMETRIC_POINT_TO_POINT,
+			FUSIONMETRIC_POINT_TO_PLANE
+		} FusionMetric;
+
 		/// Select the type of device to use
 		DeviceType deviceType;
 
@@ -61,6 +73,8 @@ namespace ITMLib
 		SwappingMode swappingMode;
 		LibMode libMode;
 		TSDFMode tsdfMode;
+		FusionMode fusionMode;
+		FusionMetric fusionMetric;
 
 		const char *trackerConfig;
 

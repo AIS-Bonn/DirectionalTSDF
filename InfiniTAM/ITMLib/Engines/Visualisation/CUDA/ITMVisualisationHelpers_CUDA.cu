@@ -1,6 +1,7 @@
 // Copyright 2014-2017 Oxford University Innovation Limited and the authors of InfiniTAM
 
 #include "ITMVisualisationHelpers_CUDA.h"
+#include "Engines/Reconstruction/Interface/ITMSceneReconstructionEngine.h"
 
 using namespace ITMLib;
 
@@ -17,7 +18,7 @@ __global__ void ITMLib::countVisibleBlocks_device(const int *visibleEntryIDs, in
 }
 
 __global__ void ITMLib::buildCompleteVisibleList_device(const ITMHashEntry *hashTable, /*ITMHashCacheState *cacheStates, bool useSwapping,*/ int noTotalEntries,
-	int *visibleEntryIDs, int *noVisibleEntries, uchar *entriesVisibleType, Matrix4f M, Vector4f projParams, Vector2i imgSize, float voxelSize)
+	int *visibleEntryIDs, int *noVisibleEntries, HashEntryVisibilityType *entriesVisibleType, Matrix4f M, Vector4f projParams, Vector2i imgSize, float voxelSize)
 {
 	int targetIdx = threadIdx.x + blockIdx.x * blockDim.x;
 	if (targetIdx > noTotalEntries - 1) return;

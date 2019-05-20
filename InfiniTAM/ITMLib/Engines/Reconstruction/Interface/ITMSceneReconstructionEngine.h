@@ -4,10 +4,11 @@
 
 #include <math.h>
 
-#include "../../../Objects/RenderStates/ITMRenderState.h"
-#include "../../../Objects/Scene/ITMScene.h"
-#include "../../../Objects/Tracking/ITMTrackingState.h"
-#include "../../../Objects/Views/ITMView.h"
+#include "ITMLib/Objects/RenderStates/ITMRenderState.h"
+#include "ITMLib/Objects/Scene/ITMScene.h"
+#include "ITMLib/Objects/Tracking/ITMTrackingState.h"
+#include "ITMLib/Objects/Views/ITMView.h"
+#include "ITMLib/Utils/ITMLibSettings.h"
 
 namespace ITMLib
 {
@@ -23,8 +24,9 @@ namespace ITMLib
 	class ITMSceneReconstructionEngine
 	{
 	public:
-		explicit ITMSceneReconstructionEngine(bool directionalTSDF)
-			:directionalTSDF(directionalTSDF)
+		ITMSceneReconstructionEngine(ITMLibSettings::TSDFMode tsdfMode,
+			ITMLibSettings::FusionMode fusionMode, ITMLibSettings::FusionMetric fusionMetric)
+			: tsdfMode(tsdfMode), fusionMode(fusionMode), fusionMetric(fusionMetric)
 		{ }
 
 		/** Clear and reset a scene to set up a new empty
@@ -49,6 +51,23 @@ namespace ITMLib
 		virtual ~ITMSceneReconstructionEngine(void) { }
 
 	protected:
-		bool directionalTSDF;
+		ITMLibSettings::TSDFMode tsdfMode;
+		ITMLibSettings::FusionMode fusionMode;
+		ITMLibSettings::FusionMetric fusionMetric;
+	};
+
+	enum HashEntryAllocType : uchar
+	{
+		ALLOCATED = 0,
+		ALLOCATE_ORDERED = 1, // entry requires allocation in ordered list
+		ALLOCATE_EXCESS = 2  // entry requires allocation in excess list
+	};
+
+	enum HashEntryVisibilityType : uchar
+	{
+		INVISIBLE = 0,
+		VISIBLE_IN_MEMORY = 1,
+		VISIBLE_STREAMED_OUT = 2,
+		PREVIOUSLY_VISIBLE = 3 // visible at previous frame and unstreamed
 	};
 }

@@ -11,14 +11,15 @@ namespace ITMLib
 	class ITMSceneReconstructionEngine_CPU : public ITMSceneReconstructionEngine < TVoxel, TIndex >
 	{
 	public:
-		explicit ITMSceneReconstructionEngine_CPU(bool directionalTSDF);
+		explicit ITMSceneReconstructionEngine_CPU(ITMLibSettings::TSDFMode tsdfMode,
+			ITMLibSettings::FusionMode fusionMode, ITMLibSettings::FusionMetric fusionMetric);
 	};
 
 template<class TVoxel>
 	class ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash> : public ITMSceneReconstructionEngine < TVoxel, ITMVoxelBlockHash >
 	{
 	protected:
-		ORUtils::MemoryBlock<unsigned char> *entriesAllocType;
+		ORUtils::MemoryBlock<HashEntryAllocType> *entriesAllocType;
 		ORUtils::MemoryBlock<Vector4s> *blockCoords;
 
 	public:
@@ -30,7 +31,8 @@ template<class TVoxel>
 		void IntegrateIntoScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view, const ITMTrackingState *trackingState,
 			const ITMRenderState *renderState);
 
-		ITMSceneReconstructionEngine_CPU(bool directionalTSDF);
+		ITMSceneReconstructionEngine_CPU(ITMLibSettings::TSDFMode tsdfMode,
+			ITMLibSettings::FusionMode fusionMode, ITMLibSettings::FusionMetric fusionMetric);
 		~ITMSceneReconstructionEngine_CPU();
 	};
 

@@ -5,9 +5,17 @@
 #include "Objects/Scene/ITMRepresentationAccess.h"
 #include "Objects/Scene/ITMDirectional.h"
 #include "Utils/ITMPixelUtils.h"
+#include "ITMBlockTraversal.h"
+#include "Engines/Reconstruction/Interface/ITMSceneReconstructionEngine.h"
 
 namespace ITMLib
 {
+
+struct AllocationTempData {
+	int noAllocatedVoxelEntries;
+	int noAllocatedExcessEntries;
+	int noVisibleEntries;
+};
 
 template<class TVoxel>
 _CPU_AND_GPU_CODE_ inline float
@@ -213,54 +221,66 @@ struct ComputeUpdatedVoxelInfo<true, true, TVoxel>
 	}
 };
 
+/**
+ *
+ * @param entriesAllocType Per HashEntry indicator whether it requires allocation
+ * @param entriesVisibleType Per HashEntry indicator if block is visible
+ * @param x
+ * @param y
+ * @param blockCoords
+ * @param depth
+ * @param invM_d
+ * @param projParams_d
+ * @param mu
+ * @param imgSize
+ * @param blockSideLength
+ * @param hashTable
+ * @param viewFrustum_min
+ * @param viewFrustum_max
+ */
 _CPU_AND_GPU_CODE_ inline void
-buildHashAllocAndVisibleTypePP(DEVICEPTR(uchar)* entriesAllocType, DEVICEPTR(uchar)* entriesVisibleType, int x, int y,
-                               DEVICEPTR(Vector4s)* blockCoords, const CONSTPTR(float)* depth, Matrix4f invM_d,
-                               Vector4f projParams_d, float mu, Vector2i imgSize,
-                               float oneOverVoxelSize, const CONSTPTR(ITMHashEntry)* hashTable, float viewFrustum_min,
-                               float viewFrustum_max)
+buildHashAllocAndVisibleTypePP(DEVICEPTR(HashEntryAllocType)* entriesAllocType, DEVICEPTR(HashEntryVisibilityType)* entriesVisibleType,
+	                             int x, int y, DEVICEPTR(Vector4s)* blockCoords, const CONSTPTR(float)* depth,
+	                             const CONSTPTR(Vector4f)* depthNormal, Matrix4f invM_d,
+	                             Vector4f projParams_d, float mu, Vector2i imgSize, float blockSideLength,
+	                             const CONSTPTR(ITMHashEntry)* hashTable, float viewFrustum_min, float viewFrustum_max,
+	                             ITMLibSettings::TSDFMode tsdfMode, ITMLibSettings::FusionMetric fusionMetric)
 {
-	float depth_measure;
-	unsigned int hashIdx;
-	int noSteps;
-	Vector4f pt_camera_f;
-	Vector3f point_e, point, direction;
-	Vector3s blockPos;
-
-	depth_measure = depth[x + y * imgSize.x];
-	if (depth_measure <= 0 || (depth_measure - mu) < 0 || (depth_measure - mu) < viewFrustum_min ||
+	float depth_measure = depth[x + y * imgSize.x];
+	if (depth_measure <= 0 or (depth_measure - mu) < 0 or (depth_measure - mu) < viewFrustum_min or
 	    (depth_measure + mu) > viewFrustum_max)
 		return;
 
-	pt_camera_f.z = depth_measure;
-	pt_camera_f.x = pt_camera_f.z * ((float(x) - projParams_d.z) * projParams_d.x);
-	pt_camera_f.y = pt_camera_f.z * ((float(y) - projParams_d.w) * projParams_d.y);
+	Vector4f pt_camera;
+	pt_camera.z = depth_measure;
+	pt_camera.x = pt_camera.z * ((float(x) - projParams_d.z) * projParams_d.x);
+	pt_camera.y = pt_camera.z * ((float(y) - projParams_d.w) * projParams_d.y);
+	pt_camera.w = 1.0f;
 
-	float norm = sqrt(pt_camera_f.x * pt_camera_f.x + pt_camera_f.y * pt_camera_f.y + pt_camera_f.z * pt_camera_f.z);
+	Vector4f pt_world = invM_d * pt_camera;
 
-	Vector4f pt_buff;
-
-	pt_buff = pt_camera_f * (1.0f - mu / norm);
-	pt_buff.w = 1.0f;
-	point = TO_VECTOR3(invM_d * pt_buff) * oneOverVoxelSize;
-
-	pt_buff = pt_camera_f * (1.0f + mu / norm);
-	pt_buff.w = 1.0f;
-	point_e = TO_VECTOR3(invM_d * pt_buff) * oneOverVoxelSize;
-
-	direction = point_e - point;
-	norm = sqrt(direction.x * direction.x + direction.y * direction.y + direction.z * direction.z);
-	noSteps = (int) ceil(2.0f * norm);
-
-	direction /= (float) (noSteps - 1);
-
-	//add neighbouring blocks
-	for (int i = 0; i < noSteps; i++)
+	Vector3f ray_start, ray_direction;
+	if (fusionMetric == ITMLibSettings::FusionMetric::FUSIONMETRIC_POINT_TO_PLANE)
 	{
-		blockPos = TO_SHORT_FLOOR3(point);
+		Vector4f normal_world = invM_d * depthNormal[x + y * imgSize.x];
+		if (normal_world.w < 0)
+			return;
+		ray_direction = -TO_VECTOR3(normal_world);
+	} else
+	{
+		Vector4f camera_ray_world = invM_d * Vector4f(TO_VECTOR3(pt_camera).normalised(), 1);
+		ray_direction = TO_VECTOR3(camera_ray_world);
+	}
+	ray_start = TO_VECTOR3(pt_world) - mu * ray_direction;
+
+	BlockTraversal blockTraversal(ray_start, ray_direction, 2 * mu, blockSideLength);
+
+	while(blockTraversal.HasNextBlock())
+	{
+		Vector3i blockPos = blockTraversal.GetNextBlock();
 
 		//compute index in hash table
-		hashIdx = hashIndex(blockPos);
+		int hashIdx = hashIndex(blockPos);
 
 		//check if hash table contains entry
 		bool isFound = false;
@@ -270,7 +290,7 @@ buildHashAllocAndVisibleTypePP(DEVICEPTR(uchar)* entriesAllocType, DEVICEPTR(uch
 		if (IS_EQUAL3(hashEntry.pos, blockPos) && hashEntry.ptr >= -1)
 		{
 			//entry has been streamed out but is visible or in memory and visible
-			entriesVisibleType[hashIdx] = (hashEntry.ptr == -1) ? 2 : 1;
+			entriesVisibleType[hashIdx] = (hashEntry.ptr == -1) ? VISIBLE_STREAMED_OUT : VISIBLE_IN_MEMORY;
 
 			isFound = true;
 		}
@@ -288,7 +308,7 @@ buildHashAllocAndVisibleTypePP(DEVICEPTR(uchar)* entriesAllocType, DEVICEPTR(uch
 					if (IS_EQUAL3(hashEntry.pos, blockPos) && hashEntry.ptr >= -1)
 					{
 						//entry has been streamed out but is visible or in memory and visible
-						entriesVisibleType[hashIdx] = (hashEntry.ptr == -1) ? 2 : 1;
+						entriesVisibleType[hashIdx] = (hashEntry.ptr == -1) ? VISIBLE_STREAMED_OUT : VISIBLE_IN_MEMORY;
 
 						isFound = true;
 						break;
@@ -300,125 +320,123 @@ buildHashAllocAndVisibleTypePP(DEVICEPTR(uchar)* entriesAllocType, DEVICEPTR(uch
 
 			if (!isFound) //still not found
 			{
-				entriesAllocType[hashIdx] = isExcess ? 2 : 1; //needs allocation 
-				if (!isExcess) entriesVisibleType[hashIdx] = 1; //new entry is visible
+				entriesAllocType[hashIdx] = isExcess ? ALLOCATE_EXCESS : ALLOCATE_ORDERED; //needs allocation
+				if (!isExcess) entriesVisibleType[hashIdx] = VISIBLE_IN_MEMORY; //new entry is visible
 
 				blockCoords[hashIdx] = Vector4s(blockPos.x, blockPos.y, blockPos.z, 1);
 			}
 		}
-
-		point += direction;
 	}
 }
 
-_CPU_AND_GPU_CODE_ inline void buildHashAllocAndVisibleTypePPDirectional(
-	DEVICEPTR(uchar)* entriesAllocType, DEVICEPTR(uchar)* entriesVisibleType, int x, int y,
-	DEVICEPTR(Vector4s)* blockCoords, const CONSTPTR(float)* depth, const CONSTPTR(Vector4f)* depthNormal,
-	Matrix4f invM_d, Vector4f projParams_d, float mu, Vector2i imgSize, float oneOverVoxelSize,
-	const CONSTPTR(ITMHashEntry)* hashTable, float viewFrustum_min, float viewFrustum_max)
-{
-	float depth_measure;
-	unsigned int hashIdx;
-	int noSteps;
-	Vector4f pt_camera_f;
-	Vector3f point_e, point, direction;
-	Vector3s blockPos;
-
-	depth_measure = depth[x + y * imgSize.x];
-	if (depth_measure <= 0 || (depth_measure - mu) < 0 || (depth_measure - mu) < viewFrustum_min ||
-	    (depth_measure + mu) > viewFrustum_max)
-		return;
-
-	pt_camera_f.z = depth_measure;
-	pt_camera_f.x = pt_camera_f.z * ((float(x) - projParams_d.z) * projParams_d.x);
-	pt_camera_f.y = pt_camera_f.z * ((float(y) - projParams_d.w) * projParams_d.y);
-
-	float norm = sqrt(pt_camera_f.x * pt_camera_f.x + pt_camera_f.y * pt_camera_f.y + pt_camera_f.z * pt_camera_f.z);
-
-	Vector4f pt_buff;
-
-	pt_buff = pt_camera_f * (1.0f - mu / norm);
-	pt_buff.w = 1.0f;
-	point = TO_VECTOR3(invM_d * pt_buff) * oneOverVoxelSize;
-
-	pt_buff = pt_camera_f * (1.0f + mu / norm);
-	pt_buff.w = 1.0f;
-	point_e = TO_VECTOR3(invM_d * pt_buff) * oneOverVoxelSize;
-
-	direction = point_e - point;
-	norm = sqrt(direction.x * direction.x + direction.y * direction.y + direction.z * direction.z);
-	noSteps = (int) ceil(2.0f * norm);
-
-	direction /= (float) (noSteps - 1);
-
-	if (depthNormal[x + y * imgSize.x].w == -1)
-		return;
-	Vector3f normal = TO_VECTOR3(invM_d * depthNormal[x + y * imgSize.x]);
-	float weights[N_DIRECTIONS];
-	ComputeDirectionWeights(normal, weights);
-
-	for (uint d = 0; d < N_DIRECTIONS; d++)
-	{
-		if (not weights[d] > direction_weight_threshold)
-			continue;
-
-		//add neighbouring blocks
-		for (int i = 0; i < noSteps; i++)
-		{
-			blockPos = TO_SHORT_FLOOR3(point);
-
-			//compute index in hash table
-			hashIdx = hashIndex(blockPos, TSDFDirection(d));
-
-			//check if hash table contains entry
-			bool isFound = false;
-
-			ITMHashEntry hashEntry = hashTable[hashIdx];
-
-			if (IS_EQUAL3(hashEntry.pos, blockPos) && hashEntry.ptr >= -1)
-			{
-				//entry has been streamed out but is visible or in memory and visible
-				entriesVisibleType[hashIdx] = (hashEntry.ptr == -1) ? 2 : 1;
-
-				isFound = true;
-			}
-
-			if (!isFound)
-			{
-				bool isExcess = false;
-				if (hashEntry.ptr >= -1) //seach excess list only if there is no room in ordered part
-				{
-					while (hashEntry.offset >= 1)
-					{
-						hashIdx = SDF_BUCKET_NUM + hashEntry.offset - 1;
-						hashEntry = hashTable[hashIdx];
-
-						if (IS_EQUAL3(hashEntry.pos, blockPos) && hashEntry.ptr >= -1)
-						{
-							//entry has been streamed out but is visible or in memory and visible
-							entriesVisibleType[hashIdx] = (hashEntry.ptr == -1) ? 2 : 1;
-
-							isFound = true;
-							break;
-						}
-					}
-
-					isExcess = true;
-				}
-
-				if (!isFound) //still not found
-				{
-					entriesAllocType[hashIdx] = isExcess ? 2 : 1; //needs allocation
-					if (!isExcess) entriesVisibleType[hashIdx] = 1; //new entry is visible
-
-					blockCoords[hashIdx] = Vector4s(blockPos.x, blockPos.y, blockPos.z, 1);
-				}
-			}
-
-			point += direction;
-		}
-	}
-}
+//_CPU_AND_GPU_CODE_ inline void buildHashAllocAndVisibleTypePPDirectional(
+//	DEVICEPTR(uchar)* entriesAllocType, DEVICEPTR(uchar)* entriesVisibleType, int x, int y,
+//	DEVICEPTR(Vector4s)* blockCoords, const CONSTPTR(float)* depth, const CONSTPTR(Vector4f)* depthNormal,
+//	Matrix4f invM_d, Vector4f projParams_d, float mu, Vector2i imgSize, float oneOverVoxelSize,
+//	const CONSTPTR(ITMHashEntry)* hashTable, float viewFrustum_min, float viewFrustum_max)
+//{
+//	float depth_measure;
+//	unsigned int hashIdx;
+//	int noSteps;
+//	Vector4f pt_camera_f;
+//	Vector3f point_e, point, direction;
+//	Vector3s blockPos;
+//
+//	depth_measure = depth[x + y * imgSize.x];
+//	if (depth_measure <= 0 || (depth_measure - mu) < 0 || (depth_measure - mu) < viewFrustum_min ||
+//	    (depth_measure + mu) > viewFrustum_max)
+//		return;
+//
+//	pt_camera_f.z = depth_measure;
+//	pt_camera_f.x = pt_camera_f.z * ((float(x) - projParams_d.z) * projParams_d.x);
+//	pt_camera_f.y = pt_camera_f.z * ((float(y) - projParams_d.w) * projParams_d.y);
+//
+//	float norm = sqrt(pt_camera_f.x * pt_camera_f.x + pt_camera_f.y * pt_camera_f.y + pt_camera_f.z * pt_camera_f.z);
+//
+//	Vector4f pt_buff;
+//
+//	pt_buff = pt_camera_f * (1.0f - mu / norm);
+//	pt_buff.w = 1.0f;
+//	point = TO_VECTOR3(invM_d * pt_buff) * oneOverVoxelSize;
+//
+//	pt_buff = pt_camera_f * (1.0f + mu / norm);
+//	pt_buff.w = 1.0f;
+//	point_e = TO_VECTOR3(invM_d * pt_buff) * oneOverVoxelSize;
+//
+//	direction = point_e - point;
+//	norm = sqrt(direction.x * direction.x + direction.y * direction.y + direction.z * direction.z);
+//	noSteps = (int) ceil(2.0f * norm);
+//
+//	direction /= (float) (noSteps - 1);
+//
+//	if (depthNormal[x + y * imgSize.x].w == -1)
+//		return;
+//	Vector3f normal = TO_VECTOR3(invM_d * depthNormal[x + y * imgSize.x]);
+//	float weights[N_DIRECTIONS];
+//	ComputeDirectionWeights(normal, weights);
+//
+//	for (uint d = 0; d < N_DIRECTIONS; d++)
+//	{
+//		if (not weights[d] > direction_weight_threshold)
+//			continue;
+//
+//		//add neighbouring blocks
+//		for (int i = 0; i < noSteps; i++)
+//		{
+//			blockPos = TO_SHORT_FLOOR3(point);
+//
+//			//compute index in hash table
+//			hashIdx = hashIndex(blockPos, TSDFDirection(d));
+//
+//			//check if hash table contains entry
+//			bool isFound = false;
+//
+//			ITMHashEntry hashEntry = hashTable[hashIdx];
+//
+//			if (IS_EQUAL3(hashEntry.pos, blockPos) && hashEntry.ptr >= -1)
+//			{
+//				//entry has been streamed out but is visible or in memory and visible
+//				entriesVisibleType[hashIdx] = (hashEntry.ptr == -1) ? 2 : 1;
+//
+//				isFound = true;
+//			}
+//
+//			if (!isFound)
+//			{
+//				bool isExcess = false;
+//				if (hashEntry.ptr >= -1) //seach excess list only if there is no room in ordered part
+//				{
+//					while (hashEntry.offset >= 1)
+//					{
+//						hashIdx = SDF_BUCKET_NUM + hashEntry.offset - 1;
+//						hashEntry = hashTable[hashIdx];
+//
+//						if (IS_EQUAL3(hashEntry.pos, blockPos) && hashEntry.ptr >= -1)
+//						{
+//							//entry has been streamed out but is visible or in memory and visible
+//							entriesVisibleType[hashIdx] = (hashEntry.ptr == -1) ? 2 : 1;
+//
+//							isFound = true;
+//							break;
+//						}
+//					}
+//
+//					isExcess = true;
+//				}
+//
+//				if (!isFound) //still not found
+//				{
+//					entriesAllocType[hashIdx] = isExcess ? 2 : 1; //needs allocation
+//					if (!isExcess) entriesVisibleType[hashIdx] = 1; //new entry is visible
+//
+//					blockCoords[hashIdx] = Vector4s(blockPos.x, blockPos.y, blockPos.z, 1);
+//				}
+//			}
+//
+//			point += direction;
+//		}
+//	}
+//}
 
 template<bool useSwapping>
 _CPU_AND_GPU_CODE_ inline void checkPointVisibility(THREADPTR(bool)& isVisible, THREADPTR(bool)& isVisibleEnlarged,
@@ -510,6 +528,37 @@ _CPU_AND_GPU_CODE_ inline void checkBlockVisibility(THREADPTR(bool)& isVisible, 
 	pt_image.z += factor;
 	checkPointVisibility<useSwapping>(isVisible, isVisibleEnlarged, pt_image, M_d, projParams_d, imgSize);
 	if (isVisible) return;
+}
+
+template<bool useSwapping>
+_CPU_AND_GPU_CODE_
+void buildVisibleList(ITMHashEntry *hashTable, ITMHashSwapState *swapStates, int noTotalEntries,
+                      int *visibleEntryIDs, AllocationTempData *allocData, HashEntryVisibilityType *entriesVisibleType,
+                      Matrix4f M_d, Vector4f projParams_d, Vector2i depthImgSize, float voxelSize,
+                      int targetIdx)
+{
+	HashEntryVisibilityType hashVisibleType = entriesVisibleType[targetIdx];
+	const ITMHashEntry & hashEntry = hashTable[targetIdx];
+
+	if (hashVisibleType == PREVIOUSLY_VISIBLE)
+	{
+		bool isVisibleEnlarged, isVisible;
+
+		if (useSwapping)
+		{
+			checkBlockVisibility<true>(isVisible, isVisibleEnlarged, hashEntry.pos, M_d, projParams_d, voxelSize, depthImgSize);
+			if (!isVisibleEnlarged) hashVisibleType = INVISIBLE;
+		} else {
+			checkBlockVisibility<false>(isVisible, isVisibleEnlarged, hashEntry.pos, M_d, projParams_d, voxelSize, depthImgSize);
+			if (!isVisible) hashVisibleType = INVISIBLE;
+		}
+		entriesVisibleType[targetIdx] = hashVisibleType;
+	}
+
+	if (useSwapping)
+	{
+		if (hashVisibleType > 0 && swapStates[targetIdx].state != 2) swapStates[targetIdx].state = 1;
+	}
 }
 
 } // namespace ITMLib

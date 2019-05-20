@@ -1,10 +1,13 @@
 // Copyright 2014-2017 Oxford University Innovation Limited and the authors of InfiniTAM
 
+#include <ITMLib/Engines/Reconstruction/Interface/ITMSceneReconstructionEngine.h>
 #include "ITMSwappingEngine_CUDA.h"
 
 #include "../Shared/ITMSwappingEngine_Shared.h"
 #include "../../../Objects/RenderStates/ITMRenderState_VH.h"
 #include "../../../Utils/ITMCUDAUtils.h"
+#include "Engines/Reconstruction/Interface/ITMSceneReconstructionEngine.h"
+
 using namespace ITMLib;
 
 namespace
@@ -17,9 +20,9 @@ namespace
 		int *neededEntryIDs_local, ITMHashEntry *hashTable, int maxW);
 
 	__global__ void buildListToSwapOut_device(int *neededEntryIDs, int *noNeededEntries, ITMHashSwapState *swapStates,
-		ITMHashEntry *hashTable, uchar *entriesVisibleType, int noTotalEntries);
+		ITMHashEntry *hashTable, HashEntryVisibilityType *entriesVisibleType, int noTotalEntries);
 
-	__global__ void buildListToClean_device(int *neededEntryIDs, int *noNeededEntries, ITMHashEntry *hashTable, uchar *entriesVisibleType, int noTotalEntries);
+	__global__ void buildListToClean_device(int *neededEntryIDs, int *noNeededEntries, ITMHashEntry *hashTable, HashEntryVisibilityType *entriesVisibleType, int noTotalEntries);
 
 	template<class TVoxel>
 	__global__ void cleanMemory_device(int *voxelAllocationList, int *noAllocatedVoxelEntries, ITMHashSwapState *swapStates,
@@ -142,7 +145,8 @@ void ITMSwappingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::SaveToGlobalMemory(ITMSc
 	ITMHashSwapState *swapStates = globalCache->GetSwapStates(true);
 
 	ITMHashEntry *hashTable = scene->index.GetEntries();
-	uchar *entriesVisibleType = ((ITMRenderState_VH*)renderState)->GetEntriesVisibleType();
+	ITMLib::HashEntryVisibilityType *entriesVisibleType = ((ITMRenderState_VH*)renderState)->GetEntriesVisibleType();
+
 
 	TVoxel *syncedVoxelBlocks_local = globalCache->GetSyncedVoxelBlocks(true);
 	bool *hasSyncedData_local = globalCache->GetHasSyncedData(true);
@@ -216,7 +220,7 @@ template<class TVoxel>
 void ITMSwappingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::CleanLocalMemory(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, ITMRenderState *renderState)
 {
 	ITMHashEntry *hashTable = scene->index.GetEntries();
-	uchar *entriesVisibleType = ((ITMRenderState_VH*)renderState)->GetEntriesVisibleType();
+	HashEntryVisibilityType *entriesVisibleType = ((ITMRenderState_VH*)renderState)->GetEntriesVisibleType();
 
 	TVoxel *localVBA = scene->localVBA.GetVoxelBlocks();
 	int *voxelAllocationList = scene->localVBA.GetAllocationList();
@@ -285,7 +289,7 @@ namespace
 	}
 
 	__global__ void buildListToSwapOut_device(int *neededEntryIDs, int *noNeededEntries, ITMHashSwapState *swapStates,
-		ITMHashEntry *hashTable, uchar *entriesVisibleType, int noTotalEntries)
+		ITMHashEntry *hashTable, HashEntryVisibilityType *entriesVisibleType, int noTotalEntries)
 	{
 		int targetIdx = threadIdx.x + blockIdx.x * blockDim.x;
 		if (targetIdx > noTotalEntries - 1) return;
@@ -330,7 +334,7 @@ namespace
 		}
 	}
 
-	__global__ void buildListToClean_device(int *neededEntryIDs, int *noNeededEntries, ITMHashEntry *hashTable, uchar *entriesVisibleType, int noTotalEntries)
+	__global__ void buildListToClean_device(int *neededEntryIDs, int *noNeededEntries, ITMHashEntry *hashTable, HashEntryVisibilityType *entriesVisibleType, int noTotalEntries)
 	{
 		int targetIdx = threadIdx.x + blockIdx.x * blockDim.x;
 		if (targetIdx > noTotalEntries - 1) return;

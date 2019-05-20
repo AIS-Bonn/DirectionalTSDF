@@ -7,23 +7,25 @@
 using namespace ITMLib;
 
 template<class TVoxel, class TIndex>
-ITMSceneReconstructionEngine_CPU<TVoxel, TIndex>::ITMSceneReconstructionEngine_CPU(bool directionalTSDF)
-	:ITMSceneReconstructionEngine<TVoxel, TIndex>(directionalTSDF)
+ITMSceneReconstructionEngine_CPU<TVoxel, TIndex>::ITMSceneReconstructionEngine_CPU(ITMLibSettings::TSDFMode tsdfMode,
+			ITMLibSettings::FusionMode fusionMode, ITMLibSettings::FusionMetric fusionMetric)
+	:ITMSceneReconstructionEngine<TVoxel, TIndex>(tsdfMode, fusionMode, fusionMetric)
 {
 
 }
 
 template<class TVoxel>
-ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHash>::ITMSceneReconstructionEngine_CPU(bool directionalTSDF)
-	: ITMSceneReconstructionEngine<TVoxel,ITMVoxelBlockHash>(directionalTSDF)
+ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHash>::ITMSceneReconstructionEngine_CPU(ITMLibSettings::TSDFMode tsdfMode,
+			ITMLibSettings::FusionMode fusionMode, ITMLibSettings::FusionMetric fusionMetric)
+	: ITMSceneReconstructionEngine<TVoxel,ITMVoxelBlockHash>(tsdfMode, fusionMode, fusionMetric)
 {
 	int noTotalEntries = ITMVoxelBlockHash::noTotalEntries;
-	entriesAllocType = new ORUtils::MemoryBlock<unsigned char>(noTotalEntries, MEMORYDEVICE_CPU);
+	entriesAllocType = new ORUtils::MemoryBlock<HashEntryAllocType>(noTotalEntries, MEMORYDEVICE_CPU);
 	blockCoords = new ORUtils::MemoryBlock<Vector4s>(noTotalEntries, MEMORYDEVICE_CPU);
 }
 
 template<class TVoxel>
-ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHash>::~ITMSceneReconstructionEngine_CPU(void) 
+ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHash>::~ITMSceneReconstructionEngine_CPU(void)
 {
 	delete entriesAllocType;
 	delete blockCoords;
@@ -116,9 +118,118 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateIntoS
 			pt_model.z = (float)(globalPos.z + z) * voxelSize;
 			pt_model.w = 1.0f;
 
-			ComputeUpdatedVoxelInfo<TVoxel::hasColorInformation,TVoxel::hasConfidenceInformation, TVoxel>::compute(localVoxelBlock[locId], pt_model, M_d, 
+			ComputeUpdatedVoxelInfo<TVoxel::hasColorInformation,TVoxel::hasConfidenceInformation, TVoxel>::compute(localVoxelBlock[locId], pt_model, M_d,
 				projParams_d, M_rgb, projParams_rgb, mu, maxW, depth, confidence, depthImgSize, rgb, rgbImgSize);
 		}
+	}
+}
+
+void allocateVoxelBlocksList(
+	int *voxelAllocationList, int *excessAllocationList,
+	ITMHashEntry *hashTable, int &noTotalEntries,
+	AllocationTempData *allocationTempData,
+	HashEntryAllocType *entriesAllocType, HashEntryVisibilityType *entriesVisibleType,
+	Vector4s *blockCoords
+	)
+{
+	for (int targetIdx = 0; targetIdx < noTotalEntries; targetIdx++)
+	{
+		int vbaIdx, exlIdx;
+
+		switch (entriesAllocType[targetIdx])
+		{
+			case ALLOCATE_ORDERED: //needs allocation, fits in the ordered list
+				vbaIdx = allocationTempData->noAllocatedVoxelEntries; allocationTempData->noAllocatedVoxelEntries--;
+
+				if (vbaIdx >= 0) //there is room in the voxel block array
+				{
+					Vector4s pt_block_all = blockCoords[targetIdx];
+
+					ITMHashEntry hashEntry;
+					hashEntry.pos.x = pt_block_all.x; hashEntry.pos.y = pt_block_all.y; hashEntry.pos.z = pt_block_all.z;
+					hashEntry.ptr = voxelAllocationList[vbaIdx];
+					hashEntry.offset = 0;
+
+					hashTable[targetIdx] = hashEntry;
+				}
+				else
+				{
+					// Mark entry as not visible since we couldn't allocate it but buildHashAllocAndVisibleTypePP changed its state.
+					entriesVisibleType[targetIdx] = INVISIBLE;
+
+					// Restore previous value to avoid leaks.
+					allocationTempData->noAllocatedVoxelEntries++;
+				}
+
+				break;
+			case ALLOCATE_EXCESS: //needs allocation in the excess list
+				vbaIdx = allocationTempData->noAllocatedVoxelEntries; allocationTempData->noAllocatedVoxelEntries--;
+				exlIdx = allocationTempData->noAllocatedExcessEntries; allocationTempData->noAllocatedExcessEntries--;
+
+				if (vbaIdx >= 0 && exlIdx >= 0) //there is room in the voxel block array and excess list
+				{
+					Vector4s pt_block_all = blockCoords[targetIdx];
+
+					ITMHashEntry hashEntry;
+					hashEntry.pos.x = pt_block_all.x; hashEntry.pos.y = pt_block_all.y; hashEntry.pos.z = pt_block_all.z;
+					hashEntry.ptr = voxelAllocationList[vbaIdx];
+					hashEntry.offset = 0;
+
+					int exlOffset = excessAllocationList[exlIdx];
+
+					hashTable[targetIdx].offset = exlOffset + 1; //connect to child
+
+					hashTable[SDF_BUCKET_NUM + exlOffset] = hashEntry; //add child to the excess list
+
+					entriesVisibleType[SDF_BUCKET_NUM + exlOffset] = VISIBLE_IN_MEMORY; //make child visible and in memory
+				}
+				else
+				{
+					// No need to mark the entry as not visible since buildHashAllocAndVisibleTypePP did not mark it.
+					// Restore previous value to avoid leaks.
+					allocationTempData->noAllocatedVoxelEntries++;
+					allocationTempData->noAllocatedExcessEntries++;
+				}
+			default:
+				break;
+		}
+	}
+}
+
+template<bool useSwapping>
+void buildVisibleList_cpu(
+	ITMHashEntry *hashTable,
+	ITMHashSwapState *swapStates,
+	const int noTotalEntries,
+	int *visibleEntryIDs,
+	AllocationTempData *allocData,
+	HashEntryVisibilityType *entriesVisibleType,
+	const Matrix4f &M_d,
+	const Vector4f &projParams_d,
+	const Vector2i &depthImgSize,
+	const float voxelSize
+	)
+{
+	for (int targetIdx = 0; targetIdx < noTotalEntries; targetIdx++)
+	{
+		buildVisibleList<useSwapping>(hashTable, swapStates, noTotalEntries, visibleEntryIDs,
+		                              allocData, entriesVisibleType, M_d, projParams_d,
+		                              depthImgSize, voxelSize, targetIdx);
+
+		if (entriesVisibleType[targetIdx] > 0)
+		{
+			visibleEntryIDs[allocData->noVisibleEntries] = targetIdx;
+			allocData->noVisibleEntries++;
+		}
+
+#if 0
+		// "active list", currently disabled
+		if (hashVisibleType == 1)
+		{
+			activeEntryIDs[noActiveEntries] = targetIdx;
+			noActiveEntries++;
+		}
+#endif
 	}
 }
 
@@ -145,31 +256,35 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 	float mu = scene->sceneParams->mu;
 
 	float *depth = view->depth->GetData(MEMORYDEVICE_CPU);
+	Vector4f *depthNormal = nullptr;
+	if (this->tsdfMode == ITMLibSettings::TSDFMode::TSDFMODE_DIRECTIONAL or
+	    this->fusionMetric == ITMLibSettings::FusionMetric::FUSIONMETRIC_POINT_TO_PLANE)
+		depthNormal = view->depthNormal->GetData(MEMORYDEVICE_CPU);
 	int *voxelAllocationList = scene->localVBA.GetAllocationList();
 	int *excessAllocationList = scene->index.GetExcessAllocationList();
 	ITMHashEntry *hashTable = scene->index.GetEntries();
 	ITMHashSwapState *swapStates = scene->globalCache != NULL ? scene->globalCache->GetSwapStates(false) : 0;
 	int *visibleEntryIDs = renderState_vh->GetVisibleEntryIDs();
-	uchar *entriesVisibleType = renderState_vh->GetEntriesVisibleType();
-	uchar *entriesAllocType = this->entriesAllocType->GetData(MEMORYDEVICE_CPU);
+	HashEntryVisibilityType *entriesVisibleType = renderState_vh->GetEntriesVisibleType();
+	HashEntryAllocType *entriesAllocType = this->entriesAllocType->GetData(MEMORYDEVICE_CPU);
 	Vector4s *blockCoords = this->blockCoords->GetData(MEMORYDEVICE_CPU);
 	int noTotalEntries = scene->index.noTotalEntries;
 
 	bool useSwapping = scene->globalCache != NULL;
 
-	float oneOverVoxelSize = 1.0f / (voxelSize * SDF_BLOCK_SIZE);
+	float blockSideLength = voxelSize * SDF_BLOCK_SIZE;
 
-	int lastFreeVoxelBlockId = scene->localVBA.lastFreeBlockId;
-	int lastFreeExcessListId = scene->index.GetLastFreeExcessListId();
-
-	int noVisibleEntries = 0;
+	AllocationTempData allocationTempData;
+	allocationTempData.noAllocatedVoxelEntries = scene->localVBA.lastFreeBlockId;
+	allocationTempData.noAllocatedExcessEntries = scene->index.GetLastFreeExcessListId();
+	allocationTempData.noVisibleEntries = 0;
 
 	memset(entriesAllocType, 0, noTotalEntries);
 
 	for (int i = 0; i < renderState_vh->noVisibleEntries; i++)
-		entriesVisibleType[visibleEntryIDs[i]] = 3; // visible at previous frame and unstreamed
+		entriesVisibleType[visibleEntryIDs[i]] = PREVIOUSLY_VISIBLE;
 
-	//build hashVisibility
+	/// Compute visible and to-be-allocated blocks
 #ifdef WITH_OPENMP
 	#pragma omp parallel for
 #endif
@@ -177,130 +292,28 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 	{
 		int y = locId / depthImgSize.x;
 		int x = locId - y * depthImgSize.x;
-		if (this->directionalTSDF)
-		{
-			Vector4f *depthNormal = view->depthNormal->GetData(MEMORYDEVICE_CPU);
-			buildHashAllocAndVisibleTypePPDirectional(entriesAllocType, entriesVisibleType, x, y, blockCoords, depth, depthNormal,
-			                               invM_d, invProjParams_d, mu, depthImgSize, oneOverVoxelSize, hashTable,
-			                               scene->sceneParams->viewFrustum_min, scene->sceneParams->viewFrustum_max);
-		}
-		else
-		{
-			buildHashAllocAndVisibleTypePP(entriesAllocType, entriesVisibleType, x, y, blockCoords, depth, invM_d,
-				invProjParams_d, mu, depthImgSize, oneOverVoxelSize, hashTable, scene->sceneParams->viewFrustum_min,
-				scene->sceneParams->viewFrustum_max);
-		}
+		buildHashAllocAndVisibleTypePP(entriesAllocType, entriesVisibleType, x, y, blockCoords, depth, depthNormal,
+			invM_d, invProjParams_d, mu, depthImgSize, blockSideLength, hashTable, scene->sceneParams->viewFrustum_min,
+			scene->sceneParams->viewFrustum_max, this->tsdfMode, this->fusionMetric);
 	}
 
 	if (onlyUpdateVisibleList) useSwapping = false;
 	if (!onlyUpdateVisibleList)
 	{
-		//allocate
-		for (int targetIdx = 0; targetIdx < noTotalEntries; targetIdx++)
-		{
-			int vbaIdx, exlIdx;
-			unsigned char hashChangeType = entriesAllocType[targetIdx];
-
-			switch (hashChangeType)
-			{
-			case 1: //needs allocation, fits in the ordered list
-				vbaIdx = lastFreeVoxelBlockId; lastFreeVoxelBlockId--;
-
-				if (vbaIdx >= 0) //there is room in the voxel block array
-				{
-					Vector4s pt_block_all = blockCoords[targetIdx];
-
-					ITMHashEntry hashEntry;
-					hashEntry.pos.x = pt_block_all.x; hashEntry.pos.y = pt_block_all.y; hashEntry.pos.z = pt_block_all.z;
-					hashEntry.ptr = voxelAllocationList[vbaIdx];
-					hashEntry.offset = 0;
-
-					hashTable[targetIdx] = hashEntry;
-				}
-				else
-				{
-					// Mark entry as not visible since we couldn't allocate it but buildHashAllocAndVisibleTypePP changed its state.
-					entriesVisibleType[targetIdx] = 0;
-
-					// Restore previous value to avoid leaks.
-					lastFreeVoxelBlockId++;
-				}
-
-				break;
-			case 2: //needs allocation in the excess list
-				vbaIdx = lastFreeVoxelBlockId; lastFreeVoxelBlockId--;
-				exlIdx = lastFreeExcessListId; lastFreeExcessListId--;
-
-				if (vbaIdx >= 0 && exlIdx >= 0) //there is room in the voxel block array and excess list
-				{
-					Vector4s pt_block_all = blockCoords[targetIdx];
-
-					ITMHashEntry hashEntry;
-					hashEntry.pos.x = pt_block_all.x; hashEntry.pos.y = pt_block_all.y; hashEntry.pos.z = pt_block_all.z;
-					hashEntry.ptr = voxelAllocationList[vbaIdx];
-					hashEntry.offset = 0;
-
-					int exlOffset = excessAllocationList[exlIdx];
-
-					hashTable[targetIdx].offset = exlOffset + 1; //connect to child
-
-					hashTable[SDF_BUCKET_NUM + exlOffset] = hashEntry; //add child to the excess list
-
-					entriesVisibleType[SDF_BUCKET_NUM + exlOffset] = 1; //make child visible and in memory
-				}
-				else
-				{
-					// No need to mark the entry as not visible since buildHashAllocAndVisibleTypePP did not mark it.
-					// Restore previous value to avoid leaks.
-					lastFreeVoxelBlockId++;
-					lastFreeExcessListId++;
-				}
-
-				break;
-			}
-		}
+		allocateVoxelBlocksList(voxelAllocationList, excessAllocationList, hashTable, noTotalEntries,
+			&allocationTempData, entriesAllocType, entriesVisibleType, blockCoords);
 	}
 
-	//build visible list
-	for (int targetIdx = 0; targetIdx < noTotalEntries; targetIdx++)
+	// Collect list of visible HashEntries
+	if (useSwapping)
 	{
-		unsigned char hashVisibleType = entriesVisibleType[targetIdx];
-		const ITMHashEntry &hashEntry = hashTable[targetIdx];
-		
-		if (hashVisibleType == 3)
-		{
-			bool isVisibleEnlarged, isVisible;
-
-			if (useSwapping)
-			{
-				checkBlockVisibility<true>(isVisible, isVisibleEnlarged, hashEntry.pos, M_d, projParams_d, voxelSize, depthImgSize);
-				if (!isVisibleEnlarged) hashVisibleType = 0;
-			} else {
-				checkBlockVisibility<false>(isVisible, isVisibleEnlarged, hashEntry.pos, M_d, projParams_d, voxelSize, depthImgSize);
-				if (!isVisible) { hashVisibleType = 0; }
-			}
-			entriesVisibleType[targetIdx] = hashVisibleType;
-		}
-
-		if (useSwapping)
-		{
-			if (hashVisibleType > 0 && swapStates[targetIdx].state != 2) swapStates[targetIdx].state = 1;
-		}
-
-		if (hashVisibleType > 0)
-		{	
-			visibleEntryIDs[noVisibleEntries] = targetIdx;
-			noVisibleEntries++;
-		}
-
-#if 0
-		// "active list", currently disabled
-		if (hashVisibleType == 1)
-		{
-			activeEntryIDs[noActiveEntries] = targetIdx;
-			noActiveEntries++;
-		}
-#endif
+		buildVisibleList_cpu<true>(hashTable, swapStates, noTotalEntries, visibleEntryIDs,
+															 &allocationTempData, entriesVisibleType, M_d, projParams_d,
+															 depthImgSize, voxelSize);
+	} else{
+		buildVisibleList_cpu<false>(hashTable, swapStates, noTotalEntries, visibleEntryIDs,
+		                           &allocationTempData, entriesVisibleType, M_d, projParams_d,
+		                           depthImgSize, voxelSize);
 	}
 
 	//reallocate deleted ones from previous swap operation
@@ -311,19 +324,19 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 			int vbaIdx;
 			ITMHashEntry hashEntry = hashTable[targetIdx];
 
-			if (entriesVisibleType[targetIdx] > 0 && hashEntry.ptr == -1) 
+			if (entriesVisibleType[targetIdx] > 0 && hashEntry.ptr == -1)
 			{
-				vbaIdx = lastFreeVoxelBlockId; lastFreeVoxelBlockId--;
+				vbaIdx = allocationTempData.noAllocatedVoxelEntries; allocationTempData.noAllocatedVoxelEntries--;
 				if (vbaIdx >= 0) hashTable[targetIdx].ptr = voxelAllocationList[vbaIdx];
-				else lastFreeVoxelBlockId++; // Avoid leaks
+				else allocationTempData.noAllocatedVoxelEntries++; // Avoid leaks
 			}
 		}
 	}
 
-	renderState_vh->noVisibleEntries = noVisibleEntries;
+	renderState_vh->noVisibleEntries = allocationTempData.noVisibleEntries;
 
-	scene->localVBA.lastFreeBlockId = lastFreeVoxelBlockId;
-	scene->index.SetLastFreeExcessListId(lastFreeExcessListId);
+	scene->localVBA.lastFreeBlockId = allocationTempData.noAllocatedVoxelEntries;
+	scene->index.SetLastFreeExcessListId(allocationTempData.noAllocatedExcessEntries);
 }
 
 template<class TVoxel>
@@ -391,7 +404,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMPlainVoxelArray>::IntegrateInto
 		pt_model.z = (float)(z + arrayInfo->offset.z) * voxelSize;
 		pt_model.w = 1.0f;
 
-		ComputeUpdatedVoxelInfo<TVoxel::hasColorInformation, TVoxel::hasConfidenceInformation, TVoxel>::compute(voxelArray[locId], pt_model, M_d, projParams_d, M_rgb, projParams_rgb, mu, maxW, 
+		ComputeUpdatedVoxelInfo<TVoxel::hasColorInformation, TVoxel::hasConfidenceInformation, TVoxel>::compute(voxelArray[locId], pt_model, M_d, projParams_d, M_rgb, projParams_rgb, mu, maxW,
 			depth, depthImgSize, rgb, rgbImgSize);
 	}
 }

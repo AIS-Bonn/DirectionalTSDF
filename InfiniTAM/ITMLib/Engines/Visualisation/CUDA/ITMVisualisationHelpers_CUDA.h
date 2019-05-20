@@ -14,7 +14,7 @@ namespace ITMLib
 	// declaration of device functions
 
 	__global__ void buildCompleteVisibleList_device(const ITMHashEntry *hashTable, /*ITMHashCacheState *cacheStates, bool useSwapping,*/ int noTotalEntries,
-		int *visibleEntryIDs, int *noVisibleEntries, uchar *entriesVisibleType, Matrix4f M, Vector4f projParams, Vector2i imgSize, float voxelSize);
+		int *visibleEntryIDs, int *noVisibleEntries, HashEntryVisibilityType *entriesVisibleType, Matrix4f M, Vector4f projParams, Vector2i imgSize, float voxelSize);
 
 	__global__ void countVisibleBlocks_device(const int *visibleEntryIDs, int noVisibleEntries, const ITMHashEntry *hashTable, uint *noBlocks, int minBlockId, int maxBlockId);
 
@@ -36,7 +36,7 @@ namespace ITMLib
 		Vector4f projParams, float voxelSize);
 
 	template<class TVoxel, class TIndex, bool modifyVisibleEntries>
-	__global__ void genericRaycast_device(Vector4f *out_ptsRay, uchar *entriesVisibleType, const TVoxel *voxelData,
+	__global__ void genericRaycast_device(Vector4f *out_ptsRay, HashEntryVisibilityType *entriesVisibleType, const TVoxel *voxelData,
 		const typename TIndex::IndexData *voxelIndex, Vector2i imgSize, Matrix4f invM, Vector4f invProjParams,
 		float oneOverVoxelSize, const Vector2f *minmaximg, float mu)
 	{
@@ -51,7 +51,7 @@ namespace ITMLib
 	}
 
 	template<class TVoxel, class TIndex, bool modifyVisibleEntries>
-	__global__ void genericRaycastMissingPoints_device(Vector4f *forwardProjection, uchar *entriesVisibleType, const TVoxel *voxelData,
+	__global__ void genericRaycastMissingPoints_device(Vector4f *forwardProjection, HashEntryVisibilityType *entriesVisibleType, const TVoxel *voxelData,
 		const typename TIndex::IndexData *voxelIndex, Vector2i imgSize, Matrix4f invM, Vector4f invProjParams, float oneOverVoxelSize,
 		int *fwdProjMissingPoints, int noMissingPoints, const Vector2f *minmaximg, float mu)
 	{
