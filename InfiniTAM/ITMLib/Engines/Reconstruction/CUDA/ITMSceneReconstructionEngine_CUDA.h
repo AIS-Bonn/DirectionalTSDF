@@ -23,6 +23,7 @@ template<class TVoxel>
 		void *allocationTempData_host;
 		HashEntryAllocType *entriesAllocType_device;
 		Vector4s *blockCoords_device;
+		TSDFDirection *blockDirections_device;
 
 	public:
 		void ResetScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene);

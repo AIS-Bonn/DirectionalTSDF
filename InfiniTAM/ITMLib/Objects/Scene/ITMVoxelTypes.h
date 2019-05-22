@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <limits>
 #include "../../Utils/ITMMath.h"
 
 /** \brief
@@ -9,9 +10,18 @@
 */
 struct ITMVoxel_f_rgb
 {
+	typedef float WeightType;
+
 	_CPU_AND_GPU_CODE_ static float SDF_initialValue() { return 1.0f; }
 	_CPU_AND_GPU_CODE_ static float valueToFloat(float x) { return x; }
 	_CPU_AND_GPU_CODE_ static float floatToValue(float x) { return x; }
+
+	_CPU_AND_GPU_CODE_ static float weightToFloat(WeightType w, int maxW) {
+		return static_cast<float>(w);
+	}
+	_CPU_AND_GPU_CODE_ static WeightType floatToWeight(float w, int maxW) {
+		return static_cast<WeightType>(w);
+	}
 
 	static const CONSTPTR(bool) hasColorInformation = true;
 	static const CONSTPTR(bool) hasConfidenceInformation = false;
@@ -20,11 +30,11 @@ struct ITMVoxel_f_rgb
 	/** Value of the truncated signed distance transformation. */
 	float sdf;
 	/** Number of fused observations that make up @p sdf. */
-	uchar w_depth;
+	WeightType w_depth;
 	/** RGB colour information stored for this voxel. */
 	Vector3u clr;
 	/** Number of observations that made up @p clr. */
-	uchar w_color;
+	WeightType w_color;
 
 	_CPU_AND_GPU_CODE_ ITMVoxel_f_rgb()
 	{
@@ -40,9 +50,18 @@ struct ITMVoxel_f_rgb
 */
 struct ITMVoxel_s_rgb
 {
+	typedef ushort WeightType;
+
 	_CPU_AND_GPU_CODE_ static short SDF_initialValue() { return 32767; }
 	_CPU_AND_GPU_CODE_ static float valueToFloat(float x) { return (float)(x) / 32767.0f; }
 	_CPU_AND_GPU_CODE_ static short floatToValue(float x) { return (short)((x) * 32767.0f); }
+
+	_CPU_AND_GPU_CODE_ static float weightToFloat(WeightType w, int maxW) {
+		return static_cast<float>(w) * maxW / 65536.0f;
+	}
+	_CPU_AND_GPU_CODE_ static WeightType floatToWeight(float w, int maxW) {
+		return static_cast<WeightType>(w / maxW * 65536.0f);
+	}
 
 	static const CONSTPTR(bool) hasColorInformation = true;
 	static const CONSTPTR(bool) hasConfidenceInformation = false;
@@ -51,13 +70,13 @@ struct ITMVoxel_s_rgb
 	/** Value of the truncated signed distance transformation. */
 	short sdf;
 	/** Number of fused observations that make up @p sdf. */
-	uchar w_depth;
+	WeightType w_depth;
 	/** Padding that may or may not improve performance on certain GPUs */
 	//uchar pad;
 	/** RGB colour information stored for this voxel. */
 	Vector3u clr;
 	/** Number of observations that made up @p clr. */
-	uchar w_color;
+	WeightType w_color;
 
 	_CPU_AND_GPU_CODE_ ITMVoxel_s_rgb()
 	{
@@ -70,9 +89,18 @@ struct ITMVoxel_s_rgb
 
 struct ITMVoxel_s
 {
+	typedef ushort WeightType;
+
 	_CPU_AND_GPU_CODE_ static short SDF_initialValue() { return 32767; }
 	_CPU_AND_GPU_CODE_ static float valueToFloat(float x) { return (float)(x) / 32767.0f; }
 	_CPU_AND_GPU_CODE_ static short floatToValue(float x) { return (short)((x) * 32767.0f); }
+
+	_CPU_AND_GPU_CODE_ static float weightToFloat(WeightType w, int maxW) {
+		return static_cast<float>(w) * maxW / 65536.0f;
+	}
+	_CPU_AND_GPU_CODE_ static WeightType floatToWeight(float w, int maxW) {
+		return static_cast<WeightType>(w / maxW * 65536.0f);
+	}
 
 	static const CONSTPTR(bool) hasColorInformation = false;
 	static const CONSTPTR(bool) hasConfidenceInformation = false;
@@ -81,7 +109,7 @@ struct ITMVoxel_s
 	/** Value of the truncated signed distance transformation. */
 	short sdf;
 	/** Number of fused observations that make up @p sdf. */
-	uchar w_depth;
+	WeightType w_depth;
 	/** Padding that may or may not improve performance on certain GPUs */
 	//uchar pad;
 
@@ -94,9 +122,18 @@ struct ITMVoxel_s
 
 struct ITMVoxel_f
 {
+	typedef float WeightType;
+
 	_CPU_AND_GPU_CODE_ static float SDF_initialValue() { return 1.0f; }
 	_CPU_AND_GPU_CODE_ static float valueToFloat(float x) { return x; }
 	_CPU_AND_GPU_CODE_ static float floatToValue(float x) { return x; }
+
+	_CPU_AND_GPU_CODE_ static float weightToFloat(WeightType w, int maxW) {
+		return static_cast<float>(w);
+	}
+	_CPU_AND_GPU_CODE_ static WeightType floatToWeight(float w, int maxW) {
+		return static_cast<WeightType>(w);
+	}
 
 	static const CONSTPTR(bool) hasColorInformation = false;
 	static const CONSTPTR(bool) hasConfidenceInformation = false;
@@ -105,7 +142,7 @@ struct ITMVoxel_f
 	/** Value of the truncated signed distance transformation. */
 	float sdf;
 	/** Number of fused observations that make up @p sdf. */
-	uchar w_depth;
+	WeightType w_depth;
 	/** Padding that may or may not improve performance on certain GPUs */
 	//uchar pad;
 
@@ -118,9 +155,18 @@ struct ITMVoxel_f
 
 struct ITMVoxel_f_conf
 {
+	typedef float WeightType;
+
 	_CPU_AND_GPU_CODE_ static float SDF_initialValue() { return 1.0f; }
 	_CPU_AND_GPU_CODE_ static float valueToFloat(float x) { return x; }
 	_CPU_AND_GPU_CODE_ static float floatToValue(float x) { return x; }
+
+	_CPU_AND_GPU_CODE_ static float weightToFloat(WeightType w, int maxW) {
+		return static_cast<float>(w);
+	}
+	_CPU_AND_GPU_CODE_ static WeightType floatToWeight(float w, int maxW) {
+		return static_cast<WeightType>(w);
+	}
 
 	static const CONSTPTR(bool) hasColorInformation = false;
 	static const CONSTPTR(bool) hasConfidenceInformation = true;
@@ -129,7 +175,7 @@ struct ITMVoxel_f_conf
 	/** Value of the truncated signed distance transformation. */
 	float sdf;
 	/** Number of fused observations that make up @p sdf. */
-	uchar w_depth;
+	WeightType w_depth;
 	/** Padding that may or may not improve performance on certain GPUs */
 	//uchar pad;
 	float confidence;

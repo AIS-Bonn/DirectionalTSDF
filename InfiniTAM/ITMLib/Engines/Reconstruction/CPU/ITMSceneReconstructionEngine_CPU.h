@@ -21,6 +21,7 @@ template<class TVoxel>
 	protected:
 		ORUtils::MemoryBlock<HashEntryAllocType> *entriesAllocType;
 		ORUtils::MemoryBlock<Vector4s> *blockCoords;
+		ORUtils::MemoryBlock<TSDFDirection> *blockDirections;
 
 	public:
 		void ResetScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene);

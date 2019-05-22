@@ -2,8 +2,9 @@
 
 #include "ITMSceneReconstructionEngine_CPU.h"
 
-#include "../Shared/ITMSceneReconstructionEngine_Shared.h"
-#include "../../../Objects/RenderStates/ITMRenderState_VH.h"
+#include "ITMLib/Objects/RenderStates/ITMRenderState_VH.h"
+#include "ITMLib/Engines/Reconstruction/Shared/ITMFusionWeight.hpp"
+#include "ITMLib/Engines/Reconstruction/Shared/ITMSceneReconstructionEngine_Shared.h"
 using namespace ITMLib;
 
 template<class TVoxel, class TIndex>
@@ -22,6 +23,7 @@ ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHash>::ITMSceneReconstructi
 	int noTotalEntries = ITMVoxelBlockHash::noTotalEntries;
 	entriesAllocType = new ORUtils::MemoryBlock<HashEntryAllocType>(noTotalEntries, MEMORYDEVICE_CPU);
 	blockCoords = new ORUtils::MemoryBlock<Vector4s>(noTotalEntries, MEMORYDEVICE_CPU);
+	blockDirections = new ORUtils::MemoryBlock<TSDFDirection>(noTotalEntries, MEMORYDEVICE_CPU);
 }
 
 template<class TVoxel>
@@ -29,6 +31,7 @@ ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHash>::~ITMSceneReconstruct
 {
 	delete entriesAllocType;
 	delete blockCoords;
+	delete blockDirections;
 }
 
 template<class TVoxel>
@@ -73,9 +76,10 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateIntoS
 	projParams_d = view->calib.intrinsics_d.projectionParamsSimple.all;
 	projParams_rgb = view->calib.intrinsics_rgb.projectionParamsSimple.all;
 
-	float mu = scene->sceneParams->mu; int maxW = scene->sceneParams->maxW;
+	int maxW = scene->sceneParams->maxW;
 
 	float *depth = view->depth->GetData(MEMORYDEVICE_CPU);
+	Vector4f *depthNormals = view->depthNormal->GetData(MEMORYDEVICE_CPU);
 	float *confidence = view->depthConfidence->GetData(MEMORYDEVICE_CPU);
 	Vector4u *rgb = view->rgb->GetData(MEMORYDEVICE_CPU);
 	TVoxel *localVBA = scene->localVBA.GetVoxelBlocks();
@@ -118,8 +122,9 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateIntoS
 			pt_model.z = (float)(globalPos.z + z) * voxelSize;
 			pt_model.w = 1.0f;
 
-			ComputeUpdatedVoxelInfo<TVoxel::hasColorInformation,TVoxel::hasConfidenceInformation, TVoxel>::compute(localVoxelBlock[locId], pt_model, M_d,
-				projParams_d, M_rgb, projParams_rgb, mu, maxW, depth, confidence, depthImgSize, rgb, rgbImgSize);
+			ComputeUpdatedVoxelInfo<TVoxel::hasColorInformation,TVoxel::hasConfidenceInformation, TVoxel>::compute(
+				localVoxelBlock[locId], TSDFDirection(currentHashEntry.direction), pt_model, M_d,
+				projParams_d, M_rgb, projParams_rgb, *(scene->sceneParams), depth, depthNormals, confidence, depthImgSize, rgb, rgbImgSize);
 		}
 	}
 }
@@ -129,7 +134,7 @@ void allocateVoxelBlocksList(
 	ITMHashEntry *hashTable, int &noTotalEntries,
 	AllocationTempData *allocationTempData,
 	HashEntryAllocType *entriesAllocType, HashEntryVisibilityType *entriesVisibleType,
-	Vector4s *blockCoords
+	Vector4s *blockCoords, TSDFDirection *blockDirections
 	)
 {
 	for (int targetIdx = 0; targetIdx < noTotalEntries; targetIdx++)
@@ -149,12 +154,13 @@ void allocateVoxelBlocksList(
 					hashEntry.pos.x = pt_block_all.x; hashEntry.pos.y = pt_block_all.y; hashEntry.pos.z = pt_block_all.z;
 					hashEntry.ptr = voxelAllocationList[vbaIdx];
 					hashEntry.offset = 0;
+					hashEntry.direction = static_cast<TSDFDirection_type>(blockDirections[targetIdx]);
 
 					hashTable[targetIdx] = hashEntry;
 				}
 				else
 				{
-					// Mark entry as not visible since we couldn't allocate it but buildHashAllocAndVisibleTypePP changed its state.
+					// Mark entry as not visible since we couldn't allocate it but buildHashAllocAndVisibleType changed its state.
 					entriesVisibleType[targetIdx] = INVISIBLE;
 
 					// Restore previous value to avoid leaks.
@@ -174,6 +180,7 @@ void allocateVoxelBlocksList(
 					hashEntry.pos.x = pt_block_all.x; hashEntry.pos.y = pt_block_all.y; hashEntry.pos.z = pt_block_all.z;
 					hashEntry.ptr = voxelAllocationList[vbaIdx];
 					hashEntry.offset = 0;
+					hashEntry.direction = static_cast<TSDFDirection_type>(blockDirections[targetIdx]);
 
 					int exlOffset = excessAllocationList[exlIdx];
 
@@ -185,7 +192,7 @@ void allocateVoxelBlocksList(
 				}
 				else
 				{
-					// No need to mark the entry as not visible since buildHashAllocAndVisibleTypePP did not mark it.
+					// No need to mark the entry as not visible since buildHashAllocAndVisibleType did not mark it.
 					// Restore previous value to avoid leaks.
 					allocationTempData->noAllocatedVoxelEntries++;
 					allocationTempData->noAllocatedExcessEntries++;
@@ -268,6 +275,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 	HashEntryVisibilityType *entriesVisibleType = renderState_vh->GetEntriesVisibleType();
 	HashEntryAllocType *entriesAllocType = this->entriesAllocType->GetData(MEMORYDEVICE_CPU);
 	Vector4s *blockCoords = this->blockCoords->GetData(MEMORYDEVICE_CPU);
+	TSDFDirection *blockDirections = this->blockDirections->GetData(MEMORYDEVICE_CPU);
 	int noTotalEntries = scene->index.noTotalEntries;
 
 	bool useSwapping = scene->globalCache != NULL;
@@ -292,16 +300,16 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 	{
 		int y = locId / depthImgSize.x;
 		int x = locId - y * depthImgSize.x;
-		buildHashAllocAndVisibleTypePP(entriesAllocType, entriesVisibleType, x, y, blockCoords, depth, depthNormal,
-			invM_d, invProjParams_d, mu, depthImgSize, blockSideLength, hashTable, scene->sceneParams->viewFrustum_min,
-			scene->sceneParams->viewFrustum_max, this->tsdfMode, this->fusionMetric);
+		buildHashAllocAndVisibleType(entriesAllocType, entriesVisibleType, x, y, blockCoords, blockDirections,
+			depth, depthNormal, invM_d, invProjParams_d, mu, depthImgSize, blockSideLength, hashTable,
+			scene->sceneParams->viewFrustum_min, scene->sceneParams->viewFrustum_max, this->tsdfMode, this->fusionMetric);
 	}
 
 	if (onlyUpdateVisibleList) useSwapping = false;
 	if (!onlyUpdateVisibleList)
 	{
 		allocateVoxelBlocksList(voxelAllocationList, excessAllocationList, hashTable, noTotalEntries,
-			&allocationTempData, entriesAllocType, entriesVisibleType, blockCoords);
+			&allocationTempData, entriesAllocType, entriesVisibleType, blockCoords, blockDirections);
 	}
 
 	// Collect list of visible HashEntries
@@ -322,12 +330,12 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 		for (int targetIdx = 0; targetIdx < noTotalEntries; targetIdx++)
 		{
 			int vbaIdx;
-			ITMHashEntry hashEntry = hashTable[targetIdx];
+			ITMHashEntry &hashEntry = hashTable[targetIdx];
 
 			if (entriesVisibleType[targetIdx] > 0 && hashEntry.ptr == -1)
 			{
 				vbaIdx = allocationTempData.noAllocatedVoxelEntries; allocationTempData.noAllocatedVoxelEntries--;
-				if (vbaIdx >= 0) hashTable[targetIdx].ptr = voxelAllocationList[vbaIdx];
+				if (vbaIdx >= 0) hashEntry.ptr = voxelAllocationList[vbaIdx];
 				else allocationTempData.noAllocatedVoxelEntries++; // Avoid leaks
 			}
 		}
@@ -374,7 +382,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMPlainVoxelArray>::IntegrateInto
 	projParams_d = view->calib.intrinsics_d.projectionParamsSimple.all;
 	projParams_rgb = view->calib.intrinsics_rgb.projectionParamsSimple.all;
 
-	float mu = scene->sceneParams->mu; int maxW = scene->sceneParams->maxW;
+  int maxW = scene->sceneParams->maxW;
 
 	float *depth = view->depth->GetData(MEMORYDEVICE_CPU);
 	Vector4u *rgb = view->rgb->GetData(MEMORYDEVICE_CPU);
@@ -404,7 +412,8 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMPlainVoxelArray>::IntegrateInto
 		pt_model.z = (float)(z + arrayInfo->offset.z) * voxelSize;
 		pt_model.w = 1.0f;
 
-		ComputeUpdatedVoxelInfo<TVoxel::hasColorInformation, TVoxel::hasConfidenceInformation, TVoxel>::compute(voxelArray[locId], pt_model, M_d, projParams_d, M_rgb, projParams_rgb, mu, maxW,
+		ComputeUpdatedVoxelInfo<TVoxel::hasColorInformation, TVoxel::hasConfidenceInformation, TVoxel>::compute(
+			voxelArray[locId], TSDFDirection::NONE, pt_model, M_d, projParams_d, M_rgb, projParams_rgb, scene->sceneParams,
 			depth, depthImgSize, rgb, rgbImgSize);
 	}
 }

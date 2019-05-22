@@ -23,7 +23,10 @@ enum class TSDFDirection : std::uint8_t
 	Y_NEG,
 	Z_POS,
 	Z_NEG,
+	NONE = 255
 };
+
+typedef std::underlying_type<TSDFDirection>::type TSDFDirection_type;
 
 _CPU_AND_GPU_CODE_
 inline const char* TSDFDirectionToString(TSDFDirection direction)
@@ -42,6 +45,8 @@ inline const char* TSDFDirectionToString(TSDFDirection direction)
 			return "Z_POS";
 		case TSDFDirection::Z_NEG:
 			return "Z_NEG";
+		case TSDFDirection::NONE:
+			return "NONE";
 	}
 	return "UNKNOWN";
 }
@@ -70,6 +75,20 @@ inline void ComputeDirectionWeights(const Vector3f& normal, float weights[N_DIRE
 		weights[2 * i] = dot(normal, TSDFDirectionVectors[2 * i]);
 		weights[2 * i + 1] = -weights[2 * i]; // opposite direction -> negative value
 	}
+}
+
+_CPU_AND_GPU_CODE_
+inline float DirectionWeight(const Vector3f& normal, TSDFDirection direction)
+{
+	const Vector3f TSDFDirectionVectors[N_DIRECTIONS] = {
+		Vector3f(1,  0,  0),
+		Vector3f(-1, 0,  0),
+		Vector3f(0,  1,  0),
+		Vector3f(0,  -1, 0),
+		Vector3f(0,  0,  1),
+		Vector3f(0,  0,  -1)
+	};
+	return dot(normal, TSDFDirectionVectors[static_cast<TSDFDirection_type>(direction)]);
 }
 
 //__device__

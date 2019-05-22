@@ -44,8 +44,8 @@ namespace ITMLib
 		/** Update the voxel blocks by integrating depth and
 		    possibly colour information from the given view.
 		*/
-		virtual void IntegrateIntoScene(ITMScene<TVoxel,TIndex> *scene, const ITMView *view, const ITMTrackingState *trackingState,
-			const ITMRenderState *renderState) = 0;
+		virtual void IntegrateIntoScene(ITMScene<TVoxel,TIndex> *scene, const ITMView *view,
+			const ITMTrackingState *trackingState, const ITMRenderState *renderState) = 0;
 
 		ITMSceneReconstructionEngine(void) { }
 		virtual ~ITMSceneReconstructionEngine(void) { }

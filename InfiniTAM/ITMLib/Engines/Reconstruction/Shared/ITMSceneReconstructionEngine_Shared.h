@@ -6,7 +6,8 @@
 #include "Objects/Scene/ITMDirectional.h"
 #include "Utils/ITMPixelUtils.h"
 #include "ITMBlockTraversal.h"
-#include "Engines/Reconstruction/Interface/ITMSceneReconstructionEngine.h"
+#include "ITMLib/Engines/Reconstruction/Interface/ITMSceneReconstructionEngine.h"
+#include "ITMLib/Engines/Reconstruction/Shared/ITMFusionWeight.hpp"
 
 namespace ITMLib
 {
@@ -19,19 +20,23 @@ struct AllocationTempData {
 
 template<class TVoxel>
 _CPU_AND_GPU_CODE_ inline float
-computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const THREADPTR(Vector4f)& pt_model,
+computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direction,
+	                           const THREADPTR(Vector4f)& pt_world,
                              const CONSTPTR(Matrix4f)& M_d,
-                             const CONSTPTR(Vector4f)& projParams_d, float mu, int maxW, const CONSTPTR(float)* depth,
+                             const CONSTPTR(Vector4f)& projParams_d,
+                             const CONSTPTR(ITMSceneParams) &sceneParams,
+                             const CONSTPTR(float)* depth,
+                             const CONSTPTR(Vector4f)* depthNormals,
                              const CONSTPTR(Vector2i)& imgSize
                              )
 {
 	Vector4f pt_camera;
 	Vector2f pt_image;
 	float depth_measure, eta, oldF, newF;
-	int oldW, newW;
+	float oldW, newW;
 
 	// project point into image
-	pt_camera = M_d * pt_model;
+	pt_camera = M_d * pt_world;
 	if (pt_camera.z <= 0) return -1;
 
 	pt_image.x = projParams_d.x * pt_camera.x / pt_camera.z + projParams_d.z;
@@ -45,80 +50,113 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const THREADPTR(Vector4f)
 
 	// check whether voxel needs updating
 	eta = depth_measure - pt_camera.z;
-	if (eta < -mu) return eta;
+	if (eta < -sceneParams.mu) return eta;
 
 	// compute updated SDF value and reliability
 	oldF = TVoxel::valueToFloat(voxel.sdf);
-	oldW = voxel.w_depth;
+	oldW = TVoxel::weightToFloat(voxel.w_depth, sceneParams.maxW);
 
-	newF = MIN(1.0f, eta / mu);
+	newF = MIN(1.0f, eta / sceneParams.mu);
 	newW = 1;
+	if (sceneParams.useWeighting)
+	{
+		Vector4f normalCamera = depthNormals[idx];
+		float directionWeight = 1;
+		if (direction != TSDFDirection::NONE)
+		{
+			Matrix4f invM_d; M_d.inv(invM_d);
+			Vector4f normalWorld = invM_d * normalCamera;
+//			directionWeight = DirectionWeight(TO_VECTOR3(normalWorld), direction);
+		}
+		newW = depthWeight(depth_measure, normalCamera, directionWeight, sceneParams);
+	}
+	if (newW < 1e-1)
+		return -1;
 
 	newF = oldW * oldF + newW * newF;
 	newW = oldW + newW;
 	newF /= newW;
-	newW = MIN(newW, maxW);
+	newW = MIN(newW, sceneParams.maxW);
 
 	// write back
 	voxel.sdf = TVoxel::floatToValue(newF);
-	voxel.w_depth = newW;
+	voxel.w_depth = TVoxel::floatToWeight(newW, sceneParams.maxW);
 
 	return eta;
 }
 
 template<class TVoxel>
 _CPU_AND_GPU_CODE_ inline float
-computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const THREADPTR(Vector4f)& pt_model,
+computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direction,
+	                           const THREADPTR(Vector4f)& pt_world,
                              const CONSTPTR(Matrix4f)& M_d,
-                             const CONSTPTR(Vector4f)& projParams_d, float mu, int maxW, const CONSTPTR(float)* depth,
+                             const CONSTPTR(Vector4f)& projParams_d,
+                             const CONSTPTR(ITMSceneParams) &sceneParams,
+                             const CONSTPTR(float)* depth,
+                             const CONSTPTR(Vector4f)* depthNormals,
                              const CONSTPTR(float)* confidence, const CONSTPTR(Vector2i)& imgSize)
 {
 	Vector4f pt_camera;
 	Vector2f pt_image;
 	float depth_measure, eta, oldF, newF;
-	int oldW, newW, locId;
+	int idx;
+	float oldW, newW;
 
 	// project point into image
-	pt_camera = M_d * pt_model;
+	pt_camera = M_d * pt_world;
 	if (pt_camera.z <= 0) return -1;
 
 	pt_image.x = projParams_d.x * pt_camera.x / pt_camera.z + projParams_d.z;
 	pt_image.y = projParams_d.y * pt_camera.y / pt_camera.z + projParams_d.w;
 	if ((pt_image.x < 1) || (pt_image.x > imgSize.x - 2) || (pt_image.y < 1) || (pt_image.y > imgSize.y - 2)) return -1;
 
-	locId = (int) (pt_image.x + 0.5f) + (int) (pt_image.y + 0.5f) * imgSize.x;
+	idx = (int) (pt_image.x + 0.5f) + (int) (pt_image.y + 0.5f) * imgSize.x;
 	// get measured depth from image
-	depth_measure = depth[locId];
+	depth_measure = depth[idx];
 	if (depth_measure <= 0.0) return -1;
 
 	// check whether voxel needs updating
 	eta = depth_measure - pt_camera.z;
-	if (eta < -mu) return eta;
+	if (eta < -sceneParams.mu) return eta;
 
 	// compute updated SDF value and reliability
 	oldF = TVoxel::valueToFloat(voxel.sdf);
-	oldW = voxel.w_depth;
-	newF = MIN(1.0f, eta / mu);
+	oldW = TVoxel::weightToFloat(voxel.w_depth, sceneParams.maxW);
+	newF = MIN(1.0f, eta / sceneParams.mu);
 	newW = 1;
+	if (sceneParams.useWeighting)
+	{
+		Vector4f normalCamera = depthNormals[idx];
+		float directionWeight = 1;
+		if (direction != TSDFDirection::NONE)
+		{
+			Matrix4f invM_d; M_d.inv(invM_d);
+			Vector4f normalWorld = invM_d * normalCamera;
+			directionWeight = DirectionWeight(TO_VECTOR3(normalWorld), direction);
+		}
+		newW = depthWeight(depth_measure, normalCamera, directionWeight, sceneParams);
+	}
 
 	newF = oldW * oldF + newW * newF;
 	newW = oldW + newW;
 	newF /= newW;
-	newW = MIN(newW, maxW);
+	newW = MIN(newW, sceneParams.maxW);
 
 	// write back^
 	voxel.sdf = TVoxel::floatToValue(newF);
-	voxel.w_depth = newW;
-	voxel.confidence += TVoxel::floatToValue(confidence[locId]);
+	voxel.w_depth = TVoxel::floatToWeight(newW, sceneParams.maxW);
+	voxel.confidence += TVoxel::floatToValue(confidence[idx]);
 
 	return eta;
 }
 
 template<class TVoxel>
 _CPU_AND_GPU_CODE_ inline void
-computeUpdatedVoxelColorInfo(DEVICEPTR(TVoxel)& voxel, const THREADPTR(Vector4f)& pt_model,
+computeUpdatedVoxelColorInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direction,
+	                           const THREADPTR(Vector4f)& pt_world,
                              const CONSTPTR(Matrix4f)& M_rgb,
-                             const CONSTPTR(Vector4f)& projParams_rgb, float mu, uchar maxW, float eta,
+                             const CONSTPTR(Vector4f)& projParams_rgb,
+                             const CONSTPTR(ITMSceneParams) &sceneParams, float eta,
                              const CONSTPTR(Vector4u)* rgb, const CONSTPTR(Vector2i)& imgSize)
 {
 	Vector4f pt_camera;
@@ -128,12 +166,12 @@ computeUpdatedVoxelColorInfo(DEVICEPTR(TVoxel)& voxel, const THREADPTR(Vector4f)
 	float newW, oldW;
 
 	buffV3u = voxel.clr;
-	oldW = (float) voxel.w_color;
+	oldW = TVoxel::weightToFloat(voxel.w_color, sceneParams.maxW);
 
 	oldC = TO_FLOAT3(buffV3u) / 255.0f;
 	newC = oldC;
 
-	pt_camera = M_rgb * pt_model;
+	pt_camera = M_rgb * pt_world;
 
 	pt_image.x = projParams_rgb.x * pt_camera.x / pt_camera.z + projParams_rgb.z;
 	pt_image.y = projParams_rgb.y * pt_camera.y / pt_camera.z + projParams_rgb.w;
@@ -147,10 +185,10 @@ computeUpdatedVoxelColorInfo(DEVICEPTR(TVoxel)& voxel, const THREADPTR(Vector4f)
 	newC = oldC * oldW + rgb_measure * newW;
 	newW = oldW + newW;
 	newC /= newW;
-	newW = MIN(newW, maxW);
+	newW = MIN(newW, sceneParams.maxW);
 
 	voxel.clr = TO_UCHAR3(newC * 255.0f);
-	voxel.w_color = (uchar) newW;
+	voxel.w_color = TVoxel::floatToWeight(newW, sceneParams.maxW);
 }
 
 template<bool hasColor, bool hasConfidence, class TVoxel>
@@ -159,67 +197,144 @@ struct ComputeUpdatedVoxelInfo;
 template<class TVoxel>
 struct ComputeUpdatedVoxelInfo<false, false, TVoxel>
 {
-	_CPU_AND_GPU_CODE_ static void compute(DEVICEPTR(TVoxel)& voxel, const THREADPTR(Vector4f)& pt_model,
+	_CPU_AND_GPU_CODE_ static void compute(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direction,
+	                                       const THREADPTR(Vector4f)& pt_world,
 	                                       const CONSTPTR(Matrix4f)& M_d, const CONSTPTR(Vector4f)& projParams_d,
 	                                       const CONSTPTR(Matrix4f)& M_rgb, const CONSTPTR(Vector4f)& projParams_rgb,
-	                                       float mu, int maxW,
-	                                       const CONSTPTR(float)* depth, const CONSTPTR(float)* confidence,
+	                                       const CONSTPTR(ITMSceneParams) &sceneParams,
+	                                       const CONSTPTR(float)* depth,
+	                                       const CONSTPTR(Vector4f)* depthNormals,
+	                                       const CONSTPTR(float)* confidence,
 	                                       const CONSTPTR(Vector2i)& imgSize_d,
 	                                       const CONSTPTR(Vector4u)* rgb, const CONSTPTR(Vector2i)& imgSize_rgb)
 	{
-		computeUpdatedVoxelDepthInfo(voxel, pt_model, M_d, projParams_d, mu, maxW, depth, imgSize_d);
+		computeUpdatedVoxelDepthInfo(voxel, direction, pt_world, M_d, projParams_d, sceneParams, depth, depthNormals, imgSize_d);
 	}
 };
 
 template<class TVoxel>
 struct ComputeUpdatedVoxelInfo<true, false, TVoxel>
 {
-	_CPU_AND_GPU_CODE_ static void compute(DEVICEPTR(TVoxel)& voxel, const THREADPTR(Vector4f)& pt_model,
+	_CPU_AND_GPU_CODE_ static void compute(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direction,
+		                                     const THREADPTR(Vector4f)& pt_world,
 	                                       const THREADPTR(Matrix4f)& M_d, const THREADPTR(Vector4f)& projParams_d,
 	                                       const THREADPTR(Matrix4f)& M_rgb, const THREADPTR(Vector4f)& projParams_rgb,
-	                                       float mu, int maxW,
-	                                       const CONSTPTR(float)* depth, const CONSTPTR(float)* confidence,
+	                                       const CONSTPTR(ITMSceneParams) &sceneParams,
+	                                       const CONSTPTR(float)* depth,
+	                                       const CONSTPTR(Vector4f)* depthNormals,
+	                                       const CONSTPTR(float)* confidence,
 	                                       const CONSTPTR(Vector2i)& imgSize_d,
 	                                       const CONSTPTR(Vector4u)* rgb, const THREADPTR(Vector2i)& imgSize_rgb)
 	{
-		float eta = computeUpdatedVoxelDepthInfo(voxel, pt_model, M_d, projParams_d, mu, maxW, depth, imgSize_d);
-		if ((eta > mu) || (fabs(eta / mu) > 0.25f)) return;
-		computeUpdatedVoxelColorInfo(voxel, pt_model, M_rgb, projParams_rgb, mu, maxW, eta, rgb, imgSize_rgb);
+		float eta = computeUpdatedVoxelDepthInfo(voxel, direction, pt_world, M_d, projParams_d, sceneParams, depth, depthNormals, imgSize_d);
+		if ((eta > sceneParams.mu) || (fabs(eta /sceneParams.mu) > 0.25f)) return;
+		computeUpdatedVoxelColorInfo(voxel, direction, pt_world, M_rgb, projParams_rgb, sceneParams, eta, rgb, imgSize_rgb);
 	}
 };
 
 template<class TVoxel>
 struct ComputeUpdatedVoxelInfo<false, true, TVoxel>
 {
-	_CPU_AND_GPU_CODE_ static void compute(DEVICEPTR(TVoxel)& voxel, const THREADPTR(Vector4f)& pt_model,
+	_CPU_AND_GPU_CODE_ static void compute(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direction,
+	                                       const THREADPTR(Vector4f)& pt_world,
 	                                       const CONSTPTR(Matrix4f)& M_d, const CONSTPTR(Vector4f)& projParams_d,
 	                                       const CONSTPTR(Matrix4f)& M_rgb, const CONSTPTR(Vector4f)& projParams_rgb,
-	                                       float mu, int maxW,
-	                                       const CONSTPTR(float)* depth, const CONSTPTR(float)* confidence,
+	                                       const CONSTPTR(ITMSceneParams) &sceneParams,
+	                                       const CONSTPTR(float)* depth,
+	                                       const CONSTPTR(Vector4f)* depthNormals,
+	                                       const CONSTPTR(float)* confidence,
 	                                       const CONSTPTR(Vector2i)& imgSize_d,
 	                                       const CONSTPTR(Vector4u)* rgb, const CONSTPTR(Vector2i)& imgSize_rgb)
 	{
-		computeUpdatedVoxelDepthInfo(voxel, pt_model, M_d, projParams_d, mu, maxW, depth, confidence, imgSize_d);
+		computeUpdatedVoxelDepthInfo(voxel, direction, pt_world, M_d, projParams_d, sceneParams, depth, depthNormals, confidence, imgSize_d);
 	}
 };
 
 template<class TVoxel>
 struct ComputeUpdatedVoxelInfo<true, true, TVoxel>
 {
-	_CPU_AND_GPU_CODE_ static void compute(DEVICEPTR(TVoxel)& voxel, const THREADPTR(Vector4f)& pt_model,
+	_CPU_AND_GPU_CODE_ static void compute(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direction,
+	                                       const THREADPTR(Vector4f)& pt_world,
 	                                       const THREADPTR(Matrix4f)& M_d, const THREADPTR(Vector4f)& projParams_d,
 	                                       const THREADPTR(Matrix4f)& M_rgb, const THREADPTR(Vector4f)& projParams_rgb,
-	                                       float mu, int maxW,
-	                                       const CONSTPTR(float)* depth, const CONSTPTR(float)* confidence,
+	                                       const CONSTPTR(ITMSceneParams) &sceneParams,
+	                                       const CONSTPTR(float)* depth,
+	                                       const CONSTPTR(Vector4f)* depthNormals,
+	                                       const CONSTPTR(float)* confidence,
 	                                       const CONSTPTR(Vector2i)& imgSize_d,
 	                                       const CONSTPTR(Vector4u)* rgb, const THREADPTR(Vector2i)& imgSize_rgb)
 	{
-		float eta = computeUpdatedVoxelDepthInfo(voxel, pt_model, M_d, projParams_d, mu, maxW, depth, confidence,
+		float eta = computeUpdatedVoxelDepthInfo(voxel, direction, pt_world, M_d, projParams_d, sceneParams, depth, depthNormals, confidence,
 		                                         imgSize_d);
-		if ((eta > mu) || (fabs(eta / mu) > 0.25f)) return;
-		computeUpdatedVoxelColorInfo(voxel, pt_model, M_rgb, projParams_rgb, mu, maxW, eta, rgb, imgSize_rgb);
+		if ((eta > sceneParams.mu) || (fabs(eta / sceneParams.mu) > 0.25f)) return;
+		computeUpdatedVoxelColorInfo(voxel, direction, pt_world, M_rgb, projParams_rgb, sceneParams, eta, rgb, imgSize_rgb);
 	}
 };
+
+_CPU_AND_GPU_CODE_
+inline void SetBlockAllocAndVisibleType(const CONSTPTR(ITMHashEntry)* hashTable,
+                                        DEVICEPTR(Vector4s)* blockCoords,
+                                        DEVICEPTR(TSDFDirection)* blockDirections,
+                                        HashEntryAllocType* entriesAllocType,
+                                        HashEntryVisibilityType* entriesVisibleType,
+                                        Vector3i blockPos, TSDFDirection direction = TSDFDirection::NONE)
+{
+	bool useDirectional = (direction != TSDFDirection::NONE);
+	//compute index in hash table
+	int hashIdx;
+	if (useDirectional)
+		hashIdx = hashIndex(blockPos, direction);
+	else
+		hashIdx = hashIndex(blockPos);
+
+	//check if hash table contains entry
+	bool isFound = false;
+
+	ITMHashEntry hashEntry = hashTable[hashIdx];
+
+	if (IS_EQUAL3(hashEntry.pos, blockPos) and hashEntry.ptr >= -1 and
+	    (not useDirectional or hashEntry.direction == static_cast<TSDFDirection_type>(direction)))
+	{
+		//entry has been streamed out but is visible or in memory and visible
+		entriesVisibleType[hashIdx] = (hashEntry.ptr == -1) ? VISIBLE_STREAMED_OUT : VISIBLE_IN_MEMORY;
+
+		isFound = true;
+	}
+
+	if (!isFound)
+	{
+		bool isExcess = false;
+		if (hashEntry.ptr >= -1) //seach excess list only if there is no room in ordered part
+		{
+			while (hashEntry.offset >= 1)
+			{
+				hashIdx = SDF_BUCKET_NUM + hashEntry.offset - 1;
+				hashEntry = hashTable[hashIdx];
+
+				if (IS_EQUAL3(hashEntry.pos, blockPos) and hashEntry.ptr >= -1 and
+				    (not useDirectional or hashEntry.direction == static_cast<TSDFDirection_type>(direction)))
+				{
+					//entry has been streamed out but is visible or in memory and visible
+					entriesVisibleType[hashIdx] = (hashEntry.ptr == -1) ? VISIBLE_STREAMED_OUT : VISIBLE_IN_MEMORY;
+
+					isFound = true;
+					break;
+				}
+			}
+
+			isExcess = true;
+		}
+
+		if (!isFound) //still not found
+		{
+			entriesAllocType[hashIdx] = isExcess ? ALLOCATE_EXCESS : ALLOCATE_ORDERED; //needs allocation
+			if (!isExcess) entriesVisibleType[hashIdx] = VISIBLE_IN_MEMORY; //new entry is visible
+
+			blockCoords[hashIdx] = Vector4s(blockPos.x, blockPos.y, blockPos.z, 1);
+			blockDirections[hashIdx] = direction;
+		}
+	}
+}
 
 /**
  *
@@ -239,12 +354,15 @@ struct ComputeUpdatedVoxelInfo<true, true, TVoxel>
  * @param viewFrustum_max
  */
 _CPU_AND_GPU_CODE_ inline void
-buildHashAllocAndVisibleTypePP(DEVICEPTR(HashEntryAllocType)* entriesAllocType, DEVICEPTR(HashEntryVisibilityType)* entriesVisibleType,
-	                             int x, int y, DEVICEPTR(Vector4s)* blockCoords, const CONSTPTR(float)* depth,
-	                             const CONSTPTR(Vector4f)* depthNormal, Matrix4f invM_d,
-	                             Vector4f projParams_d, float mu, Vector2i imgSize, float blockSideLength,
-	                             const CONSTPTR(ITMHashEntry)* hashTable, float viewFrustum_min, float viewFrustum_max,
-	                             ITMLibSettings::TSDFMode tsdfMode, ITMLibSettings::FusionMetric fusionMetric)
+buildHashAllocAndVisibleType(DEVICEPTR(HashEntryAllocType)* entriesAllocType,
+                             DEVICEPTR(HashEntryVisibilityType)* entriesVisibleType,
+                             int x, int y,
+                             DEVICEPTR(Vector4s)* blockCoords, DEVICEPTR(TSDFDirection)* blockDirections,
+                             const CONSTPTR(float)* depth,
+                             const CONSTPTR(Vector4f)* depthNormal, Matrix4f invM_d,
+                             Vector4f projParams_d, float mu, Vector2i imgSize, float blockSideLength,
+                             const CONSTPTR(ITMHashEntry)* hashTable, float viewFrustum_min, float viewFrustum_max,
+                             ITMLibSettings::TSDFMode tsdfMode, ITMLibSettings::FusionMetric fusionMetric)
 {
 	float depth_measure = depth[x + y * imgSize.x];
 	if (depth_measure <= 0 or (depth_measure - mu) < 0 or (depth_measure - mu) < viewFrustum_min or
@@ -279,164 +397,26 @@ buildHashAllocAndVisibleTypePP(DEVICEPTR(HashEntryAllocType)* entriesAllocType, 
 	{
 		Vector3i blockPos = blockTraversal.GetNextBlock();
 
-		//compute index in hash table
-		int hashIdx = hashIndex(blockPos);
-
-		//check if hash table contains entry
-		bool isFound = false;
-
-		ITMHashEntry hashEntry = hashTable[hashIdx];
-
-		if (IS_EQUAL3(hashEntry.pos, blockPos) && hashEntry.ptr >= -1)
+		if (tsdfMode == ITMLibSettings::TSDFMode::TSDFMODE_DIRECTIONAL)
 		{
-			//entry has been streamed out but is visible or in memory and visible
-			entriesVisibleType[hashIdx] = (hashEntry.ptr == -1) ? VISIBLE_STREAMED_OUT : VISIBLE_IN_MEMORY;
-
-			isFound = true;
+			float weights[N_DIRECTIONS];
+			Vector3f normal_world = TO_VECTOR3(invM_d * depthNormal[x + y * imgSize.x]);
+			ComputeDirectionWeights(normal_world, weights);
+			for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
+			{
+				if (weights[direction] < direction_weight_threshold)
+					continue;
+				SetBlockAllocAndVisibleType(hashTable, blockCoords, blockDirections, entriesAllocType, entriesVisibleType, blockPos,
+				                            TSDFDirection(direction));
+			}
 		}
-
-		if (!isFound)
+		else
 		{
-			bool isExcess = false;
-			if (hashEntry.ptr >= -1) //seach excess list only if there is no room in ordered part
-			{
-				while (hashEntry.offset >= 1)
-				{
-					hashIdx = SDF_BUCKET_NUM + hashEntry.offset - 1;
-					hashEntry = hashTable[hashIdx];
-
-					if (IS_EQUAL3(hashEntry.pos, blockPos) && hashEntry.ptr >= -1)
-					{
-						//entry has been streamed out but is visible or in memory and visible
-						entriesVisibleType[hashIdx] = (hashEntry.ptr == -1) ? VISIBLE_STREAMED_OUT : VISIBLE_IN_MEMORY;
-
-						isFound = true;
-						break;
-					}
-				}
-
-				isExcess = true;
-			}
-
-			if (!isFound) //still not found
-			{
-				entriesAllocType[hashIdx] = isExcess ? ALLOCATE_EXCESS : ALLOCATE_ORDERED; //needs allocation
-				if (!isExcess) entriesVisibleType[hashIdx] = VISIBLE_IN_MEMORY; //new entry is visible
-
-				blockCoords[hashIdx] = Vector4s(blockPos.x, blockPos.y, blockPos.z, 1);
-			}
+			SetBlockAllocAndVisibleType(hashTable, blockCoords, blockDirections, entriesAllocType, entriesVisibleType, blockPos);
 		}
 	}
 }
 
-//_CPU_AND_GPU_CODE_ inline void buildHashAllocAndVisibleTypePPDirectional(
-//	DEVICEPTR(uchar)* entriesAllocType, DEVICEPTR(uchar)* entriesVisibleType, int x, int y,
-//	DEVICEPTR(Vector4s)* blockCoords, const CONSTPTR(float)* depth, const CONSTPTR(Vector4f)* depthNormal,
-//	Matrix4f invM_d, Vector4f projParams_d, float mu, Vector2i imgSize, float oneOverVoxelSize,
-//	const CONSTPTR(ITMHashEntry)* hashTable, float viewFrustum_min, float viewFrustum_max)
-//{
-//	float depth_measure;
-//	unsigned int hashIdx;
-//	int noSteps;
-//	Vector4f pt_camera_f;
-//	Vector3f point_e, point, direction;
-//	Vector3s blockPos;
-//
-//	depth_measure = depth[x + y * imgSize.x];
-//	if (depth_measure <= 0 || (depth_measure - mu) < 0 || (depth_measure - mu) < viewFrustum_min ||
-//	    (depth_measure + mu) > viewFrustum_max)
-//		return;
-//
-//	pt_camera_f.z = depth_measure;
-//	pt_camera_f.x = pt_camera_f.z * ((float(x) - projParams_d.z) * projParams_d.x);
-//	pt_camera_f.y = pt_camera_f.z * ((float(y) - projParams_d.w) * projParams_d.y);
-//
-//	float norm = sqrt(pt_camera_f.x * pt_camera_f.x + pt_camera_f.y * pt_camera_f.y + pt_camera_f.z * pt_camera_f.z);
-//
-//	Vector4f pt_buff;
-//
-//	pt_buff = pt_camera_f * (1.0f - mu / norm);
-//	pt_buff.w = 1.0f;
-//	point = TO_VECTOR3(invM_d * pt_buff) * oneOverVoxelSize;
-//
-//	pt_buff = pt_camera_f * (1.0f + mu / norm);
-//	pt_buff.w = 1.0f;
-//	point_e = TO_VECTOR3(invM_d * pt_buff) * oneOverVoxelSize;
-//
-//	direction = point_e - point;
-//	norm = sqrt(direction.x * direction.x + direction.y * direction.y + direction.z * direction.z);
-//	noSteps = (int) ceil(2.0f * norm);
-//
-//	direction /= (float) (noSteps - 1);
-//
-//	if (depthNormal[x + y * imgSize.x].w == -1)
-//		return;
-//	Vector3f normal = TO_VECTOR3(invM_d * depthNormal[x + y * imgSize.x]);
-//	float weights[N_DIRECTIONS];
-//	ComputeDirectionWeights(normal, weights);
-//
-//	for (uint d = 0; d < N_DIRECTIONS; d++)
-//	{
-//		if (not weights[d] > direction_weight_threshold)
-//			continue;
-//
-//		//add neighbouring blocks
-//		for (int i = 0; i < noSteps; i++)
-//		{
-//			blockPos = TO_SHORT_FLOOR3(point);
-//
-//			//compute index in hash table
-//			hashIdx = hashIndex(blockPos, TSDFDirection(d));
-//
-//			//check if hash table contains entry
-//			bool isFound = false;
-//
-//			ITMHashEntry hashEntry = hashTable[hashIdx];
-//
-//			if (IS_EQUAL3(hashEntry.pos, blockPos) && hashEntry.ptr >= -1)
-//			{
-//				//entry has been streamed out but is visible or in memory and visible
-//				entriesVisibleType[hashIdx] = (hashEntry.ptr == -1) ? 2 : 1;
-//
-//				isFound = true;
-//			}
-//
-//			if (!isFound)
-//			{
-//				bool isExcess = false;
-//				if (hashEntry.ptr >= -1) //seach excess list only if there is no room in ordered part
-//				{
-//					while (hashEntry.offset >= 1)
-//					{
-//						hashIdx = SDF_BUCKET_NUM + hashEntry.offset - 1;
-//						hashEntry = hashTable[hashIdx];
-//
-//						if (IS_EQUAL3(hashEntry.pos, blockPos) && hashEntry.ptr >= -1)
-//						{
-//							//entry has been streamed out but is visible or in memory and visible
-//							entriesVisibleType[hashIdx] = (hashEntry.ptr == -1) ? 2 : 1;
-//
-//							isFound = true;
-//							break;
-//						}
-//					}
-//
-//					isExcess = true;
-//				}
-//
-//				if (!isFound) //still not found
-//				{
-//					entriesAllocType[hashIdx] = isExcess ? 2 : 1; //needs allocation
-//					if (!isExcess) entriesVisibleType[hashIdx] = 1; //new entry is visible
-//
-//					blockCoords[hashIdx] = Vector4s(blockPos.x, blockPos.y, blockPos.z, 1);
-//				}
-//			}
-//
-//			point += direction;
-//		}
-//	}
-//}
 
 template<bool useSwapping>
 _CPU_AND_GPU_CODE_ inline void checkPointVisibility(THREADPTR(bool)& isVisible, THREADPTR(bool)& isVisibleEnlarged,
