@@ -64,11 +64,11 @@ namespace ITMLib
 		}
 
 		ITMLocalVBA(MemoryDeviceType memoryType, int noBlocks, int blockSize)
+		: memoryType(memoryType), lastFreeBlockId(0)
 		{
-			this->memoryType = memoryType;
-
 			allocatedSize = noBlocks * blockSize;
 
+			printf("Allocating new local VBA with size %lu kB\n", (allocatedSize * sizeof(TVoxel)) / 1024);
 			voxelBlocks = new ORUtils::MemoryBlock<TVoxel>(allocatedSize, memoryType);
 			allocationList = new ORUtils::MemoryBlock<int>(noBlocks, memoryType);
 		}

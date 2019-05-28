@@ -10,8 +10,9 @@ namespace ITMLib
 	class ITMMultiVisualisationEngine_CPU : public ITMMultiVisualisationEngine<TVoxel, TIndex>
 	{
 	public:
-		ITMMultiVisualisationEngine_CPU(void) {}
-		~ITMMultiVisualisationEngine_CPU(void) {}
+		explicit ITMMultiVisualisationEngine_CPU(const std::shared_ptr<const ITMLibSettings>& settings)
+			:ITMMultiVisualisationEngine<TVoxel, TIndex>(settings){ }
+		~ITMMultiVisualisationEngine_CPU() = default;
 
 		ITMRenderState* CreateRenderState(const ITMScene<TVoxel, TIndex> *scene, const Vector2i & imgSize) const;
 

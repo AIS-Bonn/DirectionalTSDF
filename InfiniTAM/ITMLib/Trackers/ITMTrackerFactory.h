@@ -135,7 +135,7 @@ namespace ITMLib
 	/**
 	 * \brief Makes a tracker of the type specified in the settings.
 	 */
-	ITMTracker *Make(const Vector2i & imgSize_rgb, const Vector2i & imgSize_d, const ITMLibSettings *settings, const ITMLowLevelEngine *lowLevelEngine,
+	ITMTracker *Make(const Vector2i & imgSize_rgb, const Vector2i & imgSize_d, const std::shared_ptr<const ITMLibSettings>& settings, const ITMLowLevelEngine *lowLevelEngine,
 		ITMIMUCalibrator *imuCalibrator, const ITMSceneParams *sceneParams) const
 	{
 		return Make(settings->deviceType, settings->trackerConfig, imgSize_rgb, imgSize_d, lowLevelEngine, imuCalibrator, sceneParams);

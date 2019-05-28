@@ -8,25 +8,26 @@
 #include <iostream>
 #endif
 
-#include "../../Utils/ITMMath.h"
-#include "../../../ORUtils/MemoryBlock.h"
-#include "../../../ORUtils/MemoryBlockPersister.h"
+#include "ITMLib/Utils/ITMMath.h"
+#include "ORUtils/MemoryBlock.h"
+#include "ORUtils/MemoryBlockPersister.h"
+#include "ITMDirectional.h"
 
 #define SDF_BLOCK_SIZE 8				// SDF block size
 #define SDF_BLOCK_SIZE3 (SDF_BLOCK_SIZE * SDF_BLOCK_SIZE * SDF_BLOCK_SIZE)
 
-#define SDF_LOCAL_BLOCK_NUM 0x40000		// Number of locally stored blocks, currently 2^17
-
-#define SDF_BUCKET_NUM 0x100000			// Number of Hash Bucket, should be 2^n and bigger than SDF_LOCAL_BLOCK_NUM, SDF_HASH_MASK = SDF_BUCKET_NUM - 1
-#define SDF_HASH_MASK 0xfffff			// Used for get hashing value of the bucket index,  SDF_HASH_MASK = SDF_BUCKET_NUM - 1
-#define SDF_EXCESS_LIST_SIZE 0x20000	// 0x20000 Size of excess list, used to handle collisions. Also max offset (unsigned short) value.
+//#define SDF_LOCAL_BLOCK_NUM 0x40000		// Number of locally stored blocks, currently 2^17
+//
+//#define SDF_BUCKET_NUM 0x100000			// Number of Hash Bucket, should be 2^n and bigger than SDF_LOCAL_BLOCK_NUM, SDF_HASH_MASK = SDF_BUCKET_NUM - 1
+//#define SDF_HASH_MASK 0xfffff			// Used for get hashing value of the bucket index,  SDF_HASH_MASK = SDF_BUCKET_NUM - 1
+//#define SDF_EXCESS_LIST_SIZE 0x20000	// 0x20000 Size of excess list, used to handle collisions. Also max offset (unsigned short) value.
 
 //// for loop closure
-//#define SDF_LOCAL_BLOCK_NUM 0x10000		// Number of locally stored blocks, currently 2^12
-//
-//#define SDF_BUCKET_NUM 0x40000			// Number of Hash Bucket, should be 2^n and bigger than SDF_LOCAL_BLOCK_NUM, SDF_HASH_MASK = SDF_BUCKET_NUM - 1
-//#define SDF_HASH_MASK 0x3ffff			// Used for get hashing value of the bucket index,  SDF_HASH_MASK = SDF_BUCKET_NUM - 1
-//#define SDF_EXCESS_LIST_SIZE 0x8000		// 0x8000 Size of excess list, used to handle collisions. Also max offset (unsigned short) value.
+#define SDF_LOCAL_BLOCK_NUM 0x10000		// Number of locally stored blocks, currently 2^12
+
+#define SDF_BUCKET_NUM 0x40000			// Number of Hash Bucket, should be 2^n and bigger than SDF_LOCAL_BLOCK_NUM, SDF_HASH_MASK = SDF_BUCKET_NUM - 1
+#define SDF_HASH_MASK 0x3ffff			// Used for get hashing value of the bucket index,  SDF_HASH_MASK = SDF_BUCKET_NUM - 1
+#define SDF_EXCESS_LIST_SIZE 0x8000		// 0x8000 Size of excess list, used to handle collisions. Also max offset (unsigned short) value.
 
 #define SDF_TRANSFER_BLOCK_NUM 0x1000	// Maximum number of blocks transfered in one swap operation
 
@@ -62,15 +63,15 @@ namespace ITMLib
 	public:
 		typedef ITMHashEntry IndexData;
 
-		struct IndexCache {
+		typedef struct _IndexCache {
 			Vector3i blockPos;
 			int blockPtr;
-			_CPU_AND_GPU_CODE_ IndexCache(void) : blockPos(0x7fffffff), blockPtr(-1) {}
-		};
+			_CPU_AND_GPU_CODE_ _IndexCache(void) : blockPos(0x7fffffff), blockPtr(-1) {}
+		} IndexCache ;
 
 		/** Maximum number of total entries. */
-		static const CONSTPTR(int) noTotalEntries = SDF_BUCKET_NUM + SDF_EXCESS_LIST_SIZE;
-		static const CONSTPTR(int) voxelBlockSize = SDF_BLOCK_SIZE3;
+		static const int noTotalEntries = SDF_BUCKET_NUM + SDF_EXCESS_LIST_SIZE;
+		static const int voxelBlockSize = SDF_BLOCK_SIZE3;
 
 #ifndef __METALC__
 	private:
@@ -127,7 +128,7 @@ namespace ITMLib
 
 		/** Maximum number of total entries. */
 		int getNumAllocatedVoxelBlocks(void) { return SDF_LOCAL_BLOCK_NUM; }
-		int getVoxelBlockSize(void) { return SDF_BLOCK_SIZE3; }
+		int getVoxelBlockSize(void) { return voxelBlockSize; }
 
 		void SaveToDirectory(const std::string &outputDirectory) const
 		{
@@ -162,4 +163,26 @@ namespace ITMLib
 		ITMVoxelBlockHash& operator=(const ITMVoxelBlockHash&);
 #endif
 	};
-}
+
+	/**
+	 * Type for representing whether a HashEntry requires allocation
+	 */
+	enum HashEntryAllocType : uchar
+	{
+		ALLOCATED = 0,
+		ALLOCATE_ORDERED = 1, // entry requires allocation in ordered list
+		ALLOCATE_EXCESS = 2  // entry requires allocation in excess list
+	};
+
+/**
+ * Type for representing whether a block corresponding to a HashEntry is visible and in memory
+ */
+	enum HashEntryVisibilityType : uchar
+	{
+		INVISIBLE = 0,
+		VISIBLE_IN_MEMORY = 1,
+		VISIBLE_STREAMED_OUT = 2,
+		PREVIOUSLY_VISIBLE = 3 // visible at previous frame and unstreamed
+	};
+
+} // namespace ITMLib

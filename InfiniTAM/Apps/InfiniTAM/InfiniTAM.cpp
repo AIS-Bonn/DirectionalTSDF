@@ -191,7 +191,7 @@ try
 		return -1;
 	}
 
-	ITMLibSettings *internalSettings = new ITMLibSettings();
+	std::shared_ptr<ITMLibSettings> internalSettings = std::make_shared<ITMLibSettings>();
 
 	ITMMainEngine *mainEngine = NULL;
 	switch (internalSettings->libMode)
@@ -215,7 +215,6 @@ try
 	UIEngine::Instance()->Shutdown();
 
 	delete mainEngine;
-	delete internalSettings;
 	delete imageSource;
 	if (imuSource != NULL) delete imuSource;
 	return 0;

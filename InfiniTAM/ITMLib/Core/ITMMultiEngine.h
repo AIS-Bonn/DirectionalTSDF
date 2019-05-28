@@ -24,7 +24,7 @@ namespace ITMLib
 	class ITMMultiEngine : public ITMMainEngine
 	{
 	private:
-		const ITMLibSettings *settings;
+		std::shared_ptr<const ITMLibSettings> settings;
 
 		ITMLowLevelEngine *lowLevelEngine;
 		ITMVisualisationEngine<TVoxel, TIndex> *visualisationEngine;
@@ -93,7 +93,7 @@ namespace ITMLib
 			Ommitting a separate image size for the depth images
 			will assume same resolution as for the RGB images.
 		*/
-		ITMMultiEngine(const ITMLibSettings *settings, const ITMRGBDCalib &calib, Vector2i imgSize_rgb, Vector2i imgSize_d = Vector2i(-1, -1));
+		ITMMultiEngine(const std::shared_ptr<const ITMLibSettings>& settings, const ITMRGBDCalib &calib, Vector2i imgSize_rgb, Vector2i imgSize_d = Vector2i(-1, -1));
 		~ITMMultiEngine(void);
 	};
 }

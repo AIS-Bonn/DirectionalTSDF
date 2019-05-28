@@ -66,7 +66,7 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 		{
 			Matrix4f invM_d; M_d.inv(invM_d);
 			Vector4f normalWorld = invM_d * normalCamera;
-//			directionWeight = DirectionWeight(TO_VECTOR3(normalWorld), direction);
+			directionWeight = DirectionWeight(TO_VECTOR3(normalWorld), direction);
 		}
 		newW = depthWeight(depth_measure, normalCamera, directionWeight, sceneParams);
 	}
@@ -281,11 +281,7 @@ inline void SetBlockAllocAndVisibleType(const CONSTPTR(ITMHashEntry)* hashTable,
 {
 	bool useDirectional = (direction != TSDFDirection::NONE);
 	//compute index in hash table
-	int hashIdx;
-	if (useDirectional)
-		hashIdx = hashIndex(blockPos, direction);
-	else
-		hashIdx = hashIndex(blockPos);
+	int hashIdx = hashIndex(blockPos, direction);
 
 	//check if hash table contains entry
 	bool isFound = false;
@@ -337,6 +333,7 @@ inline void SetBlockAllocAndVisibleType(const CONSTPTR(ITMHashEntry)* hashTable,
 }
 
 /**
+ * Ray cast depth image to find visible blocks and determine whether they need allocation.
  *
  * @param entriesAllocType Per HashEntry indicator whether it requires allocation
  * @param entriesVisibleType Per HashEntry indicator if block is visible
@@ -381,7 +378,7 @@ buildHashAllocAndVisibleType(DEVICEPTR(HashEntryAllocType)* entriesAllocType,
 	if (fusionMetric == ITMLibSettings::FusionMetric::FUSIONMETRIC_POINT_TO_PLANE)
 	{
 		Vector4f normal_world = invM_d * depthNormal[x + y * imgSize.x];
-		if (normal_world.w < 0)
+		if (normal_world.w <= 0)
 			return;
 		ray_direction = -TO_VECTOR3(normal_world);
 	} else
@@ -406,13 +403,14 @@ buildHashAllocAndVisibleType(DEVICEPTR(HashEntryAllocType)* entriesAllocType,
 			{
 				if (weights[direction] < direction_weight_threshold)
 					continue;
-				SetBlockAllocAndVisibleType(hashTable, blockCoords, blockDirections, entriesAllocType, entriesVisibleType, blockPos,
-				                            TSDFDirection(direction));
+				SetBlockAllocAndVisibleType(hashTable, blockCoords, blockDirections, entriesAllocType, entriesVisibleType,
+					blockPos, TSDFDirection(direction));
 			}
 		}
 		else
 		{
-			SetBlockAllocAndVisibleType(hashTable, blockCoords, blockDirections, entriesAllocType, entriesVisibleType, blockPos);
+			SetBlockAllocAndVisibleType(hashTable, blockCoords, blockDirections, entriesAllocType, entriesVisibleType,
+				blockPos);
 		}
 	}
 }

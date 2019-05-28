@@ -10,6 +10,8 @@ template<typename T> _CPU_AND_GPU_CODE_ inline int hashIndex(const THREADPTR(T) 
 }
 
 template<typename T> _CPU_AND_GPU_CODE_ inline int hashIndex(const THREADPTR(T) & blockPos, const ITMLib::TSDFDirection direction) {
+	if (direction == ITMLib::TSDFDirection::NONE)
+		return hashIndex(blockPos);
 	return ((static_cast<ITMLib::TSDFDirection_type>(direction) * 20089691u) ^ ((uint)blockPos.x * 73856093u) ^ ((uint)blockPos.y * 19349669u) ^ ((uint)blockPos.z * 83492791u)) & (uint)SDF_HASH_MASK;
 }
 
@@ -23,7 +25,8 @@ _CPU_AND_GPU_CODE_ inline int pointToVoxelBlockPos(const THREADPTR(Vector3i) & p
 	return point.x + (point.y - blockPos.x) * SDF_BLOCK_SIZE + (point.z - blockPos.y) * SDF_BLOCK_SIZE * SDF_BLOCK_SIZE - blockPos.z * SDF_BLOCK_SIZE3;
 }
 
-_CPU_AND_GPU_CODE_ inline int findVoxel(const CONSTPTR(ITMLib::ITMVoxelBlockHash::IndexData) *voxelIndex, const THREADPTR(Vector3i) & point,
+_CPU_AND_GPU_CODE_ inline int findVoxel(const CONSTPTR(ITMLib::ITMVoxelBlockHash::IndexData) *voxelIndex,
+	const THREADPTR(Vector3i) & point, const ITMLib::TSDFDirection direction,
 	THREADPTR(int) &vmIndex, THREADPTR(ITMLib::ITMVoxelBlockHash::IndexCache) & cache)
 {
 	Vector3i blockPos;
@@ -35,7 +38,7 @@ _CPU_AND_GPU_CODE_ inline int findVoxel(const CONSTPTR(ITMLib::ITMVoxelBlockHash
 		return cache.blockPtr + linearIdx;
 	}
 
-	int hashIdx = hashIndex(blockPos);
+	int hashIdx = hashIndex(blockPos, direction);
 
 	while (true)
 	{
@@ -56,24 +59,25 @@ _CPU_AND_GPU_CODE_ inline int findVoxel(const CONSTPTR(ITMLib::ITMVoxelBlockHash
 	return -1;
 }
 
-_CPU_AND_GPU_CODE_ inline int findVoxel(const CONSTPTR(ITMLib::ITMVoxelBlockHash::IndexData) *voxelIndex, Vector3i point, THREADPTR(int) &vmIndex)
+_CPU_AND_GPU_CODE_ inline int findVoxel(const CONSTPTR(ITMLib::ITMVoxelBlockHash::IndexData) *voxelIndex, Vector3i point, const ITMLib::TSDFDirection direction, THREADPTR(int) &vmIndex)
 {
 	ITMLib::ITMVoxelBlockHash::IndexCache cache;
-	return findVoxel(voxelIndex, point, vmIndex, cache);
+	return findVoxel(voxelIndex, point, direction, vmIndex, cache);
 }
 
-_CPU_AND_GPU_CODE_ inline int findVoxel(const CONSTPTR(ITMLib::ITMVoxelBlockHash::IndexData) *voxelIndex, Vector3i point, THREADPTR(bool) &foundPoint)
+_CPU_AND_GPU_CODE_ inline int findVoxel(const CONSTPTR(ITMLib::ITMVoxelBlockHash::IndexData) *voxelIndex, Vector3i point, const ITMLib::TSDFDirection direction, THREADPTR(bool) &foundPoint)
 {
 	int vmIndex;
 	ITMLib::ITMVoxelBlockHash::IndexCache cache;
-	int result = findVoxel(voxelIndex, point, vmIndex, cache);
+	int result = findVoxel(voxelIndex, point, direction, vmIndex, cache);
 	foundPoint = vmIndex != 0;
 	return result;
 }
 
 template<class TVoxel>
 _CPU_AND_GPU_CODE_ inline TVoxel readVoxel(const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(ITMLib::ITMVoxelBlockHash::IndexData) *voxelIndex,
-	const THREADPTR(Vector3i) & point, THREADPTR(int) &vmIndex, THREADPTR(ITMLib::ITMVoxelBlockHash::IndexCache) & cache)
+	const THREADPTR(Vector3i) & point, const ITMLib::TSDFDirection direction,
+	THREADPTR(int) &vmIndex, THREADPTR(ITMLib::ITMVoxelBlockHash::IndexCache) & cache)
 {
 	Vector3i blockPos;
 	int linearIdx = pointToVoxelBlockPos(point, blockPos);
@@ -108,60 +112,62 @@ _CPU_AND_GPU_CODE_ inline TVoxel readVoxel(const CONSTPTR(TVoxel) *voxelData, co
 
 template<class TVoxel>
 _CPU_AND_GPU_CODE_ inline TVoxel readVoxel(const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(ITMLib::ITMVoxelBlockHash::IndexData) *voxelIndex,
-	Vector3i point, THREADPTR(int) &vmIndex)
+	Vector3i point, const ITMLib::TSDFDirection direction, THREADPTR(int) &vmIndex)
 {
 	ITMLib::ITMVoxelBlockHash::IndexCache cache;
-	return readVoxel(voxelData, voxelIndex, point, vmIndex, cache);
+	return readVoxel(voxelData, voxelIndex, point, direction, vmIndex, cache);
 }
 
 template<class TVoxel>
 _CPU_AND_GPU_CODE_ inline TVoxel readVoxel(const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(ITMLib::ITMVoxelBlockHash::IndexData) *voxelIndex,
-	Vector3i point, THREADPTR(bool) &foundPoint)
+	Vector3i point, const ITMLib::TSDFDirection direction, THREADPTR(bool) &foundPoint)
 {
 	int vmIndex;
 	ITMLib::ITMVoxelBlockHash::IndexCache cache;
-	TVoxel result = readVoxel(voxelData, voxelIndex, point, vmIndex, cache);
+	TVoxel result = readVoxel(voxelData, voxelIndex, point, direction, vmIndex, cache);
 	foundPoint = vmIndex != 0;
 	return result;
 }
 
 template<class TVoxel, class TIndex>
 _CPU_AND_GPU_CODE_ inline float readFromSDF_float_uninterpolated(const CONSTPTR(TVoxel) *voxelData,
-	const CONSTPTR(TIndex) *voxelIndex, Vector3f point, THREADPTR(int) &vmIndex)
+	const CONSTPTR(TIndex) *voxelIndex, Vector3f point, const ITMLib::TSDFDirection direction, THREADPTR(int) &vmIndex)
 {
-	TVoxel res = readVoxel(voxelData, voxelIndex, Vector3i((int)ROUND(point.x), (int)ROUND(point.y), (int)ROUND(point.z)), vmIndex);
+	TVoxel res = readVoxel(voxelData, voxelIndex,
+		Vector3i((int)ROUND(point.x), (int)ROUND(point.y), (int)ROUND(point.z)), direction, vmIndex);
 	return TVoxel::valueToFloat(res.sdf);
 }
 
 template<class TVoxel, class TIndex, class TCache>
 _CPU_AND_GPU_CODE_ inline float readFromSDF_float_uninterpolated(const CONSTPTR(TVoxel) *voxelData,
-	const CONSTPTR(TIndex) *voxelIndex, Vector3f point, THREADPTR(int) &vmIndex, THREADPTR(TCache) & cache)
+	const CONSTPTR(TIndex) *voxelIndex, Vector3f point, const ITMLib::TSDFDirection direction, THREADPTR(int) &vmIndex, THREADPTR(TCache) & cache)
 {
-	TVoxel res = readVoxel(voxelData, voxelIndex, Vector3i((int)ROUND(point.x), (int)ROUND(point.y), (int)ROUND(point.z)), vmIndex, cache);
+	TVoxel res = readVoxel(voxelData, voxelIndex,
+		Vector3i((int)ROUND(point.x), (int)ROUND(point.y), (int)ROUND(point.z)), direction, vmIndex, cache);
 	return TVoxel::valueToFloat(res.sdf);
 }
 
 template<class TVoxel, class TIndex, class TCache>
 _CPU_AND_GPU_CODE_ inline float readFromSDF_float_interpolated(const CONSTPTR(TVoxel) *voxelData,
-	const CONSTPTR(TIndex) *voxelIndex, Vector3f point, THREADPTR(int) &vmIndex, THREADPTR(TCache) & cache)
+	const CONSTPTR(TIndex) *voxelIndex, Vector3f point, const ITMLib::TSDFDirection direction, THREADPTR(int) &vmIndex, THREADPTR(TCache) & cache)
 {
 	float res1, res2, v1, v2;
 	Vector3f coeff; Vector3i pos; TO_INT_FLOOR3(pos, coeff, point);
 
-	v1 = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 0), vmIndex, cache).sdf;
-	v2 = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 0), vmIndex, cache).sdf;
+	v1 = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 0), direction, vmIndex, cache).sdf;
+	v2 = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 0), direction, vmIndex, cache).sdf;
 	res1 = (1.0f - coeff.x) * v1 + coeff.x * v2;
 
-	v1 = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 0), vmIndex, cache).sdf;
-	v2 = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 0), vmIndex, cache).sdf;
+	v1 = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 0), direction, vmIndex, cache).sdf;
+	v2 = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 0), direction, vmIndex, cache).sdf;
 	res1 = (1.0f - coeff.y) * res1 + coeff.y * ((1.0f - coeff.x) * v1 + coeff.x * v2);
 
-	v1 = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 1), vmIndex, cache).sdf;
-	v2 = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 1), vmIndex, cache).sdf;
+	v1 = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 1), direction, vmIndex, cache).sdf;
+	v2 = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 1), direction, vmIndex, cache).sdf;
 	res2 = (1.0f - coeff.x) * v1 + coeff.x * v2;
 
-	v1 = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 1), vmIndex, cache).sdf;
-	v2 = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 1), vmIndex, cache).sdf;
+	v1 = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 1), direction, vmIndex, cache).sdf;
+	v2 = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 1), direction, vmIndex, cache).sdf;
 	res2 = (1.0f - coeff.y) * res2 + coeff.y * ((1.0f - coeff.x) * v1 + coeff.x * v2);
 
 	vmIndex = true;
@@ -170,7 +176,7 @@ _CPU_AND_GPU_CODE_ inline float readFromSDF_float_interpolated(const CONSTPTR(TV
 
 template<class TVoxel, class TIndex, class TCache>
 _CPU_AND_GPU_CODE_ inline float readWithConfidenceFromSDF_float_interpolated(THREADPTR(float) &confidence, const CONSTPTR(TVoxel) *voxelData,
-	const CONSTPTR(TIndex) *voxelIndex, Vector3f point, THREADPTR(int) &vmIndex, THREADPTR(TCache) & cache)
+	const CONSTPTR(TIndex) *voxelIndex, Vector3f point, const ITMLib::TSDFDirection direction, THREADPTR(int) &vmIndex, THREADPTR(TCache) & cache)
 {
 	float res1, res2, v1, v2;
 	float res1_c, res2_c, v1_c, v2_c;
@@ -178,23 +184,23 @@ _CPU_AND_GPU_CODE_ inline float readWithConfidenceFromSDF_float_interpolated(THR
 
 	Vector3f coeff; Vector3i pos; TO_INT_FLOOR3(pos, coeff, point);
 
-	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 0), vmIndex, cache); v1 = voxel.sdf; v1_c = voxel.w_depth;
-	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 0), vmIndex, cache); v2 = voxel.sdf; v2_c = voxel.w_depth;
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 0), direction, vmIndex, cache); v1 = voxel.sdf; v1_c = voxel.w_depth;
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 0), direction, vmIndex, cache); v2 = voxel.sdf; v2_c = voxel.w_depth;
 	res1 = (1.0f - coeff.x) * v1 + coeff.x * v2;
 	res1_c = (1.0f - coeff.x) * v1_c + coeff.x * v2_c;
 
-	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 0), vmIndex, cache); v1 = voxel.sdf; v1_c = voxel.w_depth;
-	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 0), vmIndex, cache); v2 = voxel.sdf; v2_c = voxel.w_depth;
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 0), direction, vmIndex, cache); v1 = voxel.sdf; v1_c = voxel.w_depth;
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 0), direction, vmIndex, cache); v2 = voxel.sdf; v2_c = voxel.w_depth;
 	res1 = (1.0f - coeff.y) * res1 + coeff.y * ((1.0f - coeff.x) * v1 + coeff.x * v2);
 	res1_c = (1.0f - coeff.y) * res1_c + coeff.y * ((1.0f - coeff.x) * v1_c + coeff.x * v2_c);
 
-	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 1), vmIndex, cache); v1 = voxel.sdf; v1_c = voxel.w_depth;
-	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 1), vmIndex, cache); v2 = voxel.sdf; v2_c = voxel.w_depth;
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 1), direction, vmIndex, cache); v1 = voxel.sdf; v1_c = voxel.w_depth;
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 1), direction, vmIndex, cache); v2 = voxel.sdf; v2_c = voxel.w_depth;
 	res2 = (1.0f - coeff.x) * v1 + coeff.x * v2;
 	res2_c = (1.0f - coeff.x) * v1_c + coeff.x * v2_c;
 
-	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 1), vmIndex, cache); v1 = voxel.sdf; v1_c = voxel.w_depth;
-	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 1), vmIndex, cache); v2 = voxel.sdf; v2_c = voxel.w_depth;
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 1), direction, vmIndex, cache); v1 = voxel.sdf; v1_c = voxel.w_depth;
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 1), direction, vmIndex, cache); v2 = voxel.sdf; v2_c = voxel.w_depth;
 	res2 = (1.0f - coeff.y) * res2 + coeff.y * ((1.0f - coeff.x) * v1 + coeff.x * v2);
 	res2_c = (1.0f - coeff.y) * res2_c + coeff.y * ((1.0f - coeff.x) * v1_c + coeff.x * v2_c);
 
@@ -207,54 +213,54 @@ _CPU_AND_GPU_CODE_ inline float readWithConfidenceFromSDF_float_interpolated(THR
 
 template<class TVoxel, class TIndex, class TCache>
 _CPU_AND_GPU_CODE_ inline float readFromSDF_float_interpolated(const CONSTPTR(TVoxel) *voxelData,
-	const CONSTPTR(TIndex) *voxelIndex, Vector3f point, THREADPTR(int) &vmIndex, THREADPTR(TCache) & cache, int & maxW)
+	const CONSTPTR(TIndex) *voxelIndex, Vector3f point, const ITMLib::TSDFDirection direction, THREADPTR(int) &vmIndex, THREADPTR(TCache) & cache, int & maxW)
 {
 	float res1, res2, v1, v2;
 	Vector3f coeff; Vector3i pos; TO_INT_FLOOR3(pos, coeff, point);
 
 	{
-		const TVoxel & v = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 0), vmIndex, cache);
+		const TVoxel & v = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 0), direction, vmIndex, cache);
 		v1 = v.sdf;
 		maxW = v.w_depth;
 	}
 	{
-		const TVoxel & v = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 0), vmIndex, cache);
+		const TVoxel & v = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 0), direction, vmIndex, cache);
 		v2 = v.sdf;
 		if (v.w_depth > maxW) maxW = v.w_depth;
 	}
 	res1 = (1.0f - coeff.x) * v1 + coeff.x * v2;
 
 	{
-		const TVoxel & v = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 0), vmIndex, cache);
+		const TVoxel & v = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 0), direction, vmIndex, cache);
 		v1 = v.sdf;
 		if (v.w_depth > maxW) maxW = v.w_depth;
 	}
 	{
-		const TVoxel & v = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 0), vmIndex, cache);
+		const TVoxel & v = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 0), direction, vmIndex, cache);
 		v2 = v.sdf;
 		if (v.w_depth > maxW) maxW = v.w_depth;
 	}
 	res1 = (1.0f - coeff.y) * res1 + coeff.y * ((1.0f - coeff.x) * v1 + coeff.x * v2);
 
 	{
-		const TVoxel & v = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 1), vmIndex, cache);
+		const TVoxel & v = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 1), direction, vmIndex, cache);
 		v1 = v.sdf;
 		if (v.w_depth > maxW) maxW = v.w_depth;
 	}
 	{
-		const TVoxel & v = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 1), vmIndex, cache);
+		const TVoxel & v = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 1), direction, vmIndex, cache);
 		v2 = v.sdf;
 		if (v.w_depth > maxW) maxW = v.w_depth;
 	}
 	res2 = (1.0f - coeff.x) * v1 + coeff.x * v2;
 
 	{
-		const TVoxel & v = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 1), vmIndex, cache);
+		const TVoxel & v = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 1), direction, vmIndex, cache);
 		v1 = v.sdf;
 		if (v.w_depth > maxW) maxW = v.w_depth;
 	}
 	{
-		const TVoxel & v = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 1), vmIndex, cache);
+		const TVoxel & v = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 1), direction, vmIndex, cache);
 		v2 = v.sdf;
 		if (v.w_depth > maxW) maxW = v.w_depth;
 	}
@@ -266,33 +272,33 @@ _CPU_AND_GPU_CODE_ inline float readFromSDF_float_interpolated(const CONSTPTR(TV
 
 template<class TVoxel, class TIndex, class TCache>
 _CPU_AND_GPU_CODE_ inline Vector4f readFromSDF_color4u_interpolated(const CONSTPTR(TVoxel) *voxelData,
-	const CONSTPTR(TIndex) *voxelIndex, const THREADPTR(Vector3f) & point, THREADPTR(TCache) & cache)
+	const CONSTPTR(TIndex) *voxelIndex, const THREADPTR(Vector3f) & point, const ITMLib::TSDFDirection direction, THREADPTR(TCache) & cache)
 {
 	TVoxel resn; Vector3f ret(0.0f); Vector4f ret4; int vmIndex;
 	Vector3f coeff; Vector3i pos; TO_INT_FLOOR3(pos, coeff, point);
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 0), vmIndex, cache);
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 0), direction, vmIndex, cache);
 	ret += (1.0f - coeff.x) * (1.0f - coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 0), vmIndex, cache);
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 0), direction, vmIndex, cache);
 	ret += (coeff.x) * (1.0f - coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 0), vmIndex, cache);
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 0), direction, vmIndex, cache);
 	ret += (1.0f - coeff.x) * (coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 0), vmIndex, cache);
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 0), direction, vmIndex, cache);
 	ret += (coeff.x) * (coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 1), vmIndex, cache);
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 1), direction, vmIndex, cache);
 	ret += (1.0f - coeff.x) * (1.0f - coeff.y) * coeff.z * resn.clr.toFloat();
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 1), vmIndex, cache);
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 1), direction, vmIndex, cache);
 	ret += (coeff.x) * (1.0f - coeff.y) * coeff.z * resn.clr.toFloat();
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 1), vmIndex, cache);
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 1), direction, vmIndex, cache);
 	ret += (1.0f - coeff.x) * (coeff.y) * coeff.z * resn.clr.toFloat();
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 1), vmIndex, cache);
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 1), direction, vmIndex, cache);
 	ret += (coeff.x) * (coeff.y) * coeff.z * resn.clr.toFloat();
 
 	ret4.x = ret.x; ret4.y = ret.y; ret4.z = ret.z; ret4.w = 255.0f;
@@ -302,40 +308,41 @@ _CPU_AND_GPU_CODE_ inline Vector4f readFromSDF_color4u_interpolated(const CONSTP
 
 template<class TVoxel, class TIndex, class TCache>
 _CPU_AND_GPU_CODE_ inline Vector4f readFromSDF_color4u_interpolated(const CONSTPTR(TVoxel) *voxelData,
-	const CONSTPTR(TIndex) *voxelIndex, const THREADPTR(Vector3f) & point, THREADPTR(TCache) & cache, int & maxW)
+	const CONSTPTR(TIndex) *voxelIndex, const THREADPTR(Vector3f) & point, const ITMLib::TSDFDirection direction,
+	THREADPTR(TCache) & cache, int & maxW)
 {
 	TVoxel resn; Vector3f ret(0.0f); Vector4f ret4; int vmIndex;
 	Vector3f coeff; Vector3i pos; TO_INT_FLOOR3(pos, coeff, point);
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 0), vmIndex, cache);
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 0), direction, vmIndex, cache);
 	maxW = resn.w_depth;
 	ret += (1.0f - coeff.x) * (1.0f - coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 0), vmIndex, cache);
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 0), direction, vmIndex, cache);
 	if (resn.w_depth > maxW) maxW = resn.w_depth;
 	ret += (coeff.x) * (1.0f - coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 0), vmIndex, cache);
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 0), direction, vmIndex, cache);
 	if (resn.w_depth > maxW) maxW = resn.w_depth;
 	ret += (1.0f - coeff.x) * (coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 0), vmIndex, cache);
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 0), direction, vmIndex, cache);
 	if (resn.w_depth > maxW) maxW = resn.w_depth;
 	ret += (coeff.x) * (coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 1), vmIndex, cache);
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 1), direction, vmIndex, cache);
 	if (resn.w_depth > maxW) maxW = resn.w_depth;
 	ret += (1.0f - coeff.x) * (1.0f - coeff.y) * coeff.z * resn.clr.toFloat();
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 1), vmIndex, cache);
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 1), direction, vmIndex, cache);
 	if (resn.w_depth > maxW) maxW = resn.w_depth;
 	ret += (coeff.x) * (1.0f - coeff.y) * coeff.z * resn.clr.toFloat();
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 1), vmIndex, cache);
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 1), direction, vmIndex, cache);
 	if (resn.w_depth > maxW) maxW = resn.w_depth;
 	ret += (1.0f - coeff.x) * (coeff.y) * coeff.z * resn.clr.toFloat();
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 1), vmIndex, cache);
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 1), direction, vmIndex, cache);
 	if (resn.w_depth > maxW) maxW = resn.w_depth;
 	ret += (coeff.x) * (coeff.y) * coeff.z * resn.clr.toFloat();
 
@@ -345,7 +352,8 @@ _CPU_AND_GPU_CODE_ inline Vector4f readFromSDF_color4u_interpolated(const CONSTP
 }
 
 template<class TVoxel, class TIndex>
-_CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(TIndex) *voxelIndex, const THREADPTR(Vector3f) &point)
+_CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(const CONSTPTR(TVoxel) *voxelData,
+	const CONSTPTR(TIndex) *voxelIndex, const THREADPTR(Vector3f) &point, const ITMLib::TSDFDirection direction)
 {
 	int vmIndex;
 
@@ -355,14 +363,14 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(const CONSTPTR(TVo
 
 	// all 8 values are going to be reused several times
 	Vector4f front, back;
-	front.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 0), vmIndex).sdf;
-	front.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 0), vmIndex).sdf;
-	front.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 0), vmIndex).sdf;
-	front.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 0), vmIndex).sdf;
-	back.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 1), vmIndex).sdf;
-	back.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 1), vmIndex).sdf;
-	back.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 1), vmIndex).sdf;
-	back.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 1), vmIndex).sdf;
+	front.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 0), direction, vmIndex).sdf;
+	front.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 0), direction, vmIndex).sdf;
+	front.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 0), direction, vmIndex).sdf;
+	front.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 0), direction, vmIndex).sdf;
+	back.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 1), direction, vmIndex).sdf;
+	back.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 1), direction, vmIndex).sdf;
+	back.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 1), direction, vmIndex).sdf;
+	back.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 1), direction, vmIndex).sdf;
 
 	Vector4f tmp;
 	float p1, p2, v1;
@@ -371,10 +379,10 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(const CONSTPTR(TVo
 		front.z *  coeff.y * ncoeff.z +
 		back.x  * ncoeff.y *  coeff.z +
 		back.z  *  coeff.y *  coeff.z;
-	tmp.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(-1, 0, 0), vmIndex).sdf;
-	tmp.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(-1, 1, 0), vmIndex).sdf;
-	tmp.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(-1, 0, 1), vmIndex).sdf;
-	tmp.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(-1, 1, 1), vmIndex).sdf;
+	tmp.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(-1, 0, 0), direction, vmIndex).sdf;
+	tmp.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(-1, 1, 0), direction, vmIndex).sdf;
+	tmp.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(-1, 0, 1), direction, vmIndex).sdf;
+	tmp.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(-1, 1, 1), direction, vmIndex).sdf;
 	p2 = tmp.x * ncoeff.y * ncoeff.z +
 		tmp.y *  coeff.y * ncoeff.z +
 		tmp.z * ncoeff.y *  coeff.z +
@@ -385,10 +393,10 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(const CONSTPTR(TVo
 		front.w *  coeff.y * ncoeff.z +
 		back.y  * ncoeff.y *  coeff.z +
 		back.w  *  coeff.y *  coeff.z;
-	tmp.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(2, 0, 0), vmIndex).sdf;
-	tmp.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(2, 1, 0), vmIndex).sdf;
-	tmp.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(2, 0, 1), vmIndex).sdf;
-	tmp.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(2, 1, 1), vmIndex).sdf;
+	tmp.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(2, 0, 0), direction, vmIndex).sdf;
+	tmp.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(2, 1, 0), direction, vmIndex).sdf;
+	tmp.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(2, 0, 1), direction, vmIndex).sdf;
+	tmp.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(2, 1, 1), direction, vmIndex).sdf;
 	p2 = tmp.x * ncoeff.y * ncoeff.z +
 		tmp.y *  coeff.y * ncoeff.z +
 		tmp.z * ncoeff.y *  coeff.z +
@@ -401,10 +409,10 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(const CONSTPTR(TVo
 		front.y *  coeff.x * ncoeff.z +
 		back.x  * ncoeff.x *  coeff.z +
 		back.y  *  coeff.x *  coeff.z;
-	tmp.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, -1, 0), vmIndex).sdf;
-	tmp.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, -1, 0), vmIndex).sdf;
-	tmp.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, -1, 1), vmIndex).sdf;
-	tmp.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, -1, 1), vmIndex).sdf;
+	tmp.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, -1, 0), direction, vmIndex).sdf;
+	tmp.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, -1, 0), direction, vmIndex).sdf;
+	tmp.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, -1, 1), direction, vmIndex).sdf;
+	tmp.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, -1, 1), direction, vmIndex).sdf;
 	p2 = tmp.x * ncoeff.x * ncoeff.z +
 		tmp.y *  coeff.x * ncoeff.z +
 		tmp.z * ncoeff.x *  coeff.z +
@@ -415,10 +423,10 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(const CONSTPTR(TVo
 		front.w *  coeff.x * ncoeff.z +
 		back.z  * ncoeff.x *  coeff.z +
 		back.w  *  coeff.x *  coeff.z;
-	tmp.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 2, 0), vmIndex).sdf;
-	tmp.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 2, 0), vmIndex).sdf;
-	tmp.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 2, 1), vmIndex).sdf;
-	tmp.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 2, 1), vmIndex).sdf;
+	tmp.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 2, 0), direction, vmIndex).sdf;
+	tmp.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 2, 0), direction, vmIndex).sdf;
+	tmp.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 2, 1), direction, vmIndex).sdf;
+	tmp.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 2, 1), direction, vmIndex).sdf;
 	p2 = tmp.x * ncoeff.x * ncoeff.z +
 		tmp.y *  coeff.x * ncoeff.z +
 		tmp.z * ncoeff.x *  coeff.z +
@@ -431,10 +439,10 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(const CONSTPTR(TVo
 		front.y *  coeff.x * ncoeff.y +
 		front.z * ncoeff.x *  coeff.y +
 		front.w *  coeff.x *  coeff.y;
-	tmp.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, -1), vmIndex).sdf;
-	tmp.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, -1), vmIndex).sdf;
-	tmp.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, -1), vmIndex).sdf;
-	tmp.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, -1), vmIndex).sdf;
+	tmp.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, -1), direction, vmIndex).sdf;
+	tmp.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, -1), direction, vmIndex).sdf;
+	tmp.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, -1), direction, vmIndex).sdf;
+	tmp.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, -1), direction, vmIndex).sdf;
 	p2 = tmp.x * ncoeff.x * ncoeff.y +
 		tmp.y *  coeff.x * ncoeff.y +
 		tmp.z * ncoeff.x *  coeff.y +
@@ -445,10 +453,10 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(const CONSTPTR(TVo
 		back.y *  coeff.x * ncoeff.y +
 		back.z * ncoeff.x *  coeff.y +
 		back.w *  coeff.x *  coeff.y;
-	tmp.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 2), vmIndex).sdf;
-	tmp.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 2), vmIndex).sdf;
-	tmp.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 2), vmIndex).sdf;
-	tmp.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 2), vmIndex).sdf;
+	tmp.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 2), direction, vmIndex).sdf;
+	tmp.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 2), direction, vmIndex).sdf;
+	tmp.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 2), direction, vmIndex).sdf;
+	tmp.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 2), direction, vmIndex).sdf;
 	p2 = tmp.x * ncoeff.x * ncoeff.y +
 		tmp.y *  coeff.x * ncoeff.y +
 		tmp.z * ncoeff.x *  coeff.y +
@@ -464,7 +472,7 @@ template<bool hasColor, class TVoxel, class TIndex> struct VoxelColorReader;
 template<class TVoxel, class TIndex>
 struct VoxelColorReader<false, TVoxel, TIndex> {
 	_CPU_AND_GPU_CODE_ static Vector4f interpolate(const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(typename TIndex::IndexData) *voxelIndex,
-		const THREADPTR(Vector3f) & point)
+		const THREADPTR(Vector3f) & point, const ITMLib::TSDFDirection direction)
 	{
 		return Vector4f(0.0f, 0.0f, 0.0f, 0.0f);
 	}
@@ -473,10 +481,10 @@ struct VoxelColorReader<false, TVoxel, TIndex> {
 template<class TVoxel, class TIndex>
 struct VoxelColorReader<true, TVoxel, TIndex> {
 	_CPU_AND_GPU_CODE_ static Vector4f interpolate(const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(typename TIndex::IndexData) *voxelIndex,
-		const THREADPTR(Vector3f) & point)
+		const THREADPTR(Vector3f) & point, const ITMLib::TSDFDirection direction)
 	{
 		typename TIndex::IndexCache cache;
-		return readFromSDF_color4u_interpolated(voxelData, voxelIndex, point, cache);
+		return readFromSDF_color4u_interpolated(voxelData, voxelIndex, point, direction, cache);
 	}
 };
 
@@ -484,7 +492,8 @@ struct VoxelColorReader<true, TVoxel, TIndex> {
 
 #include "ITMPlainVoxelArray.h"
 
-_CPU_AND_GPU_CODE_ inline int findVoxel(const CONSTPTR(ITMLib::ITMPlainVoxelArray::IndexData) *voxelIndex, const THREADPTR(Vector3i) & point_orig,
+_CPU_AND_GPU_CODE_ inline int findVoxel(const CONSTPTR(ITMLib::ITMPlainVoxelArray::IndexData) *voxelIndex,
+	const THREADPTR(Vector3i) & point_orig, const ITMLib::TSDFDirection direction,
 	THREADPTR(int) &vmIndex)
 {
 	Vector3i point = point_orig - voxelIndex->offset;
@@ -503,25 +512,25 @@ _CPU_AND_GPU_CODE_ inline int findVoxel(const CONSTPTR(ITMLib::ITMPlainVoxelArra
 }
 
 _CPU_AND_GPU_CODE_ inline int findVoxel(const CONSTPTR(ITMLib::ITMPlainVoxelArray::IndexData) *voxelIndex, const THREADPTR(Vector3i) & point_orig,
-	THREADPTR(int) &vmIndex, THREADPTR(ITMLib::ITMPlainVoxelArray::IndexCache) & cache)
+	const ITMLib::TSDFDirection direction, THREADPTR(int) &vmIndex, THREADPTR(ITMLib::ITMPlainVoxelArray::IndexCache) & cache)
 {
-	return findVoxel(voxelIndex, point_orig, vmIndex);
+	return findVoxel(voxelIndex, point_orig, direction, vmIndex);
 }
 
 
 template<class TVoxel>
 _CPU_AND_GPU_CODE_ inline TVoxel readVoxel(const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(ITMLib::ITMPlainVoxelArray::IndexData) *voxelIndex,
-	const THREADPTR(Vector3i) & point_orig, THREADPTR(int) &vmIndex)
+	const THREADPTR(Vector3i) & point_orig, const ITMLib::TSDFDirection direction, THREADPTR(int) &vmIndex)
 {
-	int voxelAddress = findVoxel(voxelIndex, point_orig, vmIndex);
+	int voxelAddress = findVoxel(voxelIndex, point_orig, direction, vmIndex);
 	return vmIndex ? voxelData[voxelAddress] : TVoxel();
 }
 
 template<class TVoxel>
 _CPU_AND_GPU_CODE_ inline TVoxel readVoxel(const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(ITMLib::ITMPlainVoxelArray::IndexData) *voxelIndex,
-	const THREADPTR(Vector3i) & point_orig, THREADPTR(int) &vmIndex, THREADPTR(ITMLib::ITMPlainVoxelArray::IndexCache) & cache)
+	const THREADPTR(Vector3i) & point_orig, const ITMLib::TSDFDirection direction, THREADPTR(int) &vmIndex, THREADPTR(ITMLib::ITMPlainVoxelArray::IndexCache) & cache)
 {
-	return readVoxel(voxelData, voxelIndex, point_orig, vmIndex);
+	return readVoxel(voxelData, voxelIndex, point_orig, direction,  vmIndex);
 }
 
 /**

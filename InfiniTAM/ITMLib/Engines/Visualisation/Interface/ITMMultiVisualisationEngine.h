@@ -1,3 +1,6 @@
+#include <memory>
+#include <utility>
+
 // Copyright 2014-2017 Oxford University Innovation Limited and the authors of InfiniTAM
 
 #pragma once
@@ -11,6 +14,9 @@ namespace ITMLib {
 	class ITMMultiVisualisationEngine
 	{
 	public:
+		explicit ITMMultiVisualisationEngine(std::shared_ptr<const ITMLibSettings> settings)
+			:settings(std::move(settings))
+		{}
 		virtual ~ITMMultiVisualisationEngine(void) {}
 
 		virtual ITMRenderState* CreateRenderState(const ITMScene<TVoxel, TIndex> *scene, const Vector2i & imgSize) const = 0;
@@ -22,6 +28,8 @@ namespace ITMLib {
 		virtual void CreateExpectedDepths(const ORUtils::SE3Pose *pose, const ITMIntrinsics *intrinsics, ITMRenderState *renderState) const = 0;
 		virtual void RenderImage(const ORUtils::SE3Pose *pose, const ITMIntrinsics *intrinsics, ITMRenderState *renderState,
 			ITMUChar4Image *outputImage, IITMVisualisationEngine::RenderImageType type) const = 0;
+	protected:
+		std::shared_ptr<const ITMLibSettings> settings;
 	};
 }
 

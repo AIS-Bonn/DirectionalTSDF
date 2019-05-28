@@ -150,41 +150,42 @@ static const _CPU_AND_GPU_CONSTANT_ int triangleTable[256][16] = { { -1, -1, -1,
 { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 } };
 
 template<class TVoxel>
-_CPU_AND_GPU_CODE_ inline bool findPointNeighbors(THREADPTR(Vector3f) *p, THREADPTR(float) *sdf, Vector3i blockLocation, const CONSTPTR(TVoxel) *localVBA, 
+_CPU_AND_GPU_CODE_ inline bool findPointNeighbors(THREADPTR(Vector3f) *p, THREADPTR(float) *sdf,
+	Vector3i blockLocation, const ITMLib::TSDFDirection direction, const CONSTPTR(TVoxel) *localVBA,
 	const CONSTPTR(ITMHashEntry) *hashTable)
 {
 	int vmIndex; Vector3i localBlockLocation;
 
 	localBlockLocation = blockLocation + Vector3i(0, 0, 0); p[0] = localBlockLocation.toFloat();
-	sdf[0] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, vmIndex).sdf);
+	sdf[0] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, direction, vmIndex).sdf);
 	if (!vmIndex || sdf[0] == 1.0f) return false;
 
 	localBlockLocation = blockLocation + Vector3i(1, 0, 0); p[1] = localBlockLocation.toFloat();
-	sdf[1] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, vmIndex).sdf);
+	sdf[1] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, direction, vmIndex).sdf);
 	if (!vmIndex || sdf[1] == 1.0f) return false;
 
 	localBlockLocation = blockLocation + Vector3i(1, 1, 0); p[2] = localBlockLocation.toFloat();
-	sdf[2] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, vmIndex).sdf);
+	sdf[2] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, direction, vmIndex).sdf);
 	if (!vmIndex || sdf[2] == 1.0f) return false;
 
 	localBlockLocation = blockLocation + Vector3i(0, 1, 0); p[3] = localBlockLocation.toFloat();
-	sdf[3] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, vmIndex).sdf);
+	sdf[3] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, direction, vmIndex).sdf);
 	if (!vmIndex || sdf[3] == 1.0f) return false;
 
 	localBlockLocation = blockLocation + Vector3i(0, 0, 1); p[4] = localBlockLocation.toFloat();
-	sdf[4] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, vmIndex).sdf);
+	sdf[4] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, direction, vmIndex).sdf);
 	if (!vmIndex || sdf[4] == 1.0f) return false;
 
 	localBlockLocation = blockLocation + Vector3i(1, 0, 1); p[5] = localBlockLocation.toFloat();
-	sdf[5] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, vmIndex).sdf);
+	sdf[5] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, direction, vmIndex).sdf);
 	if (!vmIndex || sdf[5] == 1.0f) return false;
 
 	localBlockLocation = blockLocation + Vector3i(1, 1, 1); p[6] = localBlockLocation.toFloat();
-	sdf[6] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, vmIndex).sdf);
+	sdf[6] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, direction, vmIndex).sdf);
 	if (!vmIndex || sdf[6] == 1.0f) return false;
 
 	localBlockLocation = blockLocation + Vector3i(0, 1, 1); p[7] = localBlockLocation.toFloat();
-	sdf[7] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, vmIndex).sdf);
+	sdf[7] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, direction, vmIndex).sdf);
 	if (!vmIndex || sdf[7] == 1.0f) return false;
 
 	return true;
@@ -204,7 +205,8 @@ _CPU_AND_GPU_CODE_ inline int buildVertList(THREADPTR(Vector3f) *vertList, Vecto
 {
 	Vector3f points[8]; float sdfVals[8];
 
-	if (!findPointNeighbors(points, sdfVals, globalPos + localPos, localVBA, hashTable)) return -1;
+	// FIXME: directional
+	if (!findPointNeighbors(points, sdfVals, globalPos + localPos, ITMLib::TSDFDirection::NONE, localVBA, hashTable)) return -1;
 
 	int cubeIndex = 0;
 	if (sdfVals[0] < 0) cubeIndex |= 1; if (sdfVals[1] < 0) cubeIndex |= 2;

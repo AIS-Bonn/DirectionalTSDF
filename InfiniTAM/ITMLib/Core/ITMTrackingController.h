@@ -16,7 +16,7 @@ namespace ITMLib
 	class ITMTrackingController
 	{
 	private:
-		const ITMLibSettings *settings;
+		std::shared_ptr<const ITMLibSettings> settings;
 		ITMTracker *tracker;
 
 	public:
@@ -98,7 +98,7 @@ namespace ITMLib
 			}
 		}
 
-		ITMTrackingController(ITMTracker *tracker, const ITMLibSettings *settings)
+		ITMTrackingController(ITMTracker *tracker, const std::shared_ptr<const ITMLibSettings>& settings)
 		{
 			this->tracker = tracker;
 			this->settings = settings;

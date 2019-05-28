@@ -16,8 +16,8 @@ namespace ITMLib {
 		uint *noTotalBlocks_device;
 
 	public:
-		ITMMultiVisualisationEngine_CUDA(void);
-		~ITMMultiVisualisationEngine_CUDA(void);
+		explicit ITMMultiVisualisationEngine_CUDA(std::shared_ptr<const ITMLibSettings> settings);
+		~ITMMultiVisualisationEngine_CUDA();
 
 		ITMRenderState* CreateRenderState(const ITMScene<TVoxel, TIndex> *scene, const Vector2i & imgSize) const;
 

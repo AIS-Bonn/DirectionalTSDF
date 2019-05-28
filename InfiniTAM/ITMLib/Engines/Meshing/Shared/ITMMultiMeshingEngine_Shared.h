@@ -6,7 +6,7 @@
 #include "../../../Objects/Scene/ITMMultiSceneAccess.h"
 
 template<class TVoxel, class TIndex>
-_CPU_AND_GPU_CODE_ inline bool findPointNeighborsMulti(THREADPTR(Vector3f) *p, THREADPTR(float) *sdf, Vector3i blockLocation, const CONSTPTR(TVoxel) *localVBA, const CONSTPTR(TIndex) *hashTables, int hashTableIdx)
+_CPU_AND_GPU_CODE_ inline bool findPointNeighborsMulti(THREADPTR(Vector3f) *p, THREADPTR(float) *sdf, Vector3i blockLocation, const ITMLib::TSDFDirection direction, const CONSTPTR(TVoxel) *localVBA, const CONSTPTR(TIndex) *hashTables, int hashTableIdx)
 {
 	int vmIndex; Vector3i localBlockLocation;
 
@@ -14,42 +14,42 @@ _CPU_AND_GPU_CODE_ inline bool findPointNeighborsMulti(THREADPTR(Vector3f) *p, T
 
 	localBlockLocation = blockLocation + Vector3i(0, 0, 0);
 	p[0] = hashTables->posesInv[hashTableIdx] * localBlockLocation.toFloat();
-	sdf[0] = readFromSDF_float_interpolated(localVBA, hashTables, p[0], vmIndex, cache);
+	sdf[0] = readFromSDF_float_interpolated(localVBA, hashTables, p[0], direction, vmIndex, cache);
 	if (!vmIndex || sdf[0] == 1.0f) return false;
 
 	localBlockLocation = blockLocation + Vector3i(1, 0, 0);
 	p[1] = hashTables->posesInv[hashTableIdx] * localBlockLocation.toFloat();
-	sdf[1] = readFromSDF_float_interpolated(localVBA, hashTables, p[1], vmIndex, cache);
+	sdf[1] = readFromSDF_float_interpolated(localVBA, hashTables, p[1], direction, vmIndex, cache);
 	if (!vmIndex || sdf[1] == 1.0f) return false;
 
 	localBlockLocation = blockLocation + Vector3i(1, 1, 0);
 	p[2] = hashTables->posesInv[hashTableIdx] * localBlockLocation.toFloat();
-	sdf[2] = readFromSDF_float_interpolated(localVBA, hashTables, p[2], vmIndex, cache);
+	sdf[2] = readFromSDF_float_interpolated(localVBA, hashTables, p[2], direction, vmIndex, cache);
 	if (!vmIndex || sdf[2] == 1.0f) return false;
 
 	localBlockLocation = blockLocation + Vector3i(0, 1, 0);
 	p[3] = hashTables->posesInv[hashTableIdx] * localBlockLocation.toFloat();
-	sdf[3] = readFromSDF_float_interpolated(localVBA, hashTables, p[3], vmIndex, cache);
+	sdf[3] = readFromSDF_float_interpolated(localVBA, hashTables, p[3], direction, vmIndex, cache);
 	if (!vmIndex || sdf[3] == 1.0f) return false;
 
 	localBlockLocation = blockLocation + Vector3i(0, 0, 1);
 	p[4] = hashTables->posesInv[hashTableIdx] * localBlockLocation.toFloat();
-	sdf[4] = readFromSDF_float_interpolated(localVBA, hashTables, p[4], vmIndex, cache);
+	sdf[4] = readFromSDF_float_interpolated(localVBA, hashTables, p[4], direction, vmIndex, cache);
 	if (!vmIndex || sdf[4] == 1.0f) return false;
 
 	localBlockLocation = blockLocation + Vector3i(1, 0, 1);
 	p[5] = hashTables->posesInv[hashTableIdx] * localBlockLocation.toFloat();
-	sdf[5] = readFromSDF_float_interpolated(localVBA, hashTables, p[5], vmIndex, cache);
+	sdf[5] = readFromSDF_float_interpolated(localVBA, hashTables, p[5], direction, vmIndex, cache);
 	if (!vmIndex || sdf[5] == 1.0f) return false;
 
 	localBlockLocation = blockLocation + Vector3i(1, 1, 1);
 	p[6] = hashTables->posesInv[hashTableIdx] * localBlockLocation.toFloat();
-	sdf[6] = readFromSDF_float_interpolated(localVBA, hashTables, p[6], vmIndex, cache);
+	sdf[6] = readFromSDF_float_interpolated(localVBA, hashTables, p[6], direction, vmIndex, cache);
 	if (!vmIndex || sdf[6] == 1.0f) return false;
 
 	localBlockLocation = blockLocation + Vector3i(0, 1, 1);
 	p[7] = hashTables->posesInv[hashTableIdx] * localBlockLocation.toFloat();
-	sdf[7] = readFromSDF_float_interpolated(localVBA, hashTables, p[7], vmIndex, cache);
+	sdf[7] = readFromSDF_float_interpolated(localVBA, hashTables, p[7], direction, vmIndex, cache);
 	if (!vmIndex || sdf[7] == 1.0f) return false;
 
 	return true;
@@ -60,7 +60,8 @@ _CPU_AND_GPU_CODE_ inline int buildVertListMulti(THREADPTR(Vector3f) *vertList, 
 {
 	Vector3f points[8]; float sdfVals[8];
 
-	if (!findPointNeighborsMulti(points, sdfVals, globalPos + localPos, localVBA, hashTable, hashTableIdx)) return -1;
+	// FIXME: directional
+	if (!findPointNeighborsMulti(points, sdfVals, globalPos + localPos, ITMLib::TSDFDirection::NONE, localVBA, hashTable, hashTableIdx)) return -1;
 
 	int cubeIndex = 0;
 	if (sdfVals[0] < 0) cubeIndex |= 1; if (sdfVals[1] < 0) cubeIndex |= 2;

@@ -55,19 +55,4 @@ namespace ITMLib
 		ITMLibSettings::FusionMode fusionMode;
 		ITMLibSettings::FusionMetric fusionMetric;
 	};
-
-	enum HashEntryAllocType : uchar
-	{
-		ALLOCATED = 0,
-		ALLOCATE_ORDERED = 1, // entry requires allocation in ordered list
-		ALLOCATE_EXCESS = 2  // entry requires allocation in excess list
-	};
-
-	enum HashEntryVisibilityType : uchar
-	{
-		INVISIBLE = 0,
-		VISIBLE_IN_MEMORY = 1,
-		VISIBLE_STREAMED_OUT = 2,
-		PREVIOUSLY_VISIBLE = 3 // visible at previous frame and unstreamed
-	};
 }

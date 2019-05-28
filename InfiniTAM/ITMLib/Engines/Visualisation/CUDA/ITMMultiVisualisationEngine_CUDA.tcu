@@ -6,18 +6,20 @@
 #include "../../../Objects/Scene/ITMMultiSceneAccess.h"
 
 #include "../Shared/ITMVisualisationEngine_Shared.h"
+#include "ITMVisualisationHelpers_CUDA.h"
 
 using namespace ITMLib;
 
 template<class TVoxel, class TIndex>
-ITMMultiVisualisationEngine_CUDA<TVoxel, TIndex>::ITMMultiVisualisationEngine_CUDA(void)
+ITMMultiVisualisationEngine_CUDA<TVoxel, TIndex>::ITMMultiVisualisationEngine_CUDA(std::shared_ptr<const ITMLibSettings> settings)
+	:ITMMultiVisualisationEngine<TVoxel, TIndex>(settings)
 {
 	ORcudaSafeCall(cudaMalloc((void**)&renderingBlockList_device, sizeof(RenderingBlock) * MAX_RENDERING_BLOCKS));
 	ORcudaSafeCall(cudaMalloc((void**)&noTotalBlocks_device, sizeof(uint)));
 }
 
 template<class TVoxel, class TIndex>
-ITMMultiVisualisationEngine_CUDA<TVoxel, TIndex>::~ITMMultiVisualisationEngine_CUDA(void)
+ITMMultiVisualisationEngine_CUDA<TVoxel, TIndex>::~ITMMultiVisualisationEngine_CUDA()
 {
 	ORcudaSafeCall(cudaFree(noTotalBlocks_device));
 	ORcudaSafeCall(cudaFree(renderingBlockList_device));
@@ -103,9 +105,9 @@ void ITMMultiVisualisationEngine_CUDA<TVoxel, TIndex>::RenderImage(const ORUtils
 		dim3 gridSize((int)ceil((float)imgSize.x / (float)cudaBlockSize.x), (int)ceil((float)imgSize.y / (float)cudaBlockSize.y));
 		typedef ITMMultiVoxel<TVoxel> VD;
 		typedef ITMMultiIndex<TIndex> ID;
-		genericRaycast_device<VD, ID, false> << <gridSize, cudaBlockSize >> > (
+		genericRaycast_device<VD, ID> << <gridSize, cudaBlockSize >> > (
 			renderState->raycastResult->GetData(MEMORYDEVICE_CUDA),
-			NULL,
+			nullptr,
 			renderState->voxelData_device,
 			renderState->indexData_device,
 			imgSize,
@@ -113,7 +115,8 @@ void ITMMultiVisualisationEngine_CUDA<TVoxel, TIndex>::RenderImage(const ORUtils
 			InvertProjectionParams(projParams),
 			oneOverVoxelSize,
 			renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA),
-			mu
+			mu,
+			this->settings->tsdfMode == ITMLibSettings::TSDFMode::TSDFMODE_DIRECTIONAL
 			);
 		ORcudaKernelCheck;
 	}

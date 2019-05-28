@@ -19,7 +19,7 @@ namespace ITMLib
 	class ITMBasicEngine : public ITMMainEngine
 	{
 	private:
-		const ITMLibSettings *settings;
+		std::shared_ptr<const ITMLibSettings> settings;
 
 		bool trackingActive, fusionActive, mainProcessingActive, trackingInitialised;
 		int framesProcessed, relocalisationCount;
@@ -89,7 +89,7 @@ namespace ITMLib
 			Omitting a separate image size for the depth images
 			will assume same resolution as for the RGB images.
 		*/
-		ITMBasicEngine(const ITMLibSettings *settings, const ITMRGBDCalib& calib, Vector2i imgSize_rgb, Vector2i imgSize_d = Vector2i(-1, -1));
+		ITMBasicEngine(const std::shared_ptr<const ITMLibSettings>& settings, const ITMRGBDCalib& calib, Vector2i imgSize_rgb, Vector2i imgSize_d = Vector2i(-1, -1));
 		~ITMBasicEngine();
 	};
 }

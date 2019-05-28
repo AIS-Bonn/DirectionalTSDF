@@ -1,3 +1,8 @@
+#include <utility>
+
+#include <memory>
+#include <utility>
+
 // Copyright 2014-2017 Oxford University Innovation Limited and the authors of InfiniTAM
 
 #pragma once
@@ -28,7 +33,7 @@ namespace ITMLib
 			RENDER_FROM_OLD_FORWARDPROJ
 		};
 
-		virtual ~IITMVisualisationEngine(void) {}
+		virtual ~IITMVisualisationEngine() = default;
 
 		static void DepthToUchar4(ITMUChar4Image *dst, const ITMFloatImage *src);
 		static void NormalToUchar4(ITMUChar4Image* dst, const ITMFloat4Image *src);
@@ -54,6 +59,11 @@ namespace ITMLib
 	class ITMVisualisationEngine : public IITMVisualisationEngine
 	{
 	public:
+		explicit ITMVisualisationEngine(std::shared_ptr<const ITMLibSettings> settings)
+			:settings(std::move(settings))
+		{}
+		virtual ~ITMVisualisationEngine() = default;
+
 		/** Creates a render state, containing rendering info
 		for the scene.
 		*/
@@ -106,5 +116,8 @@ namespace ITMLib
 		*/
 		virtual void ForwardRender(const ITMScene<TVoxel,TIndex> *scene, const ITMView *view, ITMTrackingState *trackingState,
 			ITMRenderState *renderState) const = 0;
+
+	protected:
+		std::shared_ptr<const ITMLibSettings> settings;
 	};
 }

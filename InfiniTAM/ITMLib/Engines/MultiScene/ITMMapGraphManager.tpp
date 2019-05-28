@@ -7,7 +7,7 @@
 namespace ITMLib
 {
 	template<class TVoxel, class TIndex>
-	ITMVoxelMapGraphManager<TVoxel, TIndex>::ITMVoxelMapGraphManager(const ITMLibSettings *_settings, const ITMVisualisationEngine<TVoxel, TIndex> *_visualisationEngine, const ITMDenseMapper<TVoxel, TIndex> *_denseMapper, const Vector2i & _trackedImageSize)
+	ITMVoxelMapGraphManager<TVoxel, TIndex>::ITMVoxelMapGraphManager(const std::shared_ptr<const ITMLibSettings>& _settings, const ITMVisualisationEngine<TVoxel, TIndex> *_visualisationEngine, const ITMDenseMapper<TVoxel, TIndex> *_denseMapper, const Vector2i & _trackedImageSize)
 		: settings(_settings), visualisationEngine(_visualisationEngine), denseMapper(_denseMapper), trackedImageSize(_trackedImageSize)
 	{
 	}
