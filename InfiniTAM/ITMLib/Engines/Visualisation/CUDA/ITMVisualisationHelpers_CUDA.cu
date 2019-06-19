@@ -3,11 +3,12 @@
 #include "ITMVisualisationHelpers_CUDA.h"
 #include "Engines/Reconstruction/Interface/ITMSceneReconstructionEngine.h"
 
-using namespace ITMLib;
-
 //device implementations
 
-__global__ void ITMLib::countVisibleBlocks_device(const int *visibleEntryIDs, int noVisibleEntries, const ITMHashEntry *hashTable, uint *noBlocks, int minBlockId, int maxBlockId)
+namespace ITMLib
+{
+
+__global__ void countVisibleBlocks_device(const int *visibleEntryIDs, int noVisibleEntries, const ITMHashEntry *hashTable, uint *noBlocks, int minBlockId, int maxBlockId)
 {
 	int globalIdx = threadIdx.x + blockIdx.x * blockDim.x;
 	if (globalIdx >= noVisibleEntries) return;
@@ -17,7 +18,7 @@ __global__ void ITMLib::countVisibleBlocks_device(const int *visibleEntryIDs, in
 	if ((blockId >= minBlockId) && (blockId <= maxBlockId)) atomicAdd(noBlocks, 1);
 }
 
-__global__ void ITMLib::buildCompleteVisibleList_device(const ITMHashEntry *hashTable, /*ITMHashCacheState *cacheStates, bool useSwapping,*/ int noTotalEntries,
+__global__ void buildCompleteVisibleList_device(const ITMHashEntry *hashTable, /*ITMHashCacheState *cacheStates, bool useSwapping,*/ int noTotalEntries,
 	int *visibleEntryIDs, int *noVisibleEntries, HashEntryVisibilityType *entriesVisibleType, Matrix4f M, Vector4f projParams, Vector2i imgSize, float voxelSize)
 {
 	int targetIdx = threadIdx.x + blockIdx.x * blockDim.x;
@@ -52,7 +53,7 @@ __global__ void ITMLib::buildCompleteVisibleList_device(const ITMHashEntry *hash
 	}
 }
 
-__global__ void ITMLib::projectAndSplitBlocks_device(const ITMHashEntry *hashEntries, const int *visibleEntryIDs, int noVisibleEntries,
+__global__ void projectAndSplitBlocks_device(const ITMHashEntry *hashEntries, const int *visibleEntryIDs, int noVisibleEntries,
 	const Matrix4f pose_M, const Vector4f intrinsics, const Vector2i imgSize, float voxelSize, RenderingBlock *renderingBlocks,
 	uint *noTotalBlocks)
 {
@@ -79,7 +80,7 @@ __global__ void ITMLib::projectAndSplitBlocks_device(const ITMHashEntry *hashEnt
 	CreateRenderingBlocks(renderingBlocks, out_offset, upperLeft, lowerRight, zRange);
 }
 
-__global__ void ITMLib::checkProjectAndSplitBlocks_device(const ITMHashEntry *hashEntries, int noHashEntries,
+__global__ void checkProjectAndSplitBlocks_device(const ITMHashEntry *hashEntries, int noHashEntries,
 	const Matrix4f pose_M, const Vector4f intrinsics, const Vector2i imgSize, float voxelSize, RenderingBlock *renderingBlocks,
 	uint *noTotalBlocks)
 {
@@ -105,7 +106,7 @@ __global__ void ITMLib::checkProjectAndSplitBlocks_device(const ITMHashEntry *ha
 	CreateRenderingBlocks(renderingBlocks, out_offset, upperLeft, lowerRight, zRange);
 }
 
-__global__ void ITMLib::fillBlocks_device(uint noTotalBlocks, const RenderingBlock *renderingBlocks,
+__global__ void fillBlocks_device(uint noTotalBlocks, const RenderingBlock *renderingBlocks,
 	Vector2i imgSize, Vector2f *minmaxData)
 {
 	int x = threadIdx.x;
@@ -123,7 +124,7 @@ __global__ void ITMLib::fillBlocks_device(uint noTotalBlocks, const RenderingBlo
 	atomicMin(&pixel.x, b.zRange.x); atomicMax(&pixel.y, b.zRange.y);
 }
 
-__global__ void ITMLib::findMissingPoints_device(int *fwdProjMissingPoints, uint *noMissingPoints, const Vector2f *minmaximg,
+__global__ void findMissingPoints_device(int *fwdProjMissingPoints, uint *noMissingPoints, const Vector2f *minmaximg,
 	Vector4f *forwardProjection, float *currentDepth, Vector2i imgSize)
 {
 	int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
@@ -158,7 +159,7 @@ __global__ void ITMLib::findMissingPoints_device(int *fwdProjMissingPoints, uint
 	}
 }
 
-__global__ void ITMLib::forwardProject_device(Vector4f *forwardProjection, const Vector4f *pointsRay, Vector2i imgSize, Matrix4f M,
+__global__ void forwardProject_device(Vector4f *forwardProjection, const Vector4f *pointsRay, Vector2i imgSize, Matrix4f M,
 	Vector4f projParams, float voxelSize)
 {
 	int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
@@ -171,3 +172,5 @@ __global__ void ITMLib::forwardProject_device(Vector4f *forwardProjection, const
 	int locId_new = forwardProjectPixel(pixel * voxelSize, M, projParams, imgSize);
 	if (locId_new >= 0) forwardProjection[locId_new] = pixel;
 }
+
+} // namespace ITMLib

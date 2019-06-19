@@ -15,6 +15,7 @@ namespace ITMLib
 		const ITMRGBDCalib calib;
 		ITMShortImage *shortImage;
 		ITMFloatImage *floatImage;
+		ITMFloat4Image *normals;
 
 	public:
 		virtual void ConvertDisparityToDepth(ITMFloatImage *depth_out, const ITMShortImage *disp_in, const ITMIntrinsics *depthIntrinsics,
@@ -22,6 +23,7 @@ namespace ITMLib
 		virtual void ConvertDepthAffineToFloat(ITMFloatImage *depth_out, const ITMShortImage *depth_in, Vector2f depthCalibParams) = 0;
 
 		virtual void DepthFiltering(ITMFloatImage *image_out, const ITMFloatImage *image_in) = 0;
+		virtual void NormalFiltering(ITMFloat4Image *normals_out, const ITMFloat4Image *normals_in) = 0;
 		virtual void ComputeNormalAndWeights(ITMFloat4Image *normal_out, ITMFloatImage *sigmaZ_out, const ITMFloatImage *depth_in, Vector4f intrinsic) = 0;
 
 		virtual void UpdateView(ITMView **view, ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, bool useBilateralFilter, bool modelSensorNoise = false, bool storePreviousImage = true) = 0;
@@ -30,14 +32,16 @@ namespace ITMLib
 		ITMViewBuilder(const ITMRGBDCalib& calib_)
 		: calib(calib_)
 		{
-			this->shortImage = NULL;
-			this->floatImage = NULL;
+			this->shortImage = nullptr;
+			this->floatImage = nullptr;
+			this->normals = nullptr;
 		}
 
 		virtual ~ITMViewBuilder()
 		{
-			if (this->shortImage != NULL) delete this->shortImage;
-			if (this->floatImage != NULL) delete this->floatImage;
+			if (this->shortImage != nullptr) delete this->shortImage;
+			if (this->floatImage != nullptr) delete this->floatImage;
+			if (this->normals != nullptr) delete this->normals;
 		}
 	};
 }

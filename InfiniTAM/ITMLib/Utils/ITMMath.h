@@ -76,6 +76,20 @@ typedef class ORUtils::Vector6<float> Vector6f;
 #define IS_EQUAL3(a,b) (((a).x == (b).x) && ((a).y == (b).y) && ((a).z == (b).z))
 #endif
 
+#ifndef MAX_INT
+#define MAX_INT 2147483647
+#endif
+
+_CPU_AND_GPU_CODE_
+inline Vector3f cross(Vector3f a, Vector3f b)
+{
+	return Vector3f(
+		a.y * b.z - a.z * b.y,
+		a.z * b.x - a.x * b.z,
+		a.x * b.y - a.y * b.x
+		);
+}
+
 #else
 
 typedef metal::float3x3 Matrix3f;

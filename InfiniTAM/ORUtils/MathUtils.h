@@ -22,6 +22,10 @@
 #define ROUND(x) ((x < 0) ? (x - 0.5f) : (x + 0.5f))
 #endif
 
+#ifndef SIGN
+#define SIGN(x) ((x < 0) ? -1 : 1)
+#endif
+
 #ifndef PI
 #define PI float(3.1415926535897932384626433832795)
 #endif

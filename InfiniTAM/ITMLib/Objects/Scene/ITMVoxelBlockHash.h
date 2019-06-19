@@ -8,28 +8,11 @@
 #include <iostream>
 #endif
 
+#include "ITMLib/Core/ITMConstants.h"
 #include "ITMLib/Utils/ITMMath.h"
 #include "ORUtils/MemoryBlock.h"
 #include "ORUtils/MemoryBlockPersister.h"
-#include "ITMDirectional.h"
-
-#define SDF_BLOCK_SIZE 8				// SDF block size
-#define SDF_BLOCK_SIZE3 (SDF_BLOCK_SIZE * SDF_BLOCK_SIZE * SDF_BLOCK_SIZE)
-
-//#define SDF_LOCAL_BLOCK_NUM 0x40000		// Number of locally stored blocks, currently 2^17
-//
-//#define SDF_BUCKET_NUM 0x100000			// Number of Hash Bucket, should be 2^n and bigger than SDF_LOCAL_BLOCK_NUM, SDF_HASH_MASK = SDF_BUCKET_NUM - 1
-//#define SDF_HASH_MASK 0xfffff			// Used for get hashing value of the bucket index,  SDF_HASH_MASK = SDF_BUCKET_NUM - 1
-//#define SDF_EXCESS_LIST_SIZE 0x20000	// 0x20000 Size of excess list, used to handle collisions. Also max offset (unsigned short) value.
-
-//// for loop closure
-#define SDF_LOCAL_BLOCK_NUM 0x10000		// Number of locally stored blocks, currently 2^12
-
-#define SDF_BUCKET_NUM 0x40000			// Number of Hash Bucket, should be 2^n and bigger than SDF_LOCAL_BLOCK_NUM, SDF_HASH_MASK = SDF_BUCKET_NUM - 1
-#define SDF_HASH_MASK 0x3ffff			// Used for get hashing value of the bucket index,  SDF_HASH_MASK = SDF_BUCKET_NUM - 1
-#define SDF_EXCESS_LIST_SIZE 0x8000		// 0x8000 Size of excess list, used to handle collisions. Also max offset (unsigned short) value.
-
-#define SDF_TRANSFER_BLOCK_NUM 0x1000	// Maximum number of blocks transfered in one swap operation
+#include "ITMLib/Objects/Scene/ITMDirectional.h"
 
 /** \brief
 	A single entry in the hash table.
@@ -49,10 +32,31 @@ struct ITMHashEntry
 
 	/** Corresponding TSDF direction. */
 	uint8_t direction;
+
+	_CPU_AND_GPU_CODE_ bool IsValid() const {
+		return ptr >= 0;
+	}
 };
 
 namespace ITMLib
 {
+	template<typename T> _CPU_AND_GPU_CODE_ inline int hashIndex(const THREADPTR(T) & blockPos) {
+		return (
+			(static_cast<uint>(blockPos.x) * 73856093u) ^
+			(static_cast<uint>(blockPos.y) * 19349669u) ^
+			(static_cast<uint>(blockPos.z) * 83492791u)) & (uint)SDF_HASH_MASK;
+	}
+
+	template<typename T> _CPU_AND_GPU_CODE_ inline int hashIndex(const THREADPTR(T) & blockPos, const TSDFDirection direction) {
+		if (direction == TSDFDirection::NONE)
+			return hashIndex(blockPos);
+		return (
+			(static_cast<TSDFDirection_type>(direction) * 20089691u) ^
+			(static_cast<uint>(blockPos.x) * 73856093u) ^
+			(static_cast<uint>(blockPos.y) * 19349669u) ^
+			(static_cast<uint>(blockPos.z) * 83492791u)) & (uint)SDF_HASH_MASK;
+	}
+
 	/** \brief
 	This is the central class for the voxel block hash
 	implementation. It contains all the data needed on the CPU
@@ -71,6 +75,7 @@ namespace ITMLib
 
 		/** Maximum number of total entries. */
 		static const int noTotalEntries = SDF_BUCKET_NUM + SDF_EXCESS_LIST_SIZE;
+		static const int noLocalEntries = SDF_LOCAL_BLOCK_NUM;
 		static const int voxelBlockSize = SDF_BLOCK_SIZE3;
 
 #ifndef __METALC__
@@ -127,7 +132,7 @@ namespace ITMLib
 #endif
 
 		/** Maximum number of total entries. */
-		int getNumAllocatedVoxelBlocks(void) { return SDF_LOCAL_BLOCK_NUM; }
+		int getNumAllocatedVoxelBlocks(void) { return noLocalEntries; }
 		int getVoxelBlockSize(void) { return voxelBlockSize; }
 
 		void SaveToDirectory(const std::string &outputDirectory) const

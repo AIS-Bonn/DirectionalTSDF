@@ -8,7 +8,19 @@
 namespace ITMLib
 {
 	template<class TVoxel, class TIndex>
-	class ITMSceneReconstructionEngine_CUDA : public ITMSceneReconstructionEngine < TVoxel, TIndex >
+	class ITMSceneReconstructionEngine_CUDA_common : public ITMSceneReconstructionEngine < TVoxel, TIndex >
+	{
+	public:
+		explicit ITMSceneReconstructionEngine_CUDA_common(ITMLibSettings::TSDFMode tsdfMode,
+																							 ITMLibSettings::FusionMode fusionMode, ITMLibSettings::FusionMetric fusionMetric);
+
+	protected:
+		void IntegrateIntoSceneRayCasting(ITMScene<TVoxel,TIndex> *scene, const ITMView *view,
+																			const ITMTrackingState *trackingState, const ITMRenderState *renderState) override;
+	};
+
+template<class TVoxel, class TIndex>
+	class ITMSceneReconstructionEngine_CUDA : public ITMSceneReconstructionEngine_CUDA_common < TVoxel, TIndex >
 	{
 	public:
 		explicit ITMSceneReconstructionEngine_CUDA(ITMLibSettings::TSDFMode tsdfMode,
@@ -16,7 +28,7 @@ namespace ITMLib
 	};
 
 template<class TVoxel>
-	class ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash> : public ITMSceneReconstructionEngine < TVoxel, ITMVoxelBlockHash >
+	class ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash> : public ITMSceneReconstructionEngine_CUDA_common < TVoxel, ITMVoxelBlockHash >
 	{
 	private:
 		void *allocationTempData_device;
@@ -26,21 +38,22 @@ template<class TVoxel>
 		TSDFDirection *blockDirections_device;
 
 	public:
-		void ResetScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene);
+		void ResetScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene) override;
 
 		void AllocateSceneFromDepth(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view, const ITMTrackingState *trackingState,
-			const ITMRenderState *renderState, bool onlyUpdateVisibleList = false, bool resetVisibleList = false);
-
-		void IntegrateIntoScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view, const ITMTrackingState *trackingState,
-			const ITMRenderState *renderState);
+			const ITMRenderState *renderState, bool onlyUpdateVisibleList = false, bool resetVisibleList = false) override;
 
 		explicit ITMSceneReconstructionEngine_CUDA(ITMLibSettings::TSDFMode tsdfMode,
 			ITMLibSettings::FusionMode fusionMode, ITMLibSettings::FusionMetric fusionMetric);
 		~ITMSceneReconstructionEngine_CUDA();
+
+	protected:
+		void IntegrateIntoSceneVoxelProjection(ITMScene<TVoxel, ITMVoxelBlockHash> *scene,
+			const ITMView *view, const ITMTrackingState *trackingState, const ITMRenderState *renderState) override;
 	};
 
 	template<class TVoxel>
-	class ITMSceneReconstructionEngine_CUDA<TVoxel, ITMPlainVoxelArray> : public ITMSceneReconstructionEngine < TVoxel, ITMPlainVoxelArray >
+	class ITMSceneReconstructionEngine_CUDA<TVoxel, ITMPlainVoxelArray> : public ITMSceneReconstructionEngine_CUDA_common < TVoxel, ITMPlainVoxelArray >
 	{
 	public:
 		void ResetScene(ITMScene<TVoxel, ITMPlainVoxelArray> *scene);
@@ -48,7 +61,8 @@ template<class TVoxel>
 		void AllocateSceneFromDepth(ITMScene<TVoxel, ITMPlainVoxelArray> *scene, const ITMView *view, const ITMTrackingState *trackingState,
 			const ITMRenderState *renderState, bool onlyUpdateVisibleList = false, bool resetVisibleList = false);
 
-		void IntegrateIntoScene(ITMScene<TVoxel, ITMPlainVoxelArray> *scene, const ITMView *view, const ITMTrackingState *trackingState,
-			const ITMRenderState *renderState);
+	protected:
+		void IntegrateIntoSceneVoxelProjection(ITMScene<TVoxel, ITMPlainVoxelArray> *scene,
+			const ITMView *view, const ITMTrackingState *trackingState, const ITMRenderState *renderState) override;
 	};
 }

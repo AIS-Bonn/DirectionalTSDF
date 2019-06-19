@@ -18,7 +18,7 @@ inline float weightDepth(float depth, const ITMSceneParams& sceneParams)
 _CPU_AND_GPU_CODE_
 inline float weightNormal(Vector4f normalCamera)
 {
-	return normalCamera.z;
+	return -normalCamera.z;
 }
 
 _CPU_AND_GPU_CODE_

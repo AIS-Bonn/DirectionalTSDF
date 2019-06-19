@@ -191,7 +191,7 @@ namespace ITMLib
 			{
 				Vector4f tmp;
 				// FIXME: directional
-				tmp = VoxelColorReader<TVoxel::hasColorInformation, TVoxel, TIndex>::interpolate(voxelData, voxelIndex, point, ITMLib::TSDFDirection::NONE);
+				tmp = VoxelColorReader<TVoxel::hasColorInformation, TVoxel, TIndex>::interpolate(voxelData, voxelIndex, point, TSDFDirection::NONE);
 				if (tmp.w > 0.0f) { tmp.x /= tmp.w; tmp.y /= tmp.w; tmp.z /= tmp.w; tmp.w = 1.0f; }
 				colours[offset] = tmp;
 

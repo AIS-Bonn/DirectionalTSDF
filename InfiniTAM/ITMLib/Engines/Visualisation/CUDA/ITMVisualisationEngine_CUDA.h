@@ -5,10 +5,10 @@
 #include <memory>
 #include "../Interface/ITMVisualisationEngine.h"
 
-struct RenderingBlock;
-
 namespace ITMLib
 {
+struct RenderingBlock;
+
 /** Common functions for all specializations */
 template<class TVoxel, class TIndex>
 class ITMVisualisationEngine_CUDA_common : public ITMVisualisationEngine<TVoxel, TIndex>

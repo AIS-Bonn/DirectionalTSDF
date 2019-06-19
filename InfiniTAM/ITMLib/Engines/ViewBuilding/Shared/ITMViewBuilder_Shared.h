@@ -2,8 +2,12 @@
 
 #pragma once
 
-#include "../../../Utils/ITMMath.h"
-#include "../../../../ORUtils/PlatformIndependence.h"
+#include "ITMLib/Utils/ITMMath.h"
+#include "ITMLib/Utils/ITMProjectionUtils.h"
+#include "ORUtils/PlatformIndependence.h"
+
+namespace ITMLib
+{
 
 _CPU_AND_GPU_CODE_ inline void convertDisparityToDepth(DEVICEPTR(float) *d_out, int x, int y, const CONSTPTR(short) *d_in,
 	Vector2f disparityCalibParams, float fx_depth, Vector2i imgSize)
@@ -54,6 +58,90 @@ _CPU_AND_GPU_CODE_ inline void filterDepth(DEVICEPTR(float) *imageData_out, cons
 	imageData_out[x + y*imgDims.x] = final_depth;
 }
 
+/**
+ * Implementation from BundleFusion
+ * Copyright (c) 2017 by Angela Dai and Matthias Niessner
+ */
+_CPU_AND_GPU_CODE_
+inline float gaussD(float factor, int x, int y)
+{
+	return exp(-((x * x + y * y) * factor));
+}
+
+/**
+ * Implementation from BundleFusion
+ * Copyright (c) 2017 by Angela Dai and Matthias Niessner
+ */
+_CPU_AND_GPU_CODE_
+inline float gaussR(float factor, float dist)
+{
+	return exp(-(dist * dist) * factor);
+}
+
+/**
+ * Bilateral filtering for normals
+ *
+ * Implementation from BundleFusion
+ * Copyright (c) 2017 by Angela Dai and Matthias Niessner
+ *
+ * @param normals_out
+ * @param normals_in
+ * @param sigma_d
+ * @param sigma_r
+ * @param x
+ * @param y
+ * @param imgDims
+ */
+_CPU_AND_GPU_CODE_ inline void filterNormals(Vector4f *normals_out, const Vector4f *normals_in,
+	float sigma_d, float sigma_r, int x, int y, Vector2i imgDims)
+{
+	const int width = imgDims.x;
+	const int height = imgDims.y;
+
+	if (x >= width or y >= height)
+		return;
+
+	const uint idx = y * width + x;
+
+	normals_out[idx] = Vector4f(0, 0, 0, -1);
+
+	const Vector4f center = normals_in[idx];
+	if (center.w == -1)
+		return;
+
+	Vector4f sum(0, 0, 0, 0);
+	float sum_weight = 0.0f;
+
+	float sigma_d_factor = 1 / (2.0f * sigma_d * sigma_d);
+	float sigma_r_factor = 1 / (2.0f * sigma_r * sigma_r);
+
+	const uchar radius = static_cast<uchar>(sigma_d);
+	for (int i = x - radius; i <= x + radius; i++)
+	{
+		for (int j = y - radius; j <= y + radius; j++)
+		{
+			if (i < 0 or j < 0 or i >= width or j >= height)
+				continue;
+
+			const Vector4f value = normals_in[j * width + i];
+
+			if (value.w == -1)
+				continue;
+
+			const float weight = gaussD(sigma_d_factor, i - x, j - y) * gaussR(sigma_r_factor, length(value - center));
+
+			sum += weight * value;
+			sum_weight += weight;
+		}
+	}
+
+	if (sum_weight >= 0.0f)
+	{
+		normals_out[idx] = sum / sum_weight;
+		normals_out[idx].w = 1.0;
+	}
+}
+
 
 _CPU_AND_GPU_CODE_ inline void computeNormalAndWeight(const CONSTPTR(float) *depth_in, DEVICEPTR(Vector4f) *normal_out, DEVICEPTR(float) *sigmaZ_out, int x, int y, Vector2i imgDims, Vector4f intrinparam)
 {
@@ -70,36 +158,29 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndWeight(const CONSTPTR(float) *dep
 	}
 
 	// first compute the normal
-	Vector3f xp1_y, xm1_y, x_yp1, x_ym1;
 	Vector3f diff_x(0.0f, 0.0f, 0.0f), diff_y(0.0f, 0.0f, 0.0f);
 
-	xp1_y.z = depth_in[(x + 1) + y * imgDims.x], x_yp1.z = depth_in[x + (y + 1) * imgDims.x];
-	xm1_y.z = depth_in[(x - 1) + y * imgDims.x], x_ym1.z = depth_in[x + (y - 1) * imgDims.x];
+	Vector4f projParams_d(
+		1 / intrinparam.x,
+		1 / intrinparam.y,
+		intrinparam.z,
+		intrinparam.w);
+	Vector3f xp1_y = reprojectImagePoint(x + 1, y, depth_in[(x + 1) + y * imgDims.x], projParams_d);
+	Vector3f xm1_y = reprojectImagePoint(x - 1, y, depth_in[(x - 1) + y * imgDims.x], projParams_d);
+	Vector3f x_yp1 = reprojectImagePoint(x, y + 1, depth_in[x + (y + 1) * imgDims.x], projParams_d);
+	Vector3f x_ym1 = reprojectImagePoint(x, y - 1, depth_in[x + (y - 1) * imgDims.x], projParams_d);
 
-	if (xp1_y.z <= 0 || x_yp1.z <= 0 || xm1_y.z <= 0 || x_ym1.z <= 0)
+	if (xp1_y.z <= 0 or x_yp1.z <= 0 or xm1_y.z <= 0 or x_ym1.z <= 0 or abs(xp1_y.z - z) > 0.02 or abs(xm1_y.z - z) > 0.02)
 	{
 		normal_out[idx].w = -1.0f;
 		sigmaZ_out[idx] = -1;
 		return;
 	}
 
-	// unprojected
-	float cx = intrinparam.z;
-	float cy = intrinparam.w;
-	float fx = intrinparam.x;
-	float fy = intrinparam.y;
-	xp1_y.x = xp1_y.z * ((x + 1.0f) - cx) / fx; xp1_y.y = xp1_y.z * (y - cy) / fy;
-	xm1_y.x = xm1_y.z * ((x - 1.0f) - cx) / fx; xm1_y.y = xm1_y.z * (y - cy) / fy;
-	x_yp1.x = x_yp1.z * (x - cx) / fx; x_yp1.y = x_yp1.z * ((y + 1.0f) - cy) / fy;
-	x_ym1.x = x_ym1.z * (x - cx) / fx; x_ym1.y = x_ym1.z * ((y - 1.0f) - cy) / fy;
-
 	// gradients x and y
 	diff_x = xp1_y - xm1_y, diff_y = x_yp1 - x_ym1;
 
-	// cross product
-	outNormal.x = (diff_x.y * diff_y.z - diff_x.z * diff_y.y);
-	outNormal.y = (diff_x.z * diff_y.x - diff_x.x * diff_y.z);
-	outNormal.z = (diff_x.x * diff_y.y - diff_x.y * diff_y.x);
+	outNormal = cross(diff_y, diff_x);
 
 	if (outNormal.x == 0.0f && outNormal.y == 0 && outNormal.z == 0)
 	{
@@ -107,10 +188,8 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndWeight(const CONSTPTR(float) *dep
 		sigmaZ_out[idx] = -1;
 		return;
 	}
+	outNormal = outNormal.normalised();
 
-    float norm = 1.0f / sqrt(outNormal.x * outNormal.x + outNormal.y * outNormal.y + outNormal.z * outNormal.z);
-    outNormal *= norm;
-    
 	normal_out[idx].x = outNormal.x; normal_out[idx].y = outNormal.y; normal_out[idx].z = outNormal.z; normal_out[idx].w = 1.0f;
 
 	// now compute weight
@@ -119,5 +198,7 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndWeight(const CONSTPTR(float) *dep
 
 	sigmaZ_out[idx] = (0.0012f + 0.0019f * (z - 0.4f) * (z - 0.4f) + 0.0001f / sqrt(z) * theta_diff * theta_diff);
 }
+
+} // namespace ITMLib
 
 #endif

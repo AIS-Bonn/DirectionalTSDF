@@ -3,8 +3,6 @@
 #include "ITMVisualisationEngine_CUDA.h"
 #include "ITMVisualisationHelpers_CUDA.h"
 
-using namespace ITMLib;
-
 inline dim3 getGridSize(dim3 taskSize, dim3 blockSize)
 {
 	return dim3((taskSize.x + blockSize.x - 1) / blockSize.x, (taskSize.y + blockSize.y - 1) / blockSize.y, (taskSize.z + blockSize.z - 1) / blockSize.z);

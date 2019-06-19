@@ -21,6 +21,9 @@ IF(WITH_CUDA)
   # Enable fast math.
   SET(CUDA_NVCC_FLAGS --use_fast_math ; ${CUDA_NVCC_FLAGS})
 
+  # Enable debugging
+#  SET(CUDA_NVCC_FLAGS --device-debug; ${CUDA_NVCC_FLAGS})
+
   # If on Windows, make it possible to enable GPU debug information.
   IF(MSVC_IDE)
     OPTION(ENABLE_CUDA_DEBUGGING "Enable CUDA debugging?" OFF)

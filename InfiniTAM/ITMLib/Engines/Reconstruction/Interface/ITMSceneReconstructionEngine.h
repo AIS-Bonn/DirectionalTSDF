@@ -12,6 +12,31 @@
 
 namespace ITMLib
 {
+	typedef struct
+	{
+		float sdfSum;
+		float weightSum;
+
+		_CPU_AND_GPU_CODE_
+		inline void reset()
+		{
+			sdfSum = 0.0f;
+			weightSum = 0.0f;
+		}
+
+		_CPU_AND_GPU_CODE_
+		inline void update(float sdf, float weight)
+		{
+#ifdef __CUDA_ARCH__
+			atomicAdd(&sdfSum, weight * sdf);
+			atomicAdd(&weightSum, weight);
+#else
+			sdfSum += weight * sdf;
+			weightSum += weight;
+#endif
+		}
+	} VoxelRayCastingSum;
+
 	/** \brief
 	    Interface to engines implementing the main KinectFusion
 	    depth integration process.
@@ -44,8 +69,18 @@ namespace ITMLib
 		/** Update the voxel blocks by integrating depth and
 		    possibly colour information from the given view.
 		*/
-		virtual void IntegrateIntoScene(ITMScene<TVoxel,TIndex> *scene, const ITMView *view,
-			const ITMTrackingState *trackingState, const ITMRenderState *renderState) = 0;
+		void IntegrateIntoScene(ITMScene<TVoxel, TIndex>* scene, const ITMView* view,
+			const ITMTrackingState* trackingState, const ITMRenderState* renderState)
+		{
+			if (this->fusionMode == ITMLibSettings::FusionMode::FUSIONMODE_RAY_CASTING)
+			{
+				IntegrateIntoSceneRayCasting(scene, view, trackingState, renderState);
+			}
+			else
+			{
+				IntegrateIntoSceneVoxelProjection(scene, view, trackingState, renderState);
+			}
+		}
 
 		ITMSceneReconstructionEngine(void) { }
 		virtual ~ITMSceneReconstructionEngine(void) { }
@@ -54,5 +89,17 @@ namespace ITMLib
 		ITMLibSettings::TSDFMode tsdfMode;
 		ITMLibSettings::FusionMode fusionMode;
 		ITMLibSettings::FusionMetric fusionMetric;
+
+		/**
+		 * Per-hash entry summation values for ray casting fusion update
+		 */
+		ORUtils::MemoryBlock<VoxelRayCastingSum> *entriesRayCasting;
+
+		virtual void IntegrateIntoSceneVoxelProjection(ITMScene<TVoxel, TIndex>* scene, const ITMView* view,
+		                                               const ITMTrackingState* trackingState,
+		                                               const ITMRenderState* renderState) = 0;
+
+		virtual void IntegrateIntoSceneRayCasting(ITMScene<TVoxel,TIndex> *scene, const ITMView *view,
+		                                          const ITMTrackingState *trackingState, const ITMRenderState *renderState) = 0;
 	};
 }

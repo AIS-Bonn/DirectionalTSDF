@@ -8,6 +8,7 @@
 #include "ITMBlockTraversal.h"
 #include "ITMLib/Engines/Reconstruction/Interface/ITMSceneReconstructionEngine.h"
 #include "ITMLib/Engines/Reconstruction/Shared/ITMFusionWeight.hpp"
+#include "ITMLib/Utils/ITMProjectionUtils.h"
 
 namespace ITMLib
 {
@@ -61,6 +62,8 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 	if (sceneParams.useWeighting)
 	{
 		Vector4f normalCamera = depthNormals[idx];
+		if (normalCamera.w != 1)
+			return -1;
 		float directionWeight = 1;
 		if (direction != TSDFDirection::NONE)
 		{
@@ -127,6 +130,8 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 	if (sceneParams.useWeighting)
 	{
 		Vector4f normalCamera = depthNormals[idx];
+		if (normalCamera.w != 1)
+			return -1;
 		float directionWeight = 1;
 		if (direction != TSDFDirection::NONE)
 		{
@@ -332,6 +337,247 @@ inline void SetBlockAllocAndVisibleType(const CONSTPTR(ITMHashEntry)* hashTable,
 	}
 }
 
+template<class TVoxel>
+_CPU_AND_GPU_CODE_
+void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth,
+                       const Matrix4f& invM_d,
+                       const Vector4f& invProjParams_d, const Vector4f& invProjParams_rgb,
+                       const ITMSceneParams& sceneParams,
+                       const ITMLibSettings::TSDFMode tsdfMode,
+                       const ITMHashEntry* hashTable,
+                       VoxelRayCastingSum* entriesRayCasting,
+                       TVoxel *voxelArray
+)
+{
+	const float mu = sceneParams.mu;
+	const float viewFrustum_min = sceneParams.viewFrustum_min;
+	const float viewFrustum_max = sceneParams.viewFrustum_max;
+	const float voxelSize = sceneParams.voxelSize;
+
+	int idx = y * imgSize.x + x;
+
+	float depthValue = depth[idx];
+	if (depthValue <= 0 or (depthValue - mu) < viewFrustum_min or (depthValue + mu) > viewFrustum_max)
+		return;
+
+	Vector3f pt_camera = reprojectImagePoint(x, y, depthValue, invProjParams_d);
+	Vector3f pt_world = (invM_d * Vector4f(pt_camera, 1)).toVector3();
+	Vector4f rayStart_camera = Vector4f(reprojectImagePoint(x, y, viewFrustum_min, invProjParams_d), 1);
+	Vector3f rayStart_world = (invM_d * rayStart_camera).toVector3();
+	Vector3f rayDirection_world = (invM_d * Vector4f(rayStart_camera.toVector3().normalised(), 0)).toVector3();
+
+	float weights[N_DIRECTIONS];
+	if (tsdfMode == ITMLibSettings::TSDFMode::TSDFMODE_DIRECTIONAL)
+	{
+		ComputeDirectionWeights(-rayDirection_world, weights);
+	}
+
+	float carveDistance = ORUtils::length(pt_camera) - ORUtils::length(rayStart_camera.toVector3()) - mu;
+	BlockTraversal blockTraversal(rayStart_world, rayDirection_world, carveDistance, voxelSize);
+	while(blockTraversal.HasNextBlock())
+	{
+		Vector3i voxelIdx = blockTraversal.GetNextBlock();
+		Vector3f voxelPos = blockTraversal.BlockToWorld(voxelIdx);
+
+
+		/// Fixed values for distance and weight
+
+		float distance = 1;
+		float weight = 1.5;
+
+//		if (ORUtils::length(pt_camera) - ORUtils::length(voxelPos - pt_world) <= 4 * mu)
+//			weight = ORUtils::length(voxelPos - pt_world) / 4 * mu;
+
+		/// find and update voxels
+		Vector3i blockPos;
+		ushort linearIdx;
+		voxelToBlockPosAndOffset(voxelIdx, blockPos, linearIdx);
+		if (tsdfMode == ITMLibSettings::TSDFMode::TSDFMODE_DIRECTIONAL)
+		{
+			for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
+			{
+				if (weights[direction] < direction_weight_threshold)
+					continue;
+
+				const ITMHashEntry hashEntry = getHashEntry(hashTable, blockPos, TSDFDirection(direction));
+
+				if (not hashEntry.IsValid())
+				{
+					break;
+				}
+				const TVoxel &voxel = voxelArray[hashEntry.ptr * SDF_BLOCK_SIZE3 + linearIdx];
+				if (voxel.w_depth <= 0 or TVoxel::valueToFloat(voxel.sdf) < 0.0f)
+					continue;
+
+				VoxelRayCastingSum &voxelRayCastingSum = entriesRayCasting[hashEntry.ptr * SDF_BLOCK_SIZE3 + linearIdx];
+				voxelRayCastingSum.update(distance, weight);
+			}
+		}
+		else
+		{
+			const ITMHashEntry hashEntry = getHashEntry(hashTable, blockPos);
+
+			if (not hashEntry.IsValid())
+			{
+				continue;
+			}
+			const TVoxel &voxel = voxelArray[hashEntry.ptr * SDF_BLOCK_SIZE3 + linearIdx];
+//			if (voxel.w_depth <= 0 or TVoxel::valueToFloat(voxel.sdf) >= 0.0f)
+//				return;
+//			if (TVoxel::valueToFloat(voxel.sdf) < 0.0f)
+//				return;
+
+			VoxelRayCastingSum &voxelRayCastingSum = entriesRayCasting[hashEntry.ptr * SDF_BLOCK_SIZE3 + linearIdx];
+			voxelRayCastingSum.update(distance, weight);
+		}
+	}
+}
+
+template<class TVoxel>
+_CPU_AND_GPU_CODE_
+void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depthNormals,
+                   const Matrix4f& invM_d,
+                   const Vector4f& invProjParams_d, const Vector4f& invProjParams_rgb,
+                   const ITMSceneParams& sceneParams,
+                   const ITMLibSettings::TSDFMode tsdfMode,
+                   const ITMLibSettings::FusionMetric fusionMetric,
+                   const ITMHashEntry* hashTable,
+                   VoxelRayCastingSum* entriesRayCasting
+)
+{
+	const float mu = sceneParams.mu;
+	const float viewFrustum_min = sceneParams.viewFrustum_min;
+	const float viewFrustum_max = sceneParams.viewFrustum_max;
+	const float voxelSize = sceneParams.voxelSize;
+
+	int idx = y * imgSize.x + x;
+
+	float depthValue = depth[idx];
+	Vector4f normal_camera = depthNormals[idx];
+
+	if (depthValue <= 0 or (depthValue - mu) < viewFrustum_min or
+	    (depthValue + mu) > viewFrustum_max or normal_camera.w != 1)
+		return;
+
+	normal_camera.w = 0; // rotation-only transformation
+	Vector4f pt_camera = Vector4f(reprojectImagePoint(x, y, depthValue, invProjParams_d), 1);
+	Vector3f pt_world = (invM_d * pt_camera).toVector3();
+	Vector3f normal_world = (invM_d * normal_camera).toVector3();
+
+	float weights[N_DIRECTIONS];
+	if (tsdfMode == ITMLibSettings::TSDFMode::TSDFMODE_DIRECTIONAL)
+	{
+		ComputeDirectionWeights(normal_world, weights);
+	}
+
+//	Vector3f rayDirection = (invM_d * Vector4f(pt_camera.toVector3().normalised(), 0)).toVector3(); // camera ray
+	Vector3f rayDirection = -normal_world;
+	Vector3f rayStart = pt_world - mu * rayDirection;
+
+	BlockTraversal blockTraversal(rayStart, rayDirection, 2 * mu, voxelSize);
+	while(blockTraversal.HasNextBlock())
+	{
+		Vector3i voxelIdx = blockTraversal.GetNextBlock();
+		Vector3f voxelPos = blockTraversal.BlockToWorld(voxelIdx);
+
+		/// compute distance
+		float distance;
+		Vector3f voxelSurfaceOffset = voxelPos - pt_world;
+		if (fusionMetric == ITMLibSettings::FusionMetric::FUSIONMETRIC_POINT_TO_PLANE)
+		{
+			distance = ORUtils::dot(voxelSurfaceOffset, normal_world);
+		}
+		else
+		{
+			distance = SIGN(-ORUtils::dot(voxelSurfaceOffset, rayDirection)) * ORUtils::length(voxelSurfaceOffset);
+		}
+		distance = MAX(-1.0, MIN(1.0f, distance / mu));
+
+		float weight = 1;
+
+		/// find and update voxels
+		Vector3i blockPos;
+		ushort linearIdx;
+		voxelToBlockPosAndOffset(voxelIdx, blockPos, linearIdx);
+		if (tsdfMode == ITMLibSettings::TSDFMode::TSDFMODE_DIRECTIONAL)
+		{
+			for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
+			{
+				if (weights[direction] < direction_weight_threshold)
+					continue;
+
+				const ITMHashEntry hashEntry = getHashEntry(hashTable, blockPos, TSDFDirection(direction));
+
+				if (not hashEntry.IsValid())
+				{
+					break;
+				}
+
+				if (sceneParams.useWeighting)
+				{
+					Vector4f normalCamera = depthNormals[idx];
+					float directionWeight = DirectionWeight(normal_world, TSDFDirection(direction));
+					weight = depthWeight(depthValue, normalCamera, directionWeight, sceneParams)
+					         / powf(voxelSize * 100, 3);
+				}
+				if (weight < 1e-1)
+					return;
+
+				VoxelRayCastingSum &voxelRayCastingSum = entriesRayCasting[hashEntry.ptr * SDF_BLOCK_SIZE3 + linearIdx];
+				voxelRayCastingSum.update(distance, weight);
+			}
+		}
+		else
+		{
+			const ITMHashEntry hashEntry = getHashEntry(hashTable, blockPos);
+
+			if (not hashEntry.IsValid())
+			{
+				continue;
+			}
+
+			if (sceneParams.useWeighting)
+			{
+				Vector4f normalCamera = depthNormals[idx];
+				weight = depthWeight(depthValue, normalCamera, 1, sceneParams)
+					/ powf(voxelSize * 100, 3);
+			}
+			if (weight < 1e-1)
+				return;
+
+			VoxelRayCastingSum &voxelRayCastingSum = entriesRayCasting[hashEntry.ptr * SDF_BLOCK_SIZE3 + linearIdx];
+			voxelRayCastingSum.update(distance, weight);
+		}
+	}
+}
+
+/**
+ * Collect and combine summed voxels after ray cast update.
+ * @tparam TVoxel
+ */
+template<class TVoxel>
+_CPU_AND_GPU_CODE_
+void rayCastCombine(TVoxel& voxel, const VoxelRayCastingSum& rayCastingSum, const ITMSceneParams& sceneParams)
+{
+	float deltaSDF = rayCastingSum.sdfSum / rayCastingSum.weightSum;
+	float deltaWeight = rayCastingSum.weightSum;
+	if (deltaWeight == 0)
+		return;
+
+	float currentSDF = TVoxel::valueToFloat(voxel.sdf);
+	float currentWeight = TVoxel::weightToFloat(voxel.w_depth, sceneParams.maxW);
+
+	if (sceneParams.stopIntegratingAtMaxW and currentWeight == sceneParams.maxW)
+		return;
+
+	float newWeight = currentWeight + deltaWeight;
+	float newSDF = (currentWeight * currentSDF + deltaWeight * deltaSDF) / newWeight;
+	newWeight = MIN(newWeight, sceneParams.maxW);
+
+	voxel.sdf = TVoxel::floatToValue(newSDF);
+	voxel.w_depth = TVoxel::floatToWeight(newWeight,sceneParams.maxW);
+}
+
 /**
  * Ray cast depth image to find visible blocks and determine whether they need allocation.
  *
@@ -345,7 +591,7 @@ inline void SetBlockAllocAndVisibleType(const CONSTPTR(ITMHashEntry)* hashTable,
  * @param projParams_d
  * @param mu
  * @param imgSize
- * @param blockSideLength
+ * @param voxelSize
  * @param hashTable
  * @param viewFrustum_min
  * @param viewFrustum_max
@@ -357,47 +603,52 @@ buildHashAllocAndVisibleType(DEVICEPTR(HashEntryAllocType)* entriesAllocType,
                              DEVICEPTR(Vector4s)* blockCoords, DEVICEPTR(TSDFDirection)* blockDirections,
                              const CONSTPTR(float)* depth,
                              const CONSTPTR(Vector4f)* depthNormal, Matrix4f invM_d,
-                             Vector4f projParams_d, float mu, Vector2i imgSize, float blockSideLength,
+                             Vector4f projParams_d, float mu, Vector2i imgSize, float voxelSize,
                              const CONSTPTR(ITMHashEntry)* hashTable, float viewFrustum_min, float viewFrustum_max,
-                             ITMLibSettings::TSDFMode tsdfMode, ITMLibSettings::FusionMetric fusionMetric)
+                             ITMLibSettings::TSDFMode tsdfMode, ITMLibSettings::FusionMode fusionMode,
+                             ITMLibSettings::FusionMetric fusionMetric)
 {
 	float depth_measure = depth[x + y * imgSize.x];
 	if (depth_measure <= 0 or (depth_measure - mu) < 0 or (depth_measure - mu) < viewFrustum_min or
 	    (depth_measure + mu) > viewFrustum_max)
 		return;
 
-	Vector4f pt_camera;
-	pt_camera.z = depth_measure;
-	pt_camera.x = pt_camera.z * ((float(x) - projParams_d.z) * projParams_d.x);
-	pt_camera.y = pt_camera.z * ((float(y) - projParams_d.w) * projParams_d.y);
-	pt_camera.w = 1.0f;
+	Vector4f pt_camera = Vector4f(reprojectImagePoint(x, y, depth_measure, projParams_d), 1);
 
 	Vector4f pt_world = invM_d * pt_camera;
 
 	Vector3f ray_start, ray_direction;
-	if (fusionMetric == ITMLibSettings::FusionMetric::FUSIONMETRIC_POINT_TO_PLANE)
+	if (fusionMode == ITMLibSettings::FusionMode::FUSIONMODE_RAY_CASTING)
 	{
-		Vector4f normal_world = invM_d * depthNormal[x + y * imgSize.x];
-		if (normal_world.w <= 0)
+		Vector4f normal_camera = depthNormal[x + y * imgSize.x];
+		if (normal_camera.w != 1)
 			return;
-		ray_direction = -TO_VECTOR3(normal_world);
+
+		normal_camera.w = 0; // rotation-only transformation
+		Vector3f normal_world = (invM_d * normal_camera).toVector3();
+		ray_direction = -normal_world;
+//	  ray_direction = (invM_d * Vector4f(pt_camera.toVector3().normalised(), 0)).toVector3(); // camera ray
 	} else
 	{
-		Vector4f camera_ray_world = invM_d * Vector4f(TO_VECTOR3(pt_camera).normalised(), 1);
-		ray_direction = TO_VECTOR3(camera_ray_world);
+		Vector4f camera_ray_world = invM_d * Vector4f(pt_camera.toVector3().normalised(), 1);
+		ray_direction = camera_ray_world.toVector3();
 	}
-	ray_start = TO_VECTOR3(pt_world) - mu * ray_direction;
+	ray_start = pt_world.toVector3() - mu * ray_direction;
 
-	BlockTraversal blockTraversal(ray_start, ray_direction, 2 * mu, blockSideLength);
+	BlockTraversal blockTraversal(ray_start, ray_direction, 2 * mu, voxelSize);
 
+	Vector3i lastBlockPos(MAX_INT, MAX_INT, MAX_INT);
 	while(blockTraversal.HasNextBlock())
 	{
-		Vector3i blockPos = blockTraversal.GetNextBlock();
+		Vector3i voxelPos = blockTraversal.GetNextBlock();
+		Vector3i blockPos = voxelToBlockPos(voxelPos);
+		if (blockPos == lastBlockPos)
+			continue;
 
 		if (tsdfMode == ITMLibSettings::TSDFMode::TSDFMODE_DIRECTIONAL)
 		{
 			float weights[N_DIRECTIONS];
-			Vector3f normal_world = TO_VECTOR3(invM_d * depthNormal[x + y * imgSize.x]);
+			Vector3f normal_world = (invM_d * depthNormal[x + y * imgSize.x]).toVector3();
 			ComputeDirectionWeights(normal_world, weights);
 			for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
 			{
@@ -412,6 +663,7 @@ buildHashAllocAndVisibleType(DEVICEPTR(HashEntryAllocType)* entriesAllocType,
 			SetBlockAllocAndVisibleType(hashTable, blockCoords, blockDirections, entriesAllocType, entriesVisibleType,
 				blockPos);
 		}
+		lastBlockPos = blockPos;
 	}
 }
 

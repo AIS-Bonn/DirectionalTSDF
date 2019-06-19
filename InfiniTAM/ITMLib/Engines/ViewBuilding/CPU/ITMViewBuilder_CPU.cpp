@@ -19,9 +19,9 @@ void saveNormalImage(ITMView *view, const std::string &path)
 	const Vector4f *data_from =  view->depthNormal->GetData(MEMORYDEVICE_CPU);
 	for (int i=0; i < view->depthNormal->noDims[0] * view->depthNormal->noDims[1]; i++)
 	{
-		data_to[i].x = static_cast<uchar>(data_from[i].x * 255);
-		data_to[i].y = static_cast<uchar>(data_from[i].y * 255);
-		data_to[i].z = static_cast<uchar>(data_from[i].z * 255);
+		data_to[i].x = static_cast<uchar>(abs(data_from[i].x) * 255);
+		data_to[i].y = static_cast<uchar>(abs(data_from[i].y) * 255);
+		data_to[i].z = static_cast<uchar>(abs(data_from[i].z) * 255);
 		data_to[i].w = 255;
 	}
 	SaveImageToFile(normalImage, path.c_str());
@@ -29,13 +29,15 @@ void saveNormalImage(ITMView *view, const std::string &path)
 
 void ITMViewBuilder_CPU::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, bool useBilateralFilter, bool modelSensorNoise, bool storePreviousImage)
 { 
-	if (*view_ptr == NULL)
+	if (*view_ptr == nullptr)
 	{
 		*view_ptr = new ITMView(calib, rgbImage->noDims, rawDepthImage->noDims, false);
-		if (this->shortImage != NULL) delete this->shortImage;
+		delete this->shortImage;
 		this->shortImage = new ITMShortImage(rawDepthImage->noDims, true, false);
-		if (this->floatImage != NULL) delete this->floatImage;
+		delete this->floatImage;
 		this->floatImage = new ITMFloatImage(rawDepthImage->noDims, true, false);
+		delete this->normals;
+		this->normals = new ITMFloat4Image(rawDepthImage->noDims, true, false);
 
 		if (modelSensorNoise)
 		{
@@ -79,9 +81,10 @@ void ITMViewBuilder_CPU::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage
 
 	if (modelSensorNoise)
 	{
-		this->ComputeNormalAndWeights(view->depthNormal, view->depthUncertainty, view->depth, view->calib.intrinsics_d.projectionParamsSimple.all);
+		this->ComputeNormalAndWeights(this->normals, view->depthUncertainty, view->depth, view->calib.intrinsics_d.projectionParamsSimple.all);
+		this->NormalFiltering(view->depthNormal, this->normals);
 
-//		saveNormalImage(view, "/tmp/normals.png");
+		saveNormalImage(view, "/tmp/normals.png");
 	}
 }
 
@@ -157,5 +160,16 @@ void ITMViewBuilder_CPU::ComputeNormalAndWeights(ITMFloat4Image *normal_out, ITM
 
 	for (int y = 2; y < imgDims.y - 2; y++) for (int x = 2; x < imgDims.x - 2; x++)
 		computeNormalAndWeight(depthData_in, normalData_out, sigmaZData_out, x, y, imgDims, intrinsic);
+}
+
+void ITMViewBuilder_CPU::NormalFiltering(ITMFloat4Image* normals_out, const ITMFloat4Image* normals_in)
+{
+	Vector2i imgDims = normals_in->noDims;
+
+	Vector4f *n_out = normals_out->GetData(MEMORYDEVICE_CPU);
+	const Vector4f *n_in = normals_in->GetData(MEMORYDEVICE_CPU);
+
+	for (int y = 2; y < imgDims.y - 2; y++) for (int x = 2; x < imgDims.x - 2; x++)
+		filterNormals(n_out, n_in, 2, 2, x, y, imgDims);
 }
 

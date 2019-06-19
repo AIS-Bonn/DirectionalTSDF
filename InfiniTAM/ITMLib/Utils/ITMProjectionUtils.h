@@ -8,17 +8,24 @@
 #include "ITMMath.h"
 #include "../../ORUtils/PlatformIndependence.h"
 
+namespace ITMLib
+{
+
 template<typename T> _CPU_AND_GPU_CODE_ inline Vector2f project(const THREADPTR(ORUtils::Vector3<T>) &point_3d, const THREADPTR(Vector4f) &intrinsics)
 {
 	return Vector2f(intrinsics.x * (float)point_3d.x / (float)point_3d.z + intrinsics.z,
 					intrinsics.y * (float)point_3d.y / (float)point_3d.z + intrinsics.w);
 }
 
-template<typename T> _CPU_AND_GPU_CODE_ inline Vector3f unproject(const THREADPTR(ORUtils::Vector2<T>) &point_2d, const THREADPTR(float) depth, const THREADPTR(Vector4f) &intrinsics)
+_CPU_AND_GPU_CODE_
+inline Vector3f reprojectImagePoint(int x, int y, float depth, const Vector4f &invProjParams)
 {
-	return Vector3f(depth * (((float)point_2d.x - intrinsics.z) / intrinsics.x),
-					depth * (((float)point_2d.y - intrinsics.w) / intrinsics.y),
-					depth);
+	Vector3f pt_camera;
+	pt_camera.z = depth;
+	pt_camera.x = pt_camera.z * ((float(x) - invProjParams.z) * invProjParams.x);
+	pt_camera.y = pt_camera.z * ((float(y) - invProjParams.w) * invProjParams.y);
+
+	return pt_camera;
 }
 
 template<typename T> _CPU_AND_GPU_CODE_ inline Vector3f unproject(const THREADPTR(T) x, const THREADPTR(T) y, const THREADPTR(float) depth, const THREADPTR(Vector4f) &intrinsics)
@@ -27,3 +34,14 @@ template<typename T> _CPU_AND_GPU_CODE_ inline Vector3f unproject(const THREADPT
 					depth * (((float)y - intrinsics.w) / intrinsics.y),
 					depth);
 }
+
+inline Vector4f invertProjectionParams(Vector4f projParams)
+{
+	Vector4f invProjParams = projParams;
+	invProjParams.x = 1.0f / invProjParams.x;
+	invProjParams.y = 1.0f / invProjParams.y;
+
+	return invProjParams;
+}
+
+} // namespace ITMLib

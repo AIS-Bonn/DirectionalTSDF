@@ -53,7 +53,7 @@ struct ITMVoxel_s_rgb
 	typedef ushort WeightType;
 
 	_CPU_AND_GPU_CODE_ static short SDF_initialValue() { return 32767; }
-	_CPU_AND_GPU_CODE_ static float valueToFloat(float x) { return (float)(x) / 32767.0f; }
+	_CPU_AND_GPU_CODE_ static float valueToFloat(short x) { return (float)(x) / 32767.0f; }
 	_CPU_AND_GPU_CODE_ static short floatToValue(float x) { return (short)((x) * 32767.0f); }
 
 	_CPU_AND_GPU_CODE_ static float weightToFloat(WeightType w, int maxW) {

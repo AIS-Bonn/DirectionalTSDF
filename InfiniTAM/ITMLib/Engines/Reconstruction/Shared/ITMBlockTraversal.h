@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "ITMLib/Utils/ITMGeometry.h"
+
 namespace ITMLib
 {
 
@@ -31,9 +33,11 @@ struct BlockTraversal
 		                     dir.z > 0 ? 1 : -1)),
 		  tDelta(fabs(block_size / length(dir)))
 	{
-		if (length(direction) == 0)
+		if (ORUtils::length(direction) == 0)
 		{
 			printf("ERROR: direction of block traversal must not be 0!\n");
+			distance = truncation_distance;
+			return;
 		}
 
 		Vector3f val = WorldToBlockf(origin);
@@ -75,15 +79,21 @@ struct BlockTraversal
 		if (round_to_nearest)
 		{
 			Vector3f sign(p.x > 0 ? 1 : -1, p.y > 0 ? 1 : -1, p.z > 0 ? 1 : -1);
-			return (p + sign * 0.5f).toIntFloor();
+			Vector3f asdf = p + sign * 0.5f;
+			return (p + sign * 0.5f).toInt();
 		}
-		Vector3i idx = p.toIntFloor();
+		Vector3i idx = p.toInt();
 		if (p.x < 0) idx.x -= 1;
 		if (p.y < 0) idx.y -= 1;
 		if (p.z < 0) idx.z -= 1;
 		return idx;
 	}
 
+	_CPU_AND_GPU_CODE_
+	inline Vector3f BlockToWorld(const Vector3i& blockPos)
+	{
+		return blockPos.toFloat() * block_size;
+	}
 
 	_CPU_AND_GPU_CODE_
 	bool HasNextBlock()

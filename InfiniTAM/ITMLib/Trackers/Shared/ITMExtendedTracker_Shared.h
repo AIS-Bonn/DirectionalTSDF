@@ -5,6 +5,9 @@
 #include "../../Utils/ITMPixelUtils.h"
 #include "../../Utils/ITMProjectionUtils.h"
 
+namespace ITMLib
+{
+
 // Tukey loss
 _CPU_AND_GPU_CODE_ inline float tukey_rho(float r, float c)
 {
@@ -389,3 +392,5 @@ _CPU_AND_GPU_CODE_ inline void projectPoint_exRGB(
 		out_points[sceneIdx] = Vector4f(0.f, 0.f, 0.f, -1.f); // Mark as invalid
 	}
 }
+
+} // namespace ITMLib
