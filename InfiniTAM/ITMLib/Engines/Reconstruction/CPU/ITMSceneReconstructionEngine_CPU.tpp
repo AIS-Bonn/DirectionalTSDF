@@ -8,24 +8,22 @@
 using namespace ITMLib;
 
 template<class TVoxel, class TIndex>
-ITMSceneReconstructionEngine_CPU<TVoxel, TIndex>::ITMSceneReconstructionEngine_CPU(ITMLibSettings::TSDFMode tsdfMode,
-			ITMLibSettings::FusionMode fusionMode, ITMLibSettings::FusionMetric fusionMetric)
-	:ITMSceneReconstructionEngine_CPU_common<TVoxel, TIndex>(tsdfMode, fusionMode, fusionMetric)
+ITMSceneReconstructionEngine_CPU<TVoxel, TIndex>::ITMSceneReconstructionEngine_CPU(std::shared_ptr<const ITMLibSettings> settings)
+			:ITMSceneReconstructionEngine_CPU_common<TVoxel, TIndex>(settings)
 {
 
 }
 
 template<class TVoxel>
-ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHash>::ITMSceneReconstructionEngine_CPU(ITMLibSettings::TSDFMode tsdfMode,
-			ITMLibSettings::FusionMode fusionMode, ITMLibSettings::FusionMetric fusionMetric)
-	: ITMSceneReconstructionEngine_CPU_common<TVoxel,ITMVoxelBlockHash>(tsdfMode, fusionMode, fusionMetric)
+ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHash>::ITMSceneReconstructionEngine_CPU(std::shared_ptr<const ITMLibSettings> settings)
+			:ITMSceneReconstructionEngine_CPU_common<TVoxel, ITMVoxelBlockHash>(settings)
 {
 	int noTotalEntries = ITMVoxelBlockHash::noTotalEntries;
 	entriesAllocType = new ORUtils::MemoryBlock<HashEntryAllocType>(noTotalEntries, MEMORYDEVICE_CPU);
 	blockCoords = new ORUtils::MemoryBlock<Vector4s>(noTotalEntries, MEMORYDEVICE_CPU);
 	blockDirections = new ORUtils::MemoryBlock<TSDFDirection>(noTotalEntries, MEMORYDEVICE_CPU);
 
-	if (fusionMode == ITMLibSettings::FusionMode::FUSIONMODE_RAY_CASTING)
+	if (settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING)
 	{
 		this->entriesRayCasting = new ORUtils::MemoryBlock<VoxelRayCastingSum>(
 			ITMVoxelBlockHash::noLocalEntries * SDF_BLOCK_SIZE3, MEMORYDEVICE_CPU);
@@ -38,7 +36,7 @@ ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHash>::~ITMSceneReconstruct
 	delete entriesAllocType;
 	delete blockCoords;
 	delete blockDirections;
-	if (this->fusionMode == ITMLibSettings::FusionMode::FUSIONMODE_RAY_CASTING)
+	if (this->settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING)
 	{
 		delete this->entriesRayCasting;
 	}
@@ -93,12 +91,14 @@ void ITMSceneReconstructionEngine_CPU_common<TVoxel, TIndex>::IntegrateIntoScene
 	/// 1. Ray trace every pixel, sum up results
 	for (int y = 0; y < view->depth->noDims.y; y++) for (int x = 0; x < view->depth->noDims.x; x++)
 	{
-		rayCastCarveSpace<TVoxel>(x, y, view->depth->noDims, depth, invM_d,
-		                          invProjParams_d, projParams_rgb, *(scene->sceneParams),
-		                          this->tsdfMode, hashTable, entriesRayCasting, localVBA);
+		if (this->settings->fusionParams.useSpaceCarving)
+			rayCastCarveSpace<TVoxel>(x, y, view->depth->noDims, depth, invM_d,
+																invProjParams_d, projParams_rgb,
+																this->settings->fusionParams, this->settings->sceneParams,
+																hashTable, entriesRayCasting, localVBA);
 		rayCastUpdate<TVoxel>(x, y, view->depth->noDims, depth, depthNormals, invM_d,
-		                      invProjParams_d, projParams_rgb, *(scene->sceneParams),
-		                      this->tsdfMode, this->fusionMetric,
+		                      invProjParams_d, projParams_rgb,
+		                      this->settings->fusionParams, this->settings->sceneParams,
 		                      hashTable, entriesRayCasting);
 	}
 
@@ -145,7 +145,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateIntoS
 
 	float *depth = view->depth->GetData(MEMORYDEVICE_CPU);
 	Vector4f *depthNormals = nullptr;
-	if (scene->sceneParams->useWeighting)
+	if (this->settings->fusionParams.useWeighting)
 		depthNormals = view->depthNormal->GetData(MEMORYDEVICE_CPU);
 	float *confidence = view->depthConfidence->GetData(MEMORYDEVICE_CPU);
 	Vector4u *rgb = view->rgb->GetData(MEMORYDEVICE_CPU);
@@ -187,7 +187,8 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateIntoS
 
 			ComputeUpdatedVoxelInfo<TVoxel::hasColorInformation,TVoxel::hasConfidenceInformation, TVoxel>::compute(
 				localVoxelBlock[locId], TSDFDirection(currentHashEntry.direction), pt_model, M_d,
-				projParams_d, M_rgb, projParams_rgb, *(scene->sceneParams), depth, depthNormals, confidence, depthImgSize, rgb, rgbImgSize);
+				projParams_d, M_rgb, projParams_rgb, this->settings->fusionParams, this->settings->sceneParams,
+				depth, depthNormals, confidence, depthImgSize, rgb, rgbImgSize);
 		}
 	}
 }
@@ -325,9 +326,9 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 
 	float *depth = view->depth->GetData(MEMORYDEVICE_CPU);
 	Vector4f *depthNormal = nullptr;
-	if (this->tsdfMode == ITMLibSettings::TSDFMode::TSDFMODE_DIRECTIONAL or
-		this->fusionMode == ITMLibSettings::FusionMode::FUSIONMODE_RAY_CASTING or
-		this->fusionMetric == ITMLibSettings::FusionMetric::FUSIONMETRIC_POINT_TO_PLANE)
+	if (this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL or
+		this->settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING or
+		this->settings->fusionParams.fusionMetric == FusionMetric::FUSIONMETRIC_POINT_TO_PLANE)
 		depthNormal = view->depthNormal->GetData(MEMORYDEVICE_CPU);
 	int *voxelAllocationList = scene->localVBA.GetAllocationList();
 	int *excessAllocationList = scene->index.GetExcessAllocationList();
@@ -340,7 +341,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 	Vector4s *blockCoords = this->blockCoords->GetData(MEMORYDEVICE_CPU);
 	TSDFDirection *blockDirections = this->blockDirections->GetData(MEMORYDEVICE_CPU);
 	int noTotalEntries = scene->index.noTotalEntries;
-	if (this->fusionMode == ITMLibSettings::FusionMode::FUSIONMODE_RAY_CASTING)
+	if (this->settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING)
 		entriesRayCasting = this->entriesRayCasting->GetData(MEMORYDEVICE_CPU);
 
 	bool useSwapping = scene->globalCache != NULL;
@@ -355,7 +356,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 	for (int i = 0; i < renderState_vh->noVisibleEntries; i++)
 	{
 		entriesVisibleType[visibleEntryIDs[i]] = PREVIOUSLY_VISIBLE;
-		if (this->fusionMode == ITMLibSettings::FusionMode::FUSIONMODE_RAY_CASTING)
+		if (this->settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING)
 			entriesRayCasting[visibleEntryIDs[i]].reset();
 	}
 
@@ -367,10 +368,17 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 	{
 		int y = locId / depthImgSize.x;
 		int x = locId - y * depthImgSize.x;
+
+		if (this->settings->fusionParams.useSpaceCarving)
+			buildSpaceCarvingVisibleType(entriesVisibleType, x, y, blockCoords, blockDirections,
+																	 depth, depthNormal, invM_d, invProjParams_d, mu, depthImgSize, voxelSize, hashTable,
+																	 scene->sceneParams->viewFrustum_min, scene->sceneParams->viewFrustum_max,
+																	 this->settings->fusionParams);
+
 		buildHashAllocAndVisibleType(entriesAllocType, entriesVisibleType, x, y, blockCoords, blockDirections,
 			depth, depthNormal, invM_d, invProjParams_d, mu, depthImgSize, voxelSize, hashTable,
 			scene->sceneParams->viewFrustum_min, scene->sceneParams->viewFrustum_max,
-			this->tsdfMode, this->fusionMode, this->fusionMetric);
+			this->settings->fusionParams);
 	}
 
 	if (onlyUpdateVisibleList) useSwapping = false;
@@ -488,10 +496,8 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMPlainVoxelArray>::IntegrateInto
 }
 
 template<class TVoxel, class TIndex>
-ITMSceneReconstructionEngine_CPU_common<TVoxel, TIndex>::ITMSceneReconstructionEngine_CPU_common(
-	ITMLibSettings::TSDFMode tsdfMode, ITMLibSettings::FusionMode fusionMode,
-	ITMLibSettings::FusionMetric fusionMetric)
-	:ITMSceneReconstructionEngine<TVoxel, TIndex>(tsdfMode, fusionMode, fusionMetric)
+ITMSceneReconstructionEngine_CPU_common<TVoxel, TIndex>::ITMSceneReconstructionEngine_CPU_common(std::shared_ptr<const ITMLibSettings> settings)
+			:ITMSceneReconstructionEngine<TVoxel, TIndex>(settings)
 {
 
 }

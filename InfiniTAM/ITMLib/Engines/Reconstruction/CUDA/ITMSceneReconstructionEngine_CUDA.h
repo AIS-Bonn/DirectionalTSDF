@@ -11,8 +11,7 @@ namespace ITMLib
 	class ITMSceneReconstructionEngine_CUDA_common : public ITMSceneReconstructionEngine < TVoxel, TIndex >
 	{
 	public:
-		explicit ITMSceneReconstructionEngine_CUDA_common(ITMLibSettings::TSDFMode tsdfMode,
-																							 ITMLibSettings::FusionMode fusionMode, ITMLibSettings::FusionMetric fusionMetric);
+		explicit ITMSceneReconstructionEngine_CUDA_common(std::shared_ptr<const ITMLibSettings> settings);
 
 	protected:
 		void IntegrateIntoSceneRayCasting(ITMScene<TVoxel,TIndex> *scene, const ITMView *view,
@@ -23,8 +22,7 @@ template<class TVoxel, class TIndex>
 	class ITMSceneReconstructionEngine_CUDA : public ITMSceneReconstructionEngine_CUDA_common < TVoxel, TIndex >
 	{
 	public:
-		explicit ITMSceneReconstructionEngine_CUDA(ITMLibSettings::TSDFMode tsdfMode,
-			ITMLibSettings::FusionMode fusionMode, ITMLibSettings::FusionMetric fusionMetric);
+		explicit ITMSceneReconstructionEngine_CUDA(std::shared_ptr<const ITMLibSettings> settings);
 	};
 
 template<class TVoxel>
@@ -43,8 +41,7 @@ template<class TVoxel>
 		void AllocateSceneFromDepth(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view, const ITMTrackingState *trackingState,
 			const ITMRenderState *renderState, bool onlyUpdateVisibleList = false, bool resetVisibleList = false) override;
 
-		explicit ITMSceneReconstructionEngine_CUDA(ITMLibSettings::TSDFMode tsdfMode,
-			ITMLibSettings::FusionMode fusionMode, ITMLibSettings::FusionMetric fusionMetric);
+		explicit ITMSceneReconstructionEngine_CUDA(std::shared_ptr<const ITMLibSettings> settings);
 		~ITMSceneReconstructionEngine_CUDA();
 
 	protected:

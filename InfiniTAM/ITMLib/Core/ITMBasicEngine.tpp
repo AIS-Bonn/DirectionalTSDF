@@ -244,10 +244,10 @@ template <typename TVoxel, typename TIndex>
 ITMTrackingState::TrackingResult ITMBasicEngine<TVoxel,TIndex>::ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement)
 {
 	bool modelSensorNoise = (
-		settings->sceneParams.useWeighting or
-		settings->tsdfMode == ITMLibSettings::TSDFMode::TSDFMODE_DIRECTIONAL or
-		settings->fusionMode == ITMLibSettings::FusionMode::FUSIONMODE_RAY_CASTING or
-		settings->fusionMetric == ITMLibSettings::FusionMetric::FUSIONMETRIC_POINT_TO_PLANE);
+		settings->fusionParams.useWeighting or
+		settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL or
+		settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING or
+		settings->fusionParams.fusionMetric == FusionMetric::FUSIONMETRIC_POINT_TO_PLANE);
 	// prepare image and turn it into a depth image
 	if (imuMeasurement == NULL) viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, modelSensorNoise);
 	else viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, imuMeasurement, modelSensorNoise);
@@ -398,7 +398,7 @@ void ITMBasicEngine<TVoxel,TIndex>::GetImage(ITMUChar4Image *out, GetImageType g
 			imageType = IITMVisualisationEngine::RENDER_SHADED_GREYSCALE_IMAGENORMALS;
 		}
 
-		bool useDirectional = (this->settings->tsdfMode == ITMLibSettings::TSDFMode::TSDFMODE_DIRECTIONAL);
+		bool useDirectional = (this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL);
 		visualisationEngine->RenderImage(scene, trackingState->pose_d, &view->calib.intrinsics_d, renderState_live, renderState_live->raycastImage, imageType, raycastType);
 
 		ORUtils::Image<Vector4u> *srcImage = NULL;

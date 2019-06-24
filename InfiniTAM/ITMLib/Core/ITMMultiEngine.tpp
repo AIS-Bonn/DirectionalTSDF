@@ -147,10 +147,10 @@ ITMTrackingState::TrackingResult ITMMultiEngine<TVoxel, TIndex>::ProcessFrame(IT
 
 	// prepare image and turn it into a depth image
 	bool modelSensorNoise = (
-		settings->sceneParams.useWeighting or
-		settings->tsdfMode == ITMLibSettings::TSDFMode::TSDFMODE_DIRECTIONAL or
-		settings->fusionMode == ITMLibSettings::FusionMode::FUSIONMODE_RAY_CASTING or
-		settings->fusionMetric == ITMLibSettings::FusionMetric::FUSIONMETRIC_POINT_TO_PLANE);
+		settings->fusionParams.useWeighting or
+		settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL or
+		settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING or
+		settings->fusionParams.fusionMetric == FusionMetric::FUSIONMETRIC_POINT_TO_PLANE);
 	if (imuMeasurement == NULL) viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, modelSensorNoise);
 	else viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, imuMeasurement, modelSensorNoise);
 

@@ -10,7 +10,7 @@ namespace ITMLib
 {
 
 _CPU_AND_GPU_CODE_ inline ITMHashEntry getHashEntry(
-	const CONSTPTR(ITMVoxelBlockHash::IndexData) *voxelIndex, Vector3i blockPos,
+	const CONSTPTR(ITMVoxelBlockHash::IndexData) *hashTable, Vector3i blockPos,
 	const TSDFDirection direction=TSDFDirection::NONE)
 {
 	int hashIdx;
@@ -22,7 +22,7 @@ _CPU_AND_GPU_CODE_ inline ITMHashEntry getHashEntry(
 	ITMHashEntry hashEntry;
 	while (true)
 	{
-		hashEntry = voxelIndex[hashIdx];
+		hashEntry = hashTable[hashIdx];
 
 		if (IS_EQUAL3(hashEntry.pos, blockPos) && hashEntry.ptr >= 0)
 		{

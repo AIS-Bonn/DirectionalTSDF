@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <memory>
 #include <math.h>
 
 #include "ITMLib/Objects/RenderStates/ITMRenderState.h"
@@ -49,9 +50,8 @@ namespace ITMLib
 	class ITMSceneReconstructionEngine
 	{
 	public:
-		ITMSceneReconstructionEngine(ITMLibSettings::TSDFMode tsdfMode,
-			ITMLibSettings::FusionMode fusionMode, ITMLibSettings::FusionMetric fusionMetric)
-			: tsdfMode(tsdfMode), fusionMode(fusionMode), fusionMetric(fusionMetric)
+		explicit ITMSceneReconstructionEngine(std::shared_ptr<const ITMLibSettings> settings)
+			:settings(std::move(settings)), entriesRayCasting(nullptr)
 		{ }
 
 		/** Clear and reset a scene to set up a new empty
@@ -72,7 +72,7 @@ namespace ITMLib
 		void IntegrateIntoScene(ITMScene<TVoxel, TIndex>* scene, const ITMView* view,
 			const ITMTrackingState* trackingState, const ITMRenderState* renderState)
 		{
-			if (this->fusionMode == ITMLibSettings::FusionMode::FUSIONMODE_RAY_CASTING)
+			if (this->settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING)
 			{
 				IntegrateIntoSceneRayCasting(scene, view, trackingState, renderState);
 			}
@@ -86,9 +86,7 @@ namespace ITMLib
 		virtual ~ITMSceneReconstructionEngine(void) { }
 
 	protected:
-		ITMLibSettings::TSDFMode tsdfMode;
-		ITMLibSettings::FusionMode fusionMode;
-		ITMLibSettings::FusionMetric fusionMetric;
+		std::shared_ptr<const ITMLibSettings> settings;
 
 		/**
 		 * Per-hash entry summation values for ray casting fusion update

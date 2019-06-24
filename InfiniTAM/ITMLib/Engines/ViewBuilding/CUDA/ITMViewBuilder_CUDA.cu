@@ -230,9 +230,9 @@ __global__ void filterNormals_device(Vector4f *normals_out, const Vector4f *norm
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
 
-	if (x < 2 || x > imgDims.x - 2 || y < 2 || y > imgDims.y - 2) return;
+	if (x < 5 || x > imgDims.x - 5 || y < 5 || y > imgDims.y - 5) return;
 
-	filterNormals(normals_out, normals_in, 2, 2, x, y, imgDims);
+	filterNormals(normals_out, normals_in, 5, 5, x, y, imgDims);
 }
 
 __global__ void ComputeNormalAndWeight_device(const float* depth_in, Vector4f* normal_out, float *sigmaZ_out, Vector2i imgDims, Vector4f intrinsic)

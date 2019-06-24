@@ -160,15 +160,11 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndWeight(const CONSTPTR(float) *dep
 	// first compute the normal
 	Vector3f diff_x(0.0f, 0.0f, 0.0f), diff_y(0.0f, 0.0f, 0.0f);
 
-	Vector4f projParams_d(
-		1 / intrinparam.x,
-		1 / intrinparam.y,
-		intrinparam.z,
-		intrinparam.w);
-	Vector3f xp1_y = reprojectImagePoint(x + 1, y, depth_in[(x + 1) + y * imgDims.x], projParams_d);
-	Vector3f xm1_y = reprojectImagePoint(x - 1, y, depth_in[(x - 1) + y * imgDims.x], projParams_d);
-	Vector3f x_yp1 = reprojectImagePoint(x, y + 1, depth_in[x + (y + 1) * imgDims.x], projParams_d);
-	Vector3f x_ym1 = reprojectImagePoint(x, y - 1, depth_in[x + (y - 1) * imgDims.x], projParams_d);
+	Vector4f invProjParams_d = invertProjectionParams(intrinparam);
+	Vector3f xp1_y = reprojectImagePoint(x + 1, y, depth_in[(x + 1) + y * imgDims.x], invProjParams_d);
+	Vector3f xm1_y = reprojectImagePoint(x - 1, y, depth_in[(x - 1) + y * imgDims.x], invProjParams_d);
+	Vector3f x_yp1 = reprojectImagePoint(x, y + 1, depth_in[x + (y + 1) * imgDims.x], invProjParams_d);
+	Vector3f x_ym1 = reprojectImagePoint(x, y - 1, depth_in[x + (y - 1) * imgDims.x], invProjParams_d);
 
 	if (xp1_y.z <= 0 or x_yp1.z <= 0 or xm1_y.z <= 0 or x_ym1.z <= 0 or abs(xp1_y.z - z) > 0.02 or abs(xm1_y.z - z) > 0.02)
 	{
@@ -190,7 +186,7 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndWeight(const CONSTPTR(float) *dep
 	}
 	outNormal = outNormal.normalised();
 
-	normal_out[idx].x = outNormal.x; normal_out[idx].y = outNormal.y; normal_out[idx].z = outNormal.z; normal_out[idx].w = 1.0f;
+	normal_out[idx] = Vector4f(outNormal, 1.0f);
 
 	// now compute weight
 	float theta = acos(outNormal.z);

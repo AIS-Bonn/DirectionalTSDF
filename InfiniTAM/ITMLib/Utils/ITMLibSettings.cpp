@@ -7,11 +7,13 @@ using namespace ITMLib;
 #include <cmath>
 
 ITMLibSettings::ITMLibSettings(void)
-:	sceneParams(0.04f, 100, 0.005f, 0.2f, 3.0f, false, true),
+//:	sceneParams(0.04f, 5000, 0.005f, 0.2f, 3.0f, false),
+:	sceneParams(0.02f, 5000, 0.01f, 0.2f, 3.0f, false),
+//:	sceneParams(0.08f, 10000, 0.02f, 0.2f, 3.0f, false),
 	surfelSceneParams(0.5f, 0.6f, static_cast<float>(20 * M_PI / 180), 0.01f, 0.004f, 3.5f, 25.0f, 4, 1.0f, 5.0f, 20, 10000000, true, true)
 {
 	// skips every other point when using the colour renderer for creating a point cloud
-	skipPoints = true;
+	skipPoints = false;
 
 	// create all the things required for marching cubes and mesh extraction
 	// - uses additional memory (lots!)
@@ -46,14 +48,27 @@ ITMLibSettings::ITMLibSettings(void)
 //	libMode = LIBMODE_LOOPCLOSURE;
 //	libMode = LIBMODE_BASIC_SURFELS;
 
-	tsdfMode = TSDFMODE_DEFAULT;
-//	tsdfMode = TSDFMODE_DIRECTIONAL;
+	//////////////////////////////////////////////////////////////////////////
+	/// Fusion Params
+	//////////////////////////////////////////////////////////////////////////
 
-	fusionMode = FUSIONMODE_VOXEL_PROJECTION;
-//	fusionMode = FUSIONMODE_RAY_CASTING;
+	fusionParams.tsdfMode = TSDFMODE_DEFAULT;
+//	fusionParams.tsdfMode = TSDFMODE_DIRECTIONAL;
 
-//	fusionMetric = FUSIONMETRIC_POINT_TO_POINT;
-	fusionMetric = FUSIONMETRIC_POINT_TO_PLANE;
+//	fusionParams.fusionMode = FUSIONMODE_VOXEL_PROJECTION;
+	fusionParams.fusionMode = FUSIONMODE_RAY_CASTING;
+
+	fusionParams.fusionMetric = FUSIONMETRIC_POINT_TO_POINT;
+//	fusionParams.fusionMetric = FUSIONMETRIC_POINT_TO_PLANE;
+
+	fusionParams.useWeighting = true;
+
+	fusionParams.useSpaceCarving = true;
+
+
+	//////////////////////////////////////////////////////////////////////////
+	/// Tracking Params
+	//////////////////////////////////////////////////////////////////////////
 
 	//// Default ICP tracking
 //	trackerConfig = "type=icp,levels=rrrbb,minstep=1e-3,"

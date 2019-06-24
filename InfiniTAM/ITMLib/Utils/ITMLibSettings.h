@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "ITMFusionParams.h"
 #include "ITMSceneParams.h"
 #include "ITMSurfelSceneParams.h"
 #include "../../ORUtils/MemoryDeviceType.h"
@@ -39,24 +40,6 @@ namespace ITMLib
 			LIBMODE_LOOPCLOSURE
 		} LibMode;
 
-		typedef enum
-		{
-			TSDFMODE_DEFAULT,
-			TSDFMODE_DIRECTIONAL,
-		} TSDFMode;
-
-		typedef enum
-		{
-			FUSIONMODE_VOXEL_PROJECTION,
-			FUSIONMODE_RAY_CASTING
-		} FusionMode;
-
-		typedef enum
-		{
-			FUSIONMETRIC_POINT_TO_POINT,
-			FUSIONMETRIC_POINT_TO_PLANE
-		} FusionMetric;
-
 		/// Select the type of device to use
 		DeviceType deviceType;
 
@@ -72,11 +55,10 @@ namespace ITMLib
 		FailureMode behaviourOnFailure;
 		SwappingMode swappingMode;
 		LibMode libMode;
-		TSDFMode tsdfMode;
-		FusionMode fusionMode;
-		FusionMetric fusionMetric;
 
 		const char *trackerConfig;
+
+		ITMFusionParams fusionParams;
 
 		/// Further, scene specific parameters such as voxel size
 		ITMSceneParams sceneParams;

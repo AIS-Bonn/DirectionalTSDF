@@ -1,5 +1,6 @@
 // Copyright 2014-2017 Oxford University Innovation Limited and the authors of InfiniTAM
 
+#include <memory>
 #include <ITMLib/Utils/ITMLibSettings.h>
 #include <ITMLib/Utils/ITMSceneParams.h>
 #include "ITMSceneReconstructionEngine_CUDA.h"
@@ -17,19 +18,18 @@ template<class TVoxel, bool stopMaxW>
 __global__ void integrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry *hashTable, int *noVisibleEntryIDs,
 	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, const Vector4f *depthNormals, const float *confidence,
 	Vector2i imgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d,
-	Vector4f projParams_rgb, float _voxelSize, const ITMLib::ITMSceneParams sceneParams);
+	Vector4f projParams_rgb, float _voxelSize, ITMFusionParams fusionParams, ITMSceneParams sceneParams);
 
 template<class TVoxel, bool stopMaxW>
 __global__ void integrateIntoScene_device(TVoxel *voxelArray, const ITMPlainVoxelArray::ITMVoxelArrayInfo *arrayInfo,
 	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, const Vector4f *depthNormals, const float *confidence,
 	Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d,
-	Vector4f projParams_rgb, float _voxelSize, const ITMLib::ITMSceneParams sceneParams);
+	Vector4f projParams_rgb, float _voxelSize, ITMFusionParams fusionParams, ITMSceneParams sceneParams);
 
 __global__ void buildHashAllocAndVisibleType_device(HashEntryAllocType *entriesAllocType, HashEntryVisibilityType *entriesVisibleType,
 	Vector4s *blockCoords, TSDFDirection *blockDirections, const float *depth,
 	const Vector4f *depthNormal, Matrix4f invM_d, Vector4f projParams_d, float mu, Vector2i _imgSize, float _voxelSize, ITMHashEntry *hashTable,
-	float viewFrustum_min, float viewFrustum_max, ITMLibSettings::TSDFMode tsdfMode, ITMLibSettings::FusionMode fusionMode,
-	ITMLibSettings::FusionMetric fusionMetric);
+	float viewFrustum_min, float viewFrustum_max, ITMFusionParams fusionParams);
 
 __global__ void allocateVoxelBlocksList_device(int *voxelAllocationList, int *excessAllocationList, ITMHashEntry *hashTable, int noTotalEntries,
 	AllocationTempData *allocData, HashEntryAllocType *entriesAllocType, HashEntryVisibilityType *entriesVisibleType,
@@ -50,10 +50,8 @@ __global__ void buildVisibleList_kernel(ITMHashEntry* hashTable, ITMHashSwapStat
 
 // host methods
 template<class TVoxel, class TIndex>
-ITMSceneReconstructionEngine_CUDA_common<TVoxel, TIndex>::ITMSceneReconstructionEngine_CUDA_common(
-	ITMLibSettings::TSDFMode tsdfMode, ITMLibSettings::FusionMode fusionMode,
-	ITMLibSettings::FusionMetric fusionMetric)
-	:ITMSceneReconstructionEngine<TVoxel, TIndex>(tsdfMode, fusionMode, fusionMetric)
+ITMSceneReconstructionEngine_CUDA_common<TVoxel, TIndex>::ITMSceneReconstructionEngine_CUDA_common(std::shared_ptr<const ITMLibSettings> settings)
+			:ITMSceneReconstructionEngine<TVoxel, TIndex>(settings)
 {
 
 }
@@ -105,9 +103,8 @@ void rayCastUpdate_device(
 	Vector2i imgSize, float* depth, Vector4f* depthNormals,
   const Matrix4f invM_d,
   const Vector4f invProjParams_d, const Vector4f invProjParams_rgb,
+	const ITMFusionParams fusionParams,
   const ITMSceneParams sceneParams,
-  const ITMLibSettings::TSDFMode tsdfMode,
-  const ITMLibSettings::FusionMetric fusionMetric,
   const ITMHashEntry* hashTable,
   VoxelRayCastingSum* entriesRayCasting,
 	TVoxel *localVBA)
@@ -118,13 +115,14 @@ void rayCastUpdate_device(
 	if (x >= imgSize.x or y >= imgSize.y)
 		return;
 
-	rayCastCarveSpace<TVoxel>(x, y, imgSize, depth, invM_d,
-	                          invProjParams_d, invProjParams_rgb, sceneParams,
-	                          tsdfMode, hashTable, entriesRayCasting, localVBA);
+	if (fusionParams.useSpaceCarving)
+		rayCastCarveSpace<TVoxel>(x, y, imgSize, depth, invM_d,
+															invProjParams_d, invProjParams_rgb, fusionParams, sceneParams,
+															hashTable, entriesRayCasting, localVBA);
 
 	rayCastUpdate<TVoxel>(x, y, imgSize, depth, depthNormals, invM_d,
-	                      invProjParams_d, invProjParams_rgb, sceneParams,
-	                      tsdfMode, fusionMetric, hashTable, entriesRayCasting);
+	                      invProjParams_d, invProjParams_rgb, fusionParams, sceneParams,
+	                      hashTable, entriesRayCasting);
 }
 
 template<class TVoxel, class TIndex>
@@ -167,8 +165,8 @@ ITMSceneReconstructionEngine_CUDA_common<TVoxel, TIndex>::IntegrateIntoSceneRayC
 	dim3 blockSizeUpdate(16, 16);
 	dim3 gridSizeUpdate((int)ceil((float)imgSize.x / (float)blockSizeUpdate.x), (int)ceil((float)imgSize.y / (float)blockSizeUpdate.y));
 	rayCastUpdate_device<TVoxel> << <gridSizeUpdate, blockSizeUpdate >> >(
-		imgSize, depth, depthNormals, invM_d, invProjParams_d, projParams_rgb, *(scene->sceneParams),
-		this->tsdfMode, this->fusionMetric, hashTable, entriesRayCasting, localVBA);
+		imgSize, depth, depthNormals, invM_d, invProjParams_d, projParams_rgb, this->settings->fusionParams, this->settings->sceneParams,
+		hashTable, entriesRayCasting, localVBA);
 	ORcudaKernelCheck;
 
 	/// 3. Collect per voxel summation values, update voxel
@@ -177,15 +175,14 @@ ITMSceneReconstructionEngine_CUDA_common<TVoxel, TIndex>::IntegrateIntoSceneRayC
 		hashTable,
 		renderState_vh->GetVisibleEntryIDs(),
 		entriesRayCasting,
-		*(scene->sceneParams)
+		this->settings->sceneParams
 		);
 	ORcudaKernelCheck;
 }
 
 template<class TVoxel>
-ITMSceneReconstructionEngine_CUDA<TVoxel,ITMVoxelBlockHash>::ITMSceneReconstructionEngine_CUDA(ITMLibSettings::TSDFMode tsdfMode,
-			ITMLibSettings::FusionMode fusionMode, ITMLibSettings::FusionMetric fusionMetric)
-	: ITMSceneReconstructionEngine_CUDA_common<TVoxel,ITMVoxelBlockHash>(tsdfMode, fusionMode, fusionMetric)
+ITMSceneReconstructionEngine_CUDA<TVoxel,ITMVoxelBlockHash>::ITMSceneReconstructionEngine_CUDA(std::shared_ptr<const ITMLibSettings> settings)
+			:ITMSceneReconstructionEngine_CUDA_common<TVoxel, ITMVoxelBlockHash>(settings)
 {
 	ORcudaSafeCall(cudaMalloc((void**)&allocationTempData_device, sizeof(AllocationTempData)));
 	ORcudaSafeCall(cudaMallocHost((void**)&allocationTempData_host, sizeof(AllocationTempData)));
@@ -194,7 +191,7 @@ ITMSceneReconstructionEngine_CUDA<TVoxel,ITMVoxelBlockHash>::ITMSceneReconstruct
 	ORcudaSafeCall(cudaMalloc((void**)&entriesAllocType_device, noTotalEntries * sizeof(HashEntryAllocType)));
 	ORcudaSafeCall(cudaMalloc((void**)&blockCoords_device, noTotalEntries * sizeof(Vector4s)));
 	ORcudaSafeCall(cudaMalloc((void**)&blockDirections_device, noTotalEntries * sizeof(TSDFDirection)));
-	if (fusionMode == ITMLibSettings::FusionMode::FUSIONMODE_RAY_CASTING)
+	if (settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING)
 	{
 		this->entriesRayCasting = new ORUtils::MemoryBlock<VoxelRayCastingSum>(
 			ITMVoxelBlockHash::noLocalEntries * SDF_BLOCK_SIZE3, MEMORYDEVICE_CUDA);
@@ -209,7 +206,7 @@ ITMSceneReconstructionEngine_CUDA<TVoxel,ITMVoxelBlockHash>::~ITMSceneReconstruc
 	ORcudaSafeCall(cudaFree(entriesAllocType_device));
 	ORcudaSafeCall(cudaFree(blockCoords_device));
 	ORcudaSafeCall(cudaFree(blockDirections_device));
-	if (this->fusionMode == ITMLibSettings::FusionMode::FUSIONMODE_RAY_CASTING)
+	if (this->settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING)
 	{
 		delete this->entriesRayCasting;
 	}
@@ -261,9 +258,9 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 
 	float *depth = view->depth->GetData(MEMORYDEVICE_CUDA);
 	Vector4f *depthNormal = nullptr;
-	if (this->tsdfMode == ITMLibSettings::TSDFMode::TSDFMODE_DIRECTIONAL or
-		this->fusionMode == ITMLibSettings::FusionMode::FUSIONMODE_RAY_CASTING or
-		this->fusionMetric == ITMLibSettings::FusionMetric::FUSIONMETRIC_POINT_TO_PLANE)
+	if (this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL or
+		this->settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING or
+		this->settings->fusionParams.fusionMetric == FusionMetric::FUSIONMETRIC_POINT_TO_PLANE)
 		depthNormal = view->depthNormal->GetData(MEMORYDEVICE_CUDA);
 	int *voxelAllocationList = scene->localVBA.GetAllocationList();
 	int *excessAllocationList = scene->index.GetExcessAllocationList();
@@ -300,8 +297,7 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 
 	buildHashAllocAndVisibleType_device << <gridSizeHV, cudaBlockSizeHV >> >(entriesAllocType_device, entriesVisibleType,
 		blockCoords_device, blockDirections_device, depth, depthNormal, invM_d, invProjParams_d, mu, depthImgSize, voxelSize, hashTable,
-		scene->sceneParams->viewFrustum_min, scene->sceneParams->viewFrustum_max,
-		this->tsdfMode, this->fusionMode, this->fusionMetric);
+		scene->sceneParams->viewFrustum_min, scene->sceneParams->viewFrustum_max, this->settings->fusionParams);
 	ORcudaKernelCheck;
 
 	bool useSwapping = scene->globalCache != NULL;
@@ -378,14 +374,14 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::IntegrateInto
 	{
 		integrateIntoScene_device<TVoxel, true> << <gridSize, cudaBlockSize >> >(localVBA, hashTable, visibleEntryIDs,
 			rgb, rgbImgSize, depth, depthNormals, confidence, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize,
-			*(scene->sceneParams));
+			this->settings->fusionParams, this->settings->sceneParams);
 		ORcudaKernelCheck;
 	}
 	else
 	{
 		integrateIntoScene_device<TVoxel, false> << <gridSize, cudaBlockSize >> >(localVBA, hashTable, visibleEntryIDs,
 			rgb, rgbImgSize, depth, depthNormals, confidence, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize,
-			*(scene->sceneParams));
+			this->settings->fusionParams, this->settings->sceneParams);
 		ORcudaKernelCheck;
 	}
 }
@@ -461,7 +457,7 @@ namespace
 template<class TVoxel, bool stopMaxW>
 __global__ void integrateIntoScene_device(TVoxel *voxelArray, const ITMPlainVoxelArray::ITMVoxelArrayInfo *arrayInfo,
 	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, const Vector4f *depthNormals, const float *confidence, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d,
-	Vector4f projParams_rgb, float _voxelSize, const ITMLib::ITMSceneParams sceneParams)
+	Vector4f projParams_rgb, float _voxelSize, const ITMFusionParams fusionParams, const ITMLib::ITMSceneParams sceneParams)
 {
 	int x = blockIdx.x*blockDim.x+threadIdx.x;
 	int y = blockIdx.y*blockDim.y+threadIdx.y;
@@ -487,7 +483,8 @@ __global__ void integrateIntoScene_device(TVoxel *voxelArray, const ITMPlainVoxe
 template<class TVoxel, bool stopMaxW>
 __global__ void integrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry *hashTable, int *visibleEntryIDs,
 	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, const Vector4f *depthNormals, const float *confidence, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d,
-	Vector4f projParams_rgb, float _voxelSize, const ITMLib::ITMSceneParams sceneParams)
+	Vector4f projParams_rgb, float _voxelSize, const ITMFusionParams fusionParams, const ITMSceneParams sceneParams)
+
 {
 	Vector3i globalPos;
 	int entryId = visibleEntryIDs[blockIdx.x];
@@ -516,7 +513,7 @@ __global__ void integrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry *
 
 	ComputeUpdatedVoxelInfo<TVoxel::hasColorInformation, TVoxel::hasConfidenceInformation, TVoxel>::compute(
 		localVoxelBlock[locId], TSDFDirection(currentHashEntry.direction),
-		pt_model, M_d, projParams_d, M_rgb, projParams_rgb, sceneParams, depth, depthNormals, confidence,
+		pt_model, M_d, projParams_d, M_rgb, projParams_rgb, fusionParams, sceneParams, depth, depthNormals, confidence,
 		depthImgSize, rgb, rgbImgSize);
 }
 
@@ -524,16 +521,20 @@ __global__ void buildHashAllocAndVisibleType_device(HashEntryAllocType *entriesA
 	                                                  Vector4s *blockCoords, TSDFDirection *blockDirections, const float *depth,
 	                                                  const Vector4f *depthNormal, Matrix4f invM_d, Vector4f projParams_d, float mu, Vector2i _imgSize,
 	                                                  float _voxelSize, ITMHashEntry *hashTable, float viewFrustum_min, float viewFrustum_max,
-	                                                  ITMLibSettings::TSDFMode tsdfMode, ITMLibSettings::FusionMode fusionMode,
-	                                                  ITMLibSettings::FusionMetric fusionMetric)
+	                                                  const ITMFusionParams fusionParams)
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
 
 	if (x > _imgSize.x - 1 || y > _imgSize.y - 1) return;
 
+	if (fusionParams.useSpaceCarving)
+		buildSpaceCarvingVisibleType(entriesVisibleType, x, y, blockCoords, blockDirections,
+		                             depth, depthNormal, invM_d, projParams_d, mu, _imgSize, _voxelSize, hashTable,
+		                             viewFrustum_min, viewFrustum_max, fusionParams);
+
 	buildHashAllocAndVisibleType(entriesAllocType, entriesVisibleType, x, y, blockCoords, blockDirections,
 		depth, depthNormal, invM_d, projParams_d, mu, _imgSize, _voxelSize, hashTable, viewFrustum_min,
-		viewFrustum_max, tsdfMode, fusionMode, fusionMetric);
+		viewFrustum_max, fusionParams);
 }
 
 __global__ void setToType3(HashEntryVisibilityType *entriesVisibleType, int *visibleEntryIDs, int noVisibleEntries)

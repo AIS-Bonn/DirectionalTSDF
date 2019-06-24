@@ -35,6 +35,7 @@ template<typename T> _CPU_AND_GPU_CODE_ inline Vector3f unproject(const THREADPT
 					depth);
 }
 
+_CPU_AND_GPU_CODE_
 inline Vector4f invertProjectionParams(Vector4f projParams)
 {
 	Vector4f invProjParams = projParams;

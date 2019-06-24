@@ -121,7 +121,7 @@ void ITMMultiVisualisationEngine_CPU<TVoxel, TIndex>::RenderImage(const ORUtils:
 			int locId2 = (int)floor((float)x / minmaximg_subsample) + (int)floor((float)y / minmaximg_subsample) * imgSize.x;
 
 			castRay<VD, ID>(pointsRay[locId], NULL, x, y, &renderState->voxelData_host, &renderState->indexData_host, invM, invProjParams, oneOverVoxelSize, mu, minmaximg[locId2],
-				this->settings->tsdfMode == ITMLibSettings::TSDFMode::TSDFMODE_DIRECTIONAL);
+				this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL);
 		}
 	}
 

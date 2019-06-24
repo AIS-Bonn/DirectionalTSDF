@@ -433,7 +433,7 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::ForwardRender(const ITMS
 
 		castRay<TVoxel, TIndex>(forwardProjection[locId], NULL, x, y, voxelData, voxelIndex, invM, invProjParams,
 			1.0f / scene->sceneParams->voxelSize, scene->sceneParams->mu, minmaximg[locId2],
-			this->settings->tsdfMode == ITMLibSettings::TSDFMode::TSDFMODE_DIRECTIONAL
+			this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL
 			);
 	}
 }
@@ -477,7 +477,7 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::GenericRaycast(const ITM
 			oneOverVoxelSize,
 			mu,
 			minmaximg[locId2],
-			this->settings->tsdfMode == ITMLibSettings::TSDFMode::TSDFMODE_DIRECTIONAL
+			this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL
 		);
 	}
 }
