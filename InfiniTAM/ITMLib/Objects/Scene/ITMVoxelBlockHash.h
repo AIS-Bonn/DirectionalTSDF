@@ -40,21 +40,28 @@ struct ITMHashEntry
 
 namespace ITMLib
 {
-	template<typename T> _CPU_AND_GPU_CODE_ inline int hashIndex(const THREADPTR(T) & blockPos) {
-		return (
-			(static_cast<uint>(blockPos.x) * 73856093u) ^
-			(static_cast<uint>(blockPos.y) * 19349669u) ^
-			(static_cast<uint>(blockPos.z) * 83492791u)) & (uint)SDF_HASH_MASK;
+
+	_CPU_AND_GPU_CODE_
+	inline int hash(int seed, int value)
+	{
+		return (seed * value) % 16235657;
 	}
 
-	template<typename T> _CPU_AND_GPU_CODE_ inline int hashIndex(const THREADPTR(T) & blockPos, const TSDFDirection direction) {
+	template<typename T> _CPU_AND_GPU_CODE_
+	inline int hashIndex(const THREADPTR(T) & blockPos) {
+		return (hash(11536487, blockPos.x)
+						+ hash(14606887, blockPos.y)
+						+ hash(28491781, blockPos.z)) % (uint)SDF_HASH_MASK;
+	}
+
+	template<typename T> _CPU_AND_GPU_CODE_
+	inline int hashIndex(const THREADPTR(T) & blockPos, const TSDFDirection direction) {
 		if (direction == TSDFDirection::NONE)
 			return hashIndex(blockPos);
-		return (
-			(static_cast<TSDFDirection_type>(direction) * 20089691u) ^
-			(static_cast<uint>(blockPos.x) * 73856093u) ^
-			(static_cast<uint>(blockPos.y) * 19349669u) ^
-			(static_cast<uint>(blockPos.z) * 83492791u)) & (uint)SDF_HASH_MASK;
+		return (hash(11536487, blockPos.x)
+		        + hash(14606887, blockPos.y)
+		        + hash(28491781, blockPos.z)
+		        + hash(83492791, static_cast<TSDFDirection_type>(direction))) % (uint)SDF_HASH_MASK;
 	}
 
 	/** \brief

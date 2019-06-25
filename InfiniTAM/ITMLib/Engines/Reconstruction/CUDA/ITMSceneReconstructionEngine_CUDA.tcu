@@ -555,7 +555,7 @@ __global__ void allocateVoxelBlocksList_device(int *voxelAllocationList, int *ex
 
 	switch (entriesAllocType[targetIdx])
 	{
-	case 1: //needs allocation, fits in the ordered list
+	case ALLOCATE_ORDERED: //needs allocation, fits in the ordered list
 		vbaIdx = atomicSub(&allocData->noAllocatedVoxelEntries, 1);
 
 		if (vbaIdx >= 0) //there is room in the voxel block array
@@ -580,7 +580,7 @@ __global__ void allocateVoxelBlocksList_device(int *voxelAllocationList, int *ex
 		}
 		break;
 
-	case 2: //needs allocation in the excess list
+	case ALLOCATE_EXCESS: //needs allocation in the excess list
 		vbaIdx = atomicSub(&allocData->noAllocatedVoxelEntries, 1);
 		exlIdx = atomicSub(&allocData->noAllocatedExcessEntries, 1);
 
