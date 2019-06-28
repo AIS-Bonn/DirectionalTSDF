@@ -101,7 +101,7 @@ void ITMMultiVisualisationEngine_CPU<TVoxel, TIndex>::RenderImage(const ORUtils:
 	float voxelSize = renderState->sceneParams.voxelSize;
 	{
 		Vector4f projParams = intrinsics->projectionParamsSimple.all;
-		Vector4f invProjParams = InvertProjectionParams(projParams);
+		Vector4f invProjParams = invertProjectionParams(projParams);
 
 		const Vector2f *minmaximg = renderState->renderingRangeImage->GetData(MEMORYDEVICE_CPU);
 		float mu = renderState->sceneParams.mu;

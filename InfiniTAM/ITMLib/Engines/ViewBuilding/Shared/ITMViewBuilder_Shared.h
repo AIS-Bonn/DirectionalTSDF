@@ -109,7 +109,7 @@ _CPU_AND_GPU_CODE_ inline void filterNormals(Vector4f *normals_out, const Vector
 	if (center.w == -1)
 		return;
 
-	Vector4f sum(0, 0, 0, 0);
+	Vector3f sum(0, 0, 0);
 	float sum_weight = 0.0f;
 
 	float sigma_d_factor = 1 / (2.0f * sigma_d * sigma_d);
@@ -130,15 +130,14 @@ _CPU_AND_GPU_CODE_ inline void filterNormals(Vector4f *normals_out, const Vector
 
 			const float weight = gaussD(sigma_d_factor, i - x, j - y) * gaussR(sigma_r_factor, length(value - center));
 
-			sum += weight * value;
+			sum += weight * value.toVector3();
 			sum_weight += weight;
 		}
 	}
 
 	if (sum_weight >= 0.0f)
 	{
-		normals_out[idx] = sum / sum_weight;
-		normals_out[idx].w = 1.0;
+		normals_out[idx] = Vector4f((sum / sum_weight).normalised(), 1.0f);
 	}
 }
 

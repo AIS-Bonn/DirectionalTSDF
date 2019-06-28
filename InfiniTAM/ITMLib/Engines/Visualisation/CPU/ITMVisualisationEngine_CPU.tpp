@@ -423,7 +423,7 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::ForwardRender(const ITMS
 	}
 
 	renderState->noFwdProjMissingPoints = noMissingPoints;
-	const Vector4f invProjParams = InvertProjectionParams(projParams);
+	const Vector4f invProjParams = invertProjectionParams(projParams);
 
 	for (int pointId = 0; pointId < noMissingPoints; pointId++)
 	{
@@ -473,7 +473,7 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::GenericRaycast(const ITM
 			voxelData,
 			voxelIndex,
 			invM,
-			InvertProjectionParams(projParams),
+			invertProjectionParams(projParams),
 			oneOverVoxelSize,
 			mu,
 			minmaximg[locId2],

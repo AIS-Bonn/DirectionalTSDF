@@ -112,7 +112,7 @@ void ITMMultiVisualisationEngine_CUDA<TVoxel, TIndex>::RenderImage(const ORUtils
 			renderState->indexData_device,
 			imgSize,
 			invM,
-			InvertProjectionParams(projParams),
+			invertProjectionParams(projParams),
 			oneOverVoxelSize,
 			renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA),
 			mu,

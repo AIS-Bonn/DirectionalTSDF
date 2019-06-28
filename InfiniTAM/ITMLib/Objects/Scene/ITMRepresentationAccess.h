@@ -51,7 +51,7 @@ _CPU_AND_GPU_CODE_ inline int findVoxel(const CONSTPTR(ITMLib::ITMVoxelBlockHash
 		return cache.blockPtr + linearIdx;
 	}
 
-	ITMHashEntry hashEntry = getHashEntry(voxelIndex, blockPos);
+	ITMHashEntry hashEntry = getHashEntry(voxelIndex, blockPos, direction);
 	vmIndex = hashEntry.IsValid();
 	if (vmIndex)
 	{
@@ -91,7 +91,7 @@ _CPU_AND_GPU_CODE_ inline TVoxel readVoxel(const CONSTPTR(TVoxel) *voxelData, co
 		return voxelData[cache.blockPtr + linearIdx];
 	}
 
-	ITMHashEntry hashEntry = getHashEntry(voxelIndex, blockPos);
+	ITMHashEntry hashEntry = getHashEntry(voxelIndex, blockPos, direction);
 	vmIndex = hashEntry.IsValid();
 	if (vmIndex)
 	{

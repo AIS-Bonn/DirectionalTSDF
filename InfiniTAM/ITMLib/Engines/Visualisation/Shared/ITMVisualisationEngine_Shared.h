@@ -5,17 +5,19 @@
 #include "ITMLib/Objects/Scene/ITMDirectional.h"
 #include "ITMLib/Objects/Scene/ITMRepresentationAccess.h"
 #include "ITMLib/Engines/Reconstruction/Interface/ITMSceneReconstructionEngine.h"
+#include "ITMLib/Utils/ITMProjectionUtils.h"
 
 namespace ITMLib
 {
 
-static const CONSTPTR(int) MAX_RENDERING_BLOCKS = 65536*4;
+static const CONSTPTR(int) MAX_RENDERING_BLOCKS = 65536 * 4;
 //static const int MAX_RENDERING_BLOCKS = 16384;
 static const CONSTPTR(int) minmaximg_subsample = 8;
 
 #if !(defined __METALC__)
 
-struct RenderingBlock {
+struct RenderingBlock
+{
 	Vector2s upperLeft;
 	Vector2s lowerRight;
 	Vector2f zRange;
@@ -32,13 +34,11 @@ struct RenderingBlock {
 static const CONSTPTR(int) renderingBlockSizeX = 16;
 static const CONSTPTR(int) renderingBlockSizeY = 16;
 
-_CPU_AND_GPU_CODE_ inline Vector4f InvertProjectionParams(const THREADPTR(Vector4f)& projParams)
-{
-	return Vector4f(1.0f / projParams.x, 1.0f / projParams.y, -projParams.z, -projParams.w);
-}
-
-_CPU_AND_GPU_CODE_ inline bool ProjectSingleBlock(const THREADPTR(Vector3s) & blockPos, const THREADPTR(Matrix4f) & pose, const THREADPTR(Vector4f) & intrinsics, 
-	const THREADPTR(Vector2i) & imgSize, float voxelSize, THREADPTR(Vector2i) & upperLeft, THREADPTR(Vector2i) & lowerRight, THREADPTR(Vector2f) & zRange)
+_CPU_AND_GPU_CODE_ inline bool ProjectSingleBlock(const THREADPTR(Vector3s)& blockPos, const THREADPTR(Matrix4f)& pose,
+                                                  const THREADPTR(Vector4f)& intrinsics,
+                                                  const THREADPTR(Vector2i)& imgSize, float voxelSize,
+                                                  THREADPTR(Vector2i)& upperLeft, THREADPTR(Vector2i)& lowerRight,
+                                                  THREADPTR(Vector2f)& zRange)
 {
 	upperLeft = imgSize / minmaximg_subsample;
 	lowerRight = Vector2i(-1, -1);
@@ -50,7 +50,7 @@ _CPU_AND_GPU_CODE_ inline bool ProjectSingleBlock(const THREADPTR(Vector3s) & bl
 		tmp.x += (corner & 1) ? 1 : 0;
 		tmp.y += (corner & 2) ? 1 : 0;
 		tmp.z += (corner & 4) ? 1 : 0;
-		Vector4f pt3d(TO_FLOAT3(tmp) * (float)SDF_BLOCK_SIZE * voxelSize, 1.0f);
+		Vector4f pt3d(TO_FLOAT3(tmp) * (float) SDF_BLOCK_SIZE * voxelSize, 1.0f);
 		pt3d = pose * pt3d;
 		if (pt3d.z < 1e-6) continue;
 
@@ -59,10 +59,10 @@ _CPU_AND_GPU_CODE_ inline bool ProjectSingleBlock(const THREADPTR(Vector3s) & bl
 		pt2d.y = (intrinsics.y * pt3d.y / pt3d.z + intrinsics.w) / minmaximg_subsample;
 
 		// remember bounding box, zmin and zmax
-		if (upperLeft.x > floor(pt2d.x)) upperLeft.x = (int)floor(pt2d.x);
-		if (lowerRight.x < ceil(pt2d.x)) lowerRight.x = (int)ceil(pt2d.x);
-		if (upperLeft.y > floor(pt2d.y)) upperLeft.y = (int)floor(pt2d.y);
-		if (lowerRight.y < ceil(pt2d.y)) lowerRight.y = (int)ceil(pt2d.y);
+		if (upperLeft.x > floor(pt2d.x)) upperLeft.x = (int) floor(pt2d.x);
+		if (lowerRight.x < ceil(pt2d.x)) lowerRight.x = (int) ceil(pt2d.x);
+		if (upperLeft.y > floor(pt2d.y)) upperLeft.y = (int) floor(pt2d.y);
+		if (lowerRight.y < ceil(pt2d.y)) lowerRight.y = (int) ceil(pt2d.y);
 		if (zRange.x > pt3d.z) zRange.x = pt3d.z;
 		if (zRange.y < pt3d.z) zRange.y = pt3d.z;
 	}
@@ -81,21 +81,25 @@ _CPU_AND_GPU_CODE_ inline bool ProjectSingleBlock(const THREADPTR(Vector3s) & bl
 	return true;
 }
 
-_CPU_AND_GPU_CODE_ inline void CreateRenderingBlocks(DEVICEPTR(RenderingBlock) *renderingBlockList, int offset,
-	const THREADPTR(Vector2i) & upperLeft, const THREADPTR(Vector2i) & lowerRight, const THREADPTR(Vector2f) & zRange)
+_CPU_AND_GPU_CODE_ inline void CreateRenderingBlocks(DEVICEPTR(RenderingBlock)* renderingBlockList, int offset,
+                                                     const THREADPTR(Vector2i)& upperLeft,
+                                                     const THREADPTR(Vector2i)& lowerRight,
+                                                     const THREADPTR(Vector2f)& zRange)
 {
 	// split bounding box into 16x16 pixel rendering blocks
-	for (int by = 0; by < ceil((float)(1 + lowerRight.y - upperLeft.y) / renderingBlockSizeY); ++by) {
-		for (int bx = 0; bx < ceil((float)(1 + lowerRight.x - upperLeft.x) / renderingBlockSizeX); ++bx) {
+	for (int by = 0; by < ceil((float) (1 + lowerRight.y - upperLeft.y) / renderingBlockSizeY); ++by)
+	{
+		for (int bx = 0; bx < ceil((float) (1 + lowerRight.x - upperLeft.x) / renderingBlockSizeX); ++bx)
+		{
 			if (offset >= MAX_RENDERING_BLOCKS) return;
 			//for each rendering block: add it to the list
-			DEVICEPTR(RenderingBlock) & b(renderingBlockList[offset++]);
-			b.upperLeft.x = upperLeft.x + bx*renderingBlockSizeX;
-			b.upperLeft.y = upperLeft.y + by*renderingBlockSizeY;
-			b.lowerRight.x = upperLeft.x + (bx + 1)*renderingBlockSizeX - 1;
-			b.lowerRight.y = upperLeft.y + (by + 1)*renderingBlockSizeY - 1;
-			if (b.lowerRight.x>lowerRight.x) b.lowerRight.x = lowerRight.x;
-			if (b.lowerRight.y>lowerRight.y) b.lowerRight.y = lowerRight.y;
+			DEVICEPTR(RenderingBlock)& b(renderingBlockList[offset++]);
+			b.upperLeft.x = upperLeft.x + bx * renderingBlockSizeX;
+			b.upperLeft.y = upperLeft.y + by * renderingBlockSizeY;
+			b.lowerRight.x = upperLeft.x + (bx + 1) * renderingBlockSizeX - 1;
+			b.lowerRight.y = upperLeft.y + (by + 1) * renderingBlockSizeY - 1;
+			if (b.lowerRight.x > lowerRight.x) b.lowerRight.x = lowerRight.x;
+			if (b.lowerRight.y > lowerRight.y) b.lowerRight.y = lowerRight.y;
 			b.zRange = zRange;
 		}
 	}
@@ -104,8 +108,9 @@ _CPU_AND_GPU_CODE_ inline void CreateRenderingBlocks(DEVICEPTR(RenderingBlock) *
 #endif
 
 
-_CPU_AND_GPU_CODE_ inline int forwardProjectPixel(Vector4f pixel, const CONSTPTR(Matrix4f) &M, const CONSTPTR(Vector4f) &projParams,
-	const THREADPTR(Vector2i) &imgSize)
+_CPU_AND_GPU_CODE_ inline int
+forwardProjectPixel(Vector4f pixel, const CONSTPTR(Matrix4f)& M, const CONSTPTR(Vector4f)& projParams,
+                    const THREADPTR(Vector2i)& imgSize)
 {
 	pixel.w = 1;
 	pixel = M * pixel;
@@ -116,13 +121,15 @@ _CPU_AND_GPU_CODE_ inline int forwardProjectPixel(Vector4f pixel, const CONSTPTR
 
 	if ((pt_image.x < 0) || (pt_image.x > imgSize.x - 1) || (pt_image.y < 0) || (pt_image.y > imgSize.y - 1)) return -1;
 
-	return (int)(pt_image.x + 0.5f) + (int)(pt_image.y + 0.5f) * imgSize.x;
+	return (int) (pt_image.x + 0.5f) + (int) (pt_image.y + 0.5f) * imgSize.x;
 }
 
 template<class TVoxel, class TIndex>
-_CPU_AND_GPU_CODE_ inline void computeNormalAndAngle(THREADPTR(bool) & foundPoint, const THREADPTR(Vector3f) & point,
-                                                     const CONSTPTR(TVoxel) *voxelBlockData, const CONSTPTR(typename TIndex::IndexData) *indexData,
-                                                     const THREADPTR(Vector3f) & lightSource, THREADPTR(Vector3f) & outNormal, THREADPTR(float) & angle)
+_CPU_AND_GPU_CODE_ inline void computeNormalAndAngle(THREADPTR(bool)& foundPoint, const THREADPTR(Vector3f)& point,
+                                                     const CONSTPTR(TVoxel)* voxelBlockData,
+                                                     const CONSTPTR(typename TIndex::IndexData)* indexData,
+                                                     const THREADPTR(Vector3f)& lightSource,
+                                                     THREADPTR(Vector3f)& outNormal, THREADPTR(float)& angle)
 {
 	if (!foundPoint) return;
 
@@ -136,10 +143,12 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndAngle(THREADPTR(bool) & foundPoin
 	if (!(angle > 0.0)) foundPoint = false;
 }
 
-template <bool useSmoothing, bool flipNormals>
-_CPU_AND_GPU_CODE_ inline void computeNormalAndAngle(THREADPTR(bool) & foundPoint, const THREADPTR(int) &x, const THREADPTR(int) &y,
-	const CONSTPTR(Vector4f) *pointsRay, const THREADPTR(Vector3f) & lightSource, const THREADPTR(float) &voxelSize,
-	const THREADPTR(Vector2i) &imgSize, THREADPTR(Vector3f) & outNormal, THREADPTR(float) & angle)
+template<bool useSmoothing, bool flipNormals>
+_CPU_AND_GPU_CODE_ inline void
+computeNormalAndAngle(THREADPTR(bool)& foundPoint, const THREADPTR(int)& x, const THREADPTR(int)& y,
+                      const CONSTPTR(Vector4f)* pointsRay, const THREADPTR(Vector3f)& lightSource,
+                      const THREADPTR(float)& voxelSize,
+                      const THREADPTR(Vector2i)& imgSize, THREADPTR(Vector3f)& outNormal, THREADPTR(float)& angle)
 {
 	if (!foundPoint) return;
 
@@ -147,14 +156,21 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndAngle(THREADPTR(bool) & foundPoin
 
 	if (useSmoothing)
 	{
-		if (y <= 2 || y >= imgSize.y - 3 || x <= 2 || x >= imgSize.x - 3) { foundPoint = false; return; }
+		if (y <= 2 || y >= imgSize.y - 3 || x <= 2 || x >= imgSize.x - 3)
+		{
+			foundPoint = false;
+			return;
+		}
 
 		xp1_y = pointsRay[(x + 2) + y * imgSize.x], x_yp1 = pointsRay[x + (y + 2) * imgSize.x];
 		xm1_y = pointsRay[(x - 2) + y * imgSize.x], x_ym1 = pointsRay[x + (y - 2) * imgSize.x];
-	}
-	else
+	} else
 	{
-		if (y <= 1 || y >= imgSize.y - 2 || x <= 1 || x >= imgSize.x - 2) { foundPoint = false; return; }
+		if (y <= 1 || y >= imgSize.y - 2 || x <= 1 || x >= imgSize.x - 2)
+		{
+			foundPoint = false;
+			return;
+		}
 
 		xp1_y = pointsRay[(x + 1) + y * imgSize.x], x_yp1 = pointsRay[x + (y + 1) * imgSize.x];
 		xm1_y = pointsRay[(x - 1) + y * imgSize.x], x_ym1 = pointsRay[x + (y - 1) * imgSize.x];
@@ -169,7 +185,7 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndAngle(THREADPTR(bool) & foundPoin
 		diff_x = xp1_y - xm1_y, diff_y = x_yp1 - x_ym1;
 
 		float length_diff = MAX(diff_x.x * diff_x.x + diff_x.y * diff_x.y + diff_x.z * diff_x.z,
-			diff_y.x * diff_y.x + diff_y.y * diff_y.y + diff_y.z * diff_y.z);
+		                        diff_y.x * diff_y.x + diff_y.y * diff_y.y + diff_y.z * diff_y.z);
 
 		if (length_diff * voxelSize * voxelSize > (0.15f * 0.15f)) doPlus1 = true;
 	}
@@ -178,9 +194,12 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndAngle(THREADPTR(bool) & foundPoin
 	{
 		if (useSmoothing)
 		{
-			xp1_y = pointsRay[(x + 1) + y * imgSize.x]; x_yp1 = pointsRay[x + (y + 1) * imgSize.x];
-			xm1_y = pointsRay[(x - 1) + y * imgSize.x]; x_ym1 = pointsRay[x + (y - 1) * imgSize.x];
-			diff_x = xp1_y - xm1_y; diff_y = x_yp1 - x_ym1;
+			xp1_y = pointsRay[(x + 1) + y * imgSize.x];
+			x_yp1 = pointsRay[x + (y + 1) * imgSize.x];
+			xm1_y = pointsRay[(x - 1) + y * imgSize.x];
+			x_ym1 = pointsRay[x + (y - 1) * imgSize.x];
+			diff_x = xp1_y - xm1_y;
+			diff_y = x_yp1 - x_ym1;
 		}
 
 		if (xp1_y.w <= 0 || x_yp1.w <= 0 || xm1_y.w <= 0 || x_ym1.w <= 0)
@@ -190,9 +209,9 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndAngle(THREADPTR(bool) & foundPoin
 		}
 	}
 
-	outNormal.x = -(diff_x.y * diff_y.z - diff_x.z*diff_y.y);
-	outNormal.y = -(diff_x.z * diff_y.x - diff_x.x*diff_y.z);
-	outNormal.z = -(diff_x.x * diff_y.y - diff_x.y*diff_y.x);
+	outNormal.x = -(diff_x.y * diff_y.z - diff_x.z * diff_y.y);
+	outNormal.y = -(diff_x.z * diff_y.x - diff_x.x * diff_y.z);
+	outNormal.z = -(diff_x.x * diff_y.y - diff_x.y * diff_y.x);
 
 	if (flipNormals) outNormal = -outNormal;
 
@@ -203,17 +222,19 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndAngle(THREADPTR(bool) & foundPoin
 	if (!(angle > 0.0)) foundPoint = false;
 }
 
-_CPU_AND_GPU_CODE_ inline void drawPixelGrey(DEVICEPTR(Vector4u) & dest, const THREADPTR(float) & angle)
+_CPU_AND_GPU_CODE_ inline void drawPixelGrey(DEVICEPTR(Vector4u)& dest, const THREADPTR(float)& angle)
 {
 	float outRes = (0.8f * angle + 0.2f) * 255.0f;
-	dest = Vector4u((uchar)outRes);
+	dest = Vector4u((uchar) outRes);
 }
 
-_CPU_AND_GPU_CODE_ inline float interpolateCol(float val, float y0, float x0, float y1, float x1) {
-	return (val - x0)*(y1 - y0) / (x1 - x0) + y0;
+_CPU_AND_GPU_CODE_ inline float interpolateCol(float val, float y0, float x0, float y1, float x1)
+{
+	return (val - x0) * (y1 - y0) / (x1 - x0) + y0;
 }
 
-_CPU_AND_GPU_CODE_ inline float baseCol(float val) {
+_CPU_AND_GPU_CODE_ inline float baseCol(float val)
+{
 	if (val <= -0.75f) return 0.0f;
 	else if (val <= -0.25f) return interpolateCol(val, 0.0f, -0.75f, 1.0f, -0.25f);
 	else if (val <= 0.25f) return 1.0f;
@@ -221,68 +242,66 @@ _CPU_AND_GPU_CODE_ inline float baseCol(float val) {
 	else return 0.0;
 }
 
-_CPU_AND_GPU_CODE_ inline void drawPixelConfidence(DEVICEPTR(Vector4u) & dest, const THREADPTR(float) & angle, const THREADPTR(float) & confidence)
+_CPU_AND_GPU_CODE_ inline void
+drawPixelConfidence(DEVICEPTR(Vector4u)& dest, const THREADPTR(float)& angle, const THREADPTR(float)& confidence)
 {
 	//Vector4f color_red(255, 0, 0, 255), color_green(0, 255, 0, 255);
 	float confidenceNorm = CLAMP(confidence, 0, 100.f) / 100.0f;
 
 	Vector4f color;
-	color.r = (uchar)(baseCol(confidenceNorm) * 255.0f);
-	color.g = (uchar)(baseCol(confidenceNorm - 0.5f) * 255.0f); 
-	color.b = (uchar)(baseCol(confidenceNorm + 0.5f) * 255.0f);
+	color.r = (uchar) (baseCol(confidenceNorm) * 255.0f);
+	color.g = (uchar) (baseCol(confidenceNorm - 0.5f) * 255.0f);
+	color.b = (uchar) (baseCol(confidenceNorm + 0.5f) * 255.0f);
 	color.a = 255;
 
 	Vector4f outRes = (0.8f * angle + 0.2f) * color;
 	dest = TO_UCHAR4(outRes);
 }
 
-_CPU_AND_GPU_CODE_ inline void drawPixelNormal(DEVICEPTR(Vector4u) & dest, const THREADPTR(Vector3f) & normal_obj)
+_CPU_AND_GPU_CODE_ inline void drawPixelNormal(DEVICEPTR(Vector4u)& dest, const THREADPTR(Vector3f)& normal_obj)
 {
-	dest.r = (uchar)((0.3f + (-normal_obj.r + 1.0f)*0.35f)*255.0f);
-	dest.g = (uchar)((0.3f + (-normal_obj.g + 1.0f)*0.35f)*255.0f);
-	dest.b = (uchar)((0.3f + (-normal_obj.b + 1.0f)*0.35f)*255.0f);
+	dest.r = (uchar) ((0.3f + (-normal_obj.r + 1.0f) * 0.35f) * 255.0f);
+	dest.g = (uchar) ((0.3f + (-normal_obj.g + 1.0f) * 0.35f) * 255.0f);
+	dest.b = (uchar) ((0.3f + (-normal_obj.b + 1.0f) * 0.35f) * 255.0f);
 }
 
 template<class TVoxel, class TIndex>
-_CPU_AND_GPU_CODE_ inline void drawPixelColour(DEVICEPTR(Vector4u) & dest, const CONSTPTR(Vector3f) & point, 
-	const CONSTPTR(TVoxel) *voxelBlockData, const CONSTPTR(typename TIndex::IndexData) *indexData)
+_CPU_AND_GPU_CODE_ inline void drawPixelColour(DEVICEPTR(Vector4u)& dest, const CONSTPTR(Vector3f)& point,
+                                               const CONSTPTR(TVoxel)* voxelBlockData,
+                                               const CONSTPTR(typename TIndex::IndexData)* indexData)
 {
 	// FIXME: directional
-	Vector4f clr = VoxelColorReader<TVoxel::hasColorInformation, TVoxel, TIndex>::interpolate(voxelBlockData, indexData, point, TSDFDirection::NONE);
+	Vector4f clr = VoxelColorReader<TVoxel::hasColorInformation, TVoxel, TIndex>::interpolate(voxelBlockData, indexData,
+	                                                                                          point, TSDFDirection::NONE);
 
-	dest.x = (uchar)(clr.x * 255.0f);
-	dest.y = (uchar)(clr.y * 255.0f);
-	dest.z = (uchar)(clr.z * 255.0f);
+	dest.x = (uchar) (clr.x * 255.0f);
+	dest.y = (uchar) (clr.y * 255.0f);
+	dest.z = (uchar) (clr.z * 255.0f);
 	dest.w = 255;
 }
 
 template<class TVoxel, class TIndex>
 _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
+                                              float& distance_out,
                                               DEVICEPTR(HashEntryVisibilityType)* entriesVisibleType,
                                               int x, int y, const CONSTPTR(TVoxel)* voxelData,
                                               const CONSTPTR(typename TIndex::IndexData)* voxelIndex,
                                               Matrix4f invM, Vector4f invProjParams, float oneOverVoxelSize, float mu,
-                                              const CONSTPTR(Vector2f)& viewFrustum_minmax)
+                                              const CONSTPTR(Vector2f)& viewFrustum_minmax,
+                                              const TSDFDirection direction=TSDFDirection::NONE)
 {
 	Vector4f pt_camera_f; Vector3f pt_block_s, pt_block_e, rayDirection, pt_result;
-	bool pt_found;
 	int vmIndex;
 	float sdfValue = 1.0f, confidence;
 	float totalLength, stepLength, totalLengthMax, stepScale;
 
 	stepScale = mu * oneOverVoxelSize;
 
-	pt_camera_f.z = viewFrustum_minmax.x;
-	pt_camera_f.x = pt_camera_f.z * ((float(x) + invProjParams.z) * invProjParams.x);
-	pt_camera_f.y = pt_camera_f.z * ((float(y) + invProjParams.w) * invProjParams.y);
-	pt_camera_f.w = 1.0f;
+	pt_camera_f = Vector4f(reprojectImagePoint(x, y, viewFrustum_minmax.x, invProjParams), 1.0f);
 	totalLength = length(TO_VECTOR3(pt_camera_f)) * oneOverVoxelSize;
 	pt_block_s = TO_VECTOR3(invM * pt_camera_f) * oneOverVoxelSize;
 
-	pt_camera_f.z = viewFrustum_minmax.y;
-	pt_camera_f.x = pt_camera_f.z * ((float(x) + invProjParams.z) * invProjParams.x);
-	pt_camera_f.y = pt_camera_f.z * ((float(y) + invProjParams.w) * invProjParams.y);
-	pt_camera_f.w = 1.0f;
+	pt_camera_f = Vector4f(reprojectImagePoint(x, y, viewFrustum_minmax.y, invProjParams), 1.0f);
 	totalLengthMax = length(TO_VECTOR3(pt_camera_f)) * oneOverVoxelSize;
 	pt_block_e = TO_VECTOR3(invM * pt_camera_f) * oneOverVoxelSize;
 
@@ -295,7 +314,7 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 	typename TIndex::IndexCache cache;
 
 	while (totalLength < totalLengthMax) {
-		sdfValue = readFromSDF_float_uninterpolated(voxelData, voxelIndex, pt_result, TSDFDirection::NONE, vmIndex, cache);
+		sdfValue = readFromSDF_float_uninterpolated(voxelData, voxelIndex, pt_result, direction, vmIndex, cache);
 
 		if (entriesVisibleType)
 		{
@@ -306,7 +325,7 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 			stepLength = SDF_BLOCK_SIZE;
 		} else {
 			if ((sdfValue <= 0.1f) && (sdfValue >= -0.5f)) {
-				sdfValue = readFromSDF_float_interpolated(voxelData, voxelIndex, pt_result, TSDFDirection::NONE, vmIndex, cache);
+				sdfValue = readFromSDF_float_interpolated(voxelData, voxelIndex, pt_result, direction, vmIndex, cache);
 			}
 			if (sdfValue <= 0.0f) break;
 			stepLength = MAX(sdfValue * stepScale, 1.0f);
@@ -320,19 +339,19 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 		stepLength = sdfValue * stepScale;
 		pt_result += stepLength * rayDirection;
 
-		sdfValue = readWithConfidenceFromSDF_float_interpolated(confidence, voxelData, voxelIndex, pt_result, TSDFDirection::NONE, vmIndex, cache);
+		sdfValue = readWithConfidenceFromSDF_float_interpolated(confidence, voxelData, voxelIndex, pt_result, direction, vmIndex, cache);
 
 		stepLength = sdfValue * stepScale;
 		pt_result += stepLength * rayDirection;
+		totalLength += 2 * stepLength;
 
-		pt_found = true;
-	} else
-		pt_found = false;
+		pt_out = Vector4f(pt_result, confidence + 1.0f);
+		distance_out = totalLength;
+		return true;
+	}
 
-	pt_out.x = pt_result.x; pt_out.y = pt_result.y; pt_out.z = pt_result.z;
-	if (pt_found) pt_out.w = confidence + 1.0f; else pt_out.w = 0.0f;
-
-	return pt_found;
+	pt_out = Vector4f(0, 0, 0, 0);
+	return false;
 }
 
 template<class TVoxel, class TIndex>
@@ -340,126 +359,97 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional(DEVICEPTR(Vector4f) &pt_out, D
                                                   int x, int y, const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(typename TIndex::IndexData) *voxelIndex,
                                                   Matrix4f invM, Vector4f invProjParams, float oneOverVoxelSize, float mu, const CONSTPTR(Vector2f) & viewFrustum_minmax)
 {
+//	float distance;
+//	return castRayDefault<TVoxel, TIndex>(pt_out, distance, entriesVisibleType, x, y, voxelData, voxelIndex,
+//		invM, invProjParams, oneOverVoxelSize, mu, viewFrustum_minmax, TSDFDirection::Z_NEG);
 
-//	return castRayDefault<TVoxel, TIndex>(pt_out, entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams,
-//	                                      oneOverVoxelSize, mu, viewFrustum_minmax);
-	Vector4f pt_camera_f;
-	Vector3f pt_block_s, pt_block_e, rayDirection, pt_result;
 	bool pt_found = false;
 	int vmIndex;
 
-	const float stepScale = mu * oneOverVoxelSize;
-	float stepLength = SDF_BLOCK_SIZE;
+	Vector3f ptStart_camera = reprojectImagePoint(x, y, viewFrustum_minmax.x, invProjParams);
+	float totalLengthStart = length(ptStart_camera) * oneOverVoxelSize;
+	Vector3f ptStart_world = (invM * Vector4f(ptStart_camera, 1.0f)).toVector3() * oneOverVoxelSize;
 
-	pt_camera_f.z = viewFrustum_minmax.x;
-	pt_camera_f.x = pt_camera_f.z * ((float(x) + invProjParams.z) * invProjParams.x);
-	pt_camera_f.y = pt_camera_f.z * ((float(y) + invProjParams.w) * invProjParams.y);
-	pt_camera_f.w = 1.0f;
-	float totalLengthStart = length(TO_VECTOR3(pt_camera_f)) * oneOverVoxelSize;
-	pt_block_s = TO_VECTOR3(invM * pt_camera_f) * oneOverVoxelSize;
+	Vector3f ptEnd_camera = reprojectImagePoint(x, y, viewFrustum_minmax.y, invProjParams);
+	float totalLengthMax = length(ptEnd_camera) * oneOverVoxelSize;
+	Vector3f ptEnd_world = (invM * Vector4f(ptEnd_camera, 1.0f)).toVector3() * oneOverVoxelSize;
 
-	pt_camera_f.z = viewFrustum_minmax.y;
-	pt_camera_f.x = pt_camera_f.z * ((float(x) + invProjParams.z) * invProjParams.x);
-	pt_camera_f.y = pt_camera_f.z * ((float(y) + invProjParams.w) * invProjParams.y);
-	pt_camera_f.w = 1.0f;
-	float totalLengthMax = length(TO_VECTOR3(pt_camera_f)) * oneOverVoxelSize;
-	pt_block_e = TO_VECTOR3(invM * pt_camera_f) * oneOverVoxelSize;
-
-	rayDirection = (pt_block_e - pt_block_s).normalised();
+	Vector3f rayDirection_world = (ptEnd_world - ptStart_world).normalised();
 
 	/// collect TSDF directions which are applicable for ray
 	float directionWeights[N_DIRECTIONS];
-	ComputeDirectionWeights(-rayDirection, directionWeights);
-	char applicableDirections[3] = {-1, -1, -1};
-	uchar applicableDirectionsIdx = 0;
+	ComputeDirectionWeights(-rayDirection_world, directionWeights);
+
+	float max = 0;
+	int maxIdx = -1;
 	for (uchar directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
 	{
 		if (directionWeights[directionIdx] < direction_weight_threshold)
 			continue;
-		applicableDirections[applicableDirectionsIdx] = directionIdx;
-		applicableDirectionsIdx++;
+		if (directionWeights[directionIdx] > max)
+		{
+			max = directionWeights[directionIdx];
+			maxIdx = directionIdx;
+		}
 	}
-
-	typename TIndex::IndexCache cache[N_DIRECTIONS];
-	pt_result = pt_block_s;
+	int opositeIdx = 2 * (maxIdx / 2) + (1 - maxIdx % 2);
 
 	const float MAX_LENGTH = 1e9;
-	float directionIntersectionLength[3] = {MAX_LENGTH, MAX_LENGTH, MAX_LENGTH};
-	Vector3f directionIntersectionPoint[3];
-
-
-	float sdfValue = 1.0f, confidence;
-	for (uchar idx = 0; applicableDirections[idx] != -1 and idx < 3; idx++)
+	float directionIntersectionLength[6] = {MAX_LENGTH, MAX_LENGTH, MAX_LENGTH, MAX_LENGTH, MAX_LENGTH, MAX_LENGTH};
+	float directionIntersectionWeight[6] = {-1, -1, -1, -1, -1, -1};
+	Vector3f directionIntersectionPoint[6];
+	for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
 	{
-		TSDFDirection_type directionIdx = applicableDirections[idx];
-		auto direction = TSDFDirection(directionIdx);
-		float length = totalLengthStart;
-		while (length < totalLengthMax) {
-			sdfValue = readFromSDF_float_uninterpolated(voxelData, voxelIndex, pt_result, direction, vmIndex, cache[directionIdx]);
-
-			if (entriesVisibleType)
-			{
-				if (vmIndex) entriesVisibleType[vmIndex - 1] = VISIBLE_IN_MEMORY;
-			}
-
-			if (!vmIndex) {
-				stepLength = SDF_BLOCK_SIZE;
-			} else {
-				if ((sdfValue <= 0.1f) && (sdfValue >= -0.5f)) {
-					sdfValue = readFromSDF_float_interpolated(voxelData, voxelIndex, pt_result, direction, vmIndex, cache[directionIdx]);
-				}
-				if (sdfValue <= 0.0f) break;
-				stepLength = MAX(sdfValue * stepScale, 1.0f);
-			}
-
-			pt_result += stepLength * rayDirection; length += stepLength;
-		}
-
-		if (sdfValue <= 0.0f)
+		if (directionIdx == opositeIdx)
+			continue;
+		Vector4f point;
+		float distance;
+		if (castRayDefault<TVoxel, TIndex>(
+				point, distance,
+				entriesVisibleType, x, y, voxelData, voxelIndex,
+				invM, invProjParams, oneOverVoxelSize, mu, viewFrustum_minmax, TSDFDirection(directionIdx)))
 		{
-			stepLength = sdfValue * stepScale;
-			pt_result += stepLength * rayDirection;
-			length += stepLength;
-
-			sdfValue = readWithConfidenceFromSDF_float_interpolated(confidence, voxelData, voxelIndex, pt_result, direction, vmIndex, cache[directionIdx]);
-
-			stepLength = sdfValue * stepScale;
-			pt_result += stepLength * rayDirection;
-			length += stepLength;
-
-			directionIntersectionLength[idx] = length;
-			directionIntersectionPoint[idx] = pt_result;
-
-			pt_found = true;
+			directionIntersectionPoint[directionIdx] = point.toVector3();
+			directionIntersectionLength[directionIdx] = distance;
+			directionIntersectionWeight[directionIdx] = point.w - 1;
 		}
 	}
 
-	if (not pt_found)
+	/// Find most suitable intersection (innermost one in vicinity of first intersection)
+	float currentIntersectionLength = MAX_LENGTH;
+	int currentIntersectionIdx = -1;
+	float currentWeight = 0;
+	for (TSDFDirection_type idx = 0; idx < N_DIRECTIONS; idx++)
+	{
+		if (directionIntersectionLength[idx] < currentIntersectionLength)
+		{
+			currentIntersectionLength = directionIntersectionLength[idx];
+			currentWeight = directionIntersectionWeight[idx];
+			currentIntersectionIdx = idx;
+		}
+	}
+
+	float weightSum = 0;
+	pt_out = Vector4f(0, 0, 0, 0);
+	for (TSDFDirection_type idx = 0; idx < N_DIRECTIONS; idx++)
+	{
+		if (directionIntersectionLength[idx] - currentIntersectionLength < SDF_BLOCK_SIZE)
+		{
+			pt_out += Vector4f(directionIntersectionPoint[idx] * directionIntersectionWeight[idx], 0);
+			weightSum += directionIntersectionWeight[idx];
+		}
+	}
+
+	pt_out *= 1 / weightSum;
+	pt_out.w = weightSum + 1.0f;
+
+	if (currentIntersectionIdx < 0 or weightSum <= 0)
 	{
 		pt_out.w = 0.0f;
 		return false;
 	}
 
-	/// Find most suitable intersection (innermost one in vicinity of first intersection)
-	float currentIntersectionLength = MIN(MIN(directionIntersectionLength[0], directionIntersectionLength[1]), directionIntersectionLength[2]);
-	uchar currentIntersectionIdx = 0;
-	for (uchar idx = 0; idx < 3; idx++)
-	{
-		 if (directionIntersectionLength[idx] == MAX_LENGTH)
-		 	continue;
-		 if (directionIntersectionLength[idx] - currentIntersectionLength < SDF_BLOCK_SIZE)
-		 {
-		 	currentIntersectionLength = directionIntersectionLength[idx];
-		 	currentIntersectionIdx = idx;
-		 }
-	}
-
-	pt_out.x = directionIntersectionPoint[currentIntersectionIdx].x;
-	pt_out.y = directionIntersectionPoint[currentIntersectionIdx].y;
-	pt_out.z = directionIntersectionPoint[currentIntersectionIdx].z;
-	pt_out.w = confidence + 1.0f;
-
-	return pt_found;
+	return true;
 }
 
 template<class TVoxel, class TIndex>
@@ -468,10 +458,11 @@ _CPU_AND_GPU_CODE_ inline bool castRay(DEVICEPTR(Vector4f) &pt_out, DEVICEPTR(Ha
                                        Matrix4f invM, Vector4f invProjParams, float oneOverVoxelSize, float mu, const CONSTPTR(Vector2f) & viewFrustum_minmax,
                                        bool directionalTSDF)
 {
+	float distance;
 	if (directionalTSDF)
 		return castRayDirectional<TVoxel, TIndex>(pt_out, entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams, oneOverVoxelSize, mu, viewFrustum_minmax);
 	else
-		return castRayDefault<TVoxel, TIndex>(pt_out, entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams,
+		return castRayDefault<TVoxel, TIndex>(pt_out, distance, entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams,
 	                                      oneOverVoxelSize, mu, viewFrustum_minmax);
 }
 

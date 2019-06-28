@@ -6,7 +6,7 @@
 #endif
 
 #include "ITMMath.h"
-#include "../../ORUtils/PlatformIndependence.h"
+#include "ORUtils/PlatformIndependence.h"
 
 namespace ITMLib
 {
@@ -38,11 +38,7 @@ template<typename T> _CPU_AND_GPU_CODE_ inline Vector3f unproject(const THREADPT
 _CPU_AND_GPU_CODE_
 inline Vector4f invertProjectionParams(Vector4f projParams)
 {
-	Vector4f invProjParams = projParams;
-	invProjParams.x = 1.0f / invProjParams.x;
-	invProjParams.y = 1.0f / invProjParams.y;
-
-	return invProjParams;
+	return Vector4f(1.0f / projParams.x, 1.0f / projParams.y, projParams.z, projParams.w);
 }
 
 } // namespace ITMLib

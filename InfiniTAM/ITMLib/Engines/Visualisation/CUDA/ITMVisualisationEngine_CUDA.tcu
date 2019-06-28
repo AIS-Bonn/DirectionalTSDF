@@ -202,7 +202,7 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::GenericRaycast(const IT
 			scene->index.getIndexData(),
 			imgSize,
 			invM,
-			InvertProjectionParams(projParams),
+			invertProjectionParams(projParams),
 			oneOverVoxelSize,
 			renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA),
 			scene->sceneParams->mu,
@@ -339,7 +339,7 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::ForwardRender(const ITM
 			voxelIndex,
 			imgSize,
 			invM,
-			InvertProjectionParams(projParams), oneOverVoxelSize, fwdProjMissingPoints, renderState->noFwdProjMissingPoints, minmaximg, scene->sceneParams->mu,
+			invertProjectionParams(projParams), oneOverVoxelSize, fwdProjMissingPoints, renderState->noFwdProjMissingPoints, minmaximg, scene->sceneParams->mu,
 			this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL
 			);
 		ORcudaKernelCheck;

@@ -71,6 +71,8 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 			Matrix4f invM_d; M_d.inv(invM_d);
 			Vector4f normalWorld = invM_d * normalCamera;
 			directionWeight = DirectionWeight(TO_VECTOR3(normalWorld), direction);
+			if (directionWeight < direction_weight_threshold)
+				return -1;
 		}
 		newW = depthWeight(depth_measure, normalCamera, directionWeight, sceneParams);
 	}
@@ -140,6 +142,8 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 			Matrix4f invM_d; M_d.inv(invM_d);
 			Vector4f normalWorld = invM_d * normalCamera;
 			directionWeight = DirectionWeight(TO_VECTOR3(normalWorld), direction);
+			if (directionWeight < direction_weight_threshold)
+				return -1;
 		}
 		newW = depthWeight(depth_measure, normalCamera, directionWeight, sceneParams);
 	}
