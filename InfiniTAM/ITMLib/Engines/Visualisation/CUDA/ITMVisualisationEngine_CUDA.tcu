@@ -3,6 +3,9 @@
 #include "ITMVisualisationEngine_CUDA.h"
 #include "ITMVisualisationHelpers_CUDA.h"
 
+namespace ITMLib
+{
+
 inline dim3 getGridSize(dim3 taskSize, dim3 blockSize)
 {
 	return dim3((taskSize.x + blockSize.x - 1) / blockSize.x, (taskSize.y + blockSize.y - 1) / blockSize.y, (taskSize.z + blockSize.z - 1) / blockSize.z);
@@ -197,6 +200,7 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::GenericRaycast(const IT
 	dim3 gridSize((int)ceil((float)imgSize.x / (float)cudaBlockSize.x), (int)ceil((float)imgSize.y / (float)cudaBlockSize.y));
 	genericRaycast_device<TVoxel, ITMVoxelBlockHash> << <gridSize, cudaBlockSize >> >(
 		renderState->raycastResult->GetData(MEMORYDEVICE_CUDA),
+			renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA),
 			entriesVisibleType,
 			scene->localVBA.GetVoxelBlocks(),
 			scene->index.getIndexData(),
@@ -224,6 +228,8 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::RenderImage(const ITMSc
 	Vector2i imgSize = outputImage->noDims;
 	Matrix4f invM = pose->GetInvM();
 
+	bool useDirectioal = this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL;
+
 	Vector4f *pointsRay;
 	if (raycastType == IITMVisualisationEngine::RENDER_FROM_OLD_RAYCAST) {
 		pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CUDA);
@@ -237,6 +243,7 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::RenderImage(const ITMSc
 	Vector3f lightSource = -Vector3f(invM.getColumn(2));
 
 	Vector4u *outRendering = outputImage->GetData(MEMORYDEVICE_CUDA);
+	Vector6f *directionalContribution = renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA);
 
 	dim3 cudaBlockSize(8, 8);
 	dim3 gridSize((int)ceil((float)imgSize.x / (float)cudaBlockSize.x), (int)ceil((float)imgSize.y / (float)cudaBlockSize.y));
@@ -246,7 +253,9 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::RenderImage(const ITMSc
 
 	switch (type) {
 		case IITMVisualisationEngine::RENDER_COLOUR_FROM_VOLUME:
-			renderColour_device<TVoxel, TIndex> <<<gridSize, cudaBlockSize>>>(outRendering, pointsRay, scene->localVBA.GetVoxelBlocks(),
+			renderColour_device<TVoxel, TIndex> <<<gridSize, cudaBlockSize>>>(outRendering, pointsRay,
+				useDirectioal ? directionalContribution : nullptr,
+				scene->localVBA.GetVoxelBlocks(),
 				scene->index.getIndexData(), imgSize);
 			ORcudaKernelCheck;
 			break;
@@ -334,6 +343,7 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::ForwardRender(const ITM
 
 		genericRaycastMissingPoints_device<TVoxel, TIndex> << <gridSize, blockSize >> >(
 			forwardProjection,
+			nullptr,
 			nullptr,
 			voxelData,
 			voxelIndex,
@@ -423,3 +433,5 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::CreateICPMaps(const ITM
 	}
 	ORcudaKernelCheck;
 }
+
+} // namespace ITMLib

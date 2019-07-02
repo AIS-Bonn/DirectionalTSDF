@@ -171,5 +171,8 @@ void ITMViewBuilder_CPU::NormalFiltering(ITMFloat4Image* normals_out, const ITMF
 
 	for (int y = 5; y < imgDims.y - 5; y++) for (int x = 5; x < imgDims.x - 5; x++)
 		filterNormals(n_out, n_in, 5, 5, x, y, imgDims);
+
+//	for (int y = 2; y < imgDims.y - 2; y++) for (int x = 2; x < imgDims.x - 2; x++)
+//		normalizeNormals(normalData, x, y);
 }
 

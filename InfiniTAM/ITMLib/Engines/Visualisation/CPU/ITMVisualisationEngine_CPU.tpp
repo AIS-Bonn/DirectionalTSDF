@@ -220,6 +220,8 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::RenderImage(const ITMSce
 	Vector2i imgSize = outputImage->noDims;
 	Matrix4f invM = pose->GetInvM();
 
+	bool useDirectioal = this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL;
+
 	Vector4f *pointsRay;
     if (raycastType == IITMVisualisationEngine::RENDER_FROM_OLD_RAYCAST)
         pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CPU);
@@ -238,6 +240,7 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::RenderImage(const ITMSce
 
 	Vector3f lightSource = -Vector3f(invM.getColumn(2));
 	Vector4u *outRendering = outputImage->GetData(MEMORYDEVICE_CPU);
+	Vector6f *directionalContribution = renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CPU);
 	const TVoxel *voxelData = scene->localVBA.GetVoxelBlocks();
 	const typename TIndex::IndexData *voxelIndex = scene->index.getIndexData();
 
@@ -252,7 +255,17 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::RenderImage(const ITMSce
 		for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
 		{
 			Vector4f ptRay = pointsRay[locId];
-			processPixelColour<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(), ptRay.w > 0, voxelData, voxelIndex);
+			if (useDirectioal)
+			{
+				processPixelColourDirectional<TVoxel, TIndex>(
+					outRendering[locId], ptRay.toVector3(), directionalContribution[locId],
+					ptRay.w > 0, voxelData, voxelIndex);
+			}
+			else
+			{
+				processPixelColour<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(), ptRay.w > 0,
+				                                   voxelData, voxelIndex);
+			}
 		}
 		break;
 	case IITMVisualisationEngine::RENDER_COLOUR_FROM_NORMAL:
@@ -431,7 +444,7 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::ForwardRender(const ITMS
 		int y = locId / imgSize.x, x = locId - y*imgSize.x;
 		int locId2 = (int)floor((float)x / minmaximg_subsample) + (int)floor((float)y / minmaximg_subsample) * imgSize.x;
 
-		castRay<TVoxel, TIndex>(forwardProjection[locId], NULL, x, y, voxelData, voxelIndex, invM, invProjParams,
+		castRay<TVoxel, TIndex>(forwardProjection[locId], nullptr, nullptr, x, y, voxelData, voxelIndex, invM, invProjParams,
 			1.0f / scene->sceneParams->voxelSize, scene->sceneParams->mu, minmaximg[locId2],
 			this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL
 			);
@@ -449,6 +462,7 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::GenericRaycast(const ITM
 	float mu = scene->sceneParams->mu;
 	float oneOverVoxelSize = 1.0f / scene->sceneParams->voxelSize;
 	Vector4f *pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CPU);
+	Vector6f *directionalContribution = renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CPU);
 	const TVoxel *voxelData = scene->localVBA.GetVoxelBlocks();
 	const typename ITMVoxelBlockHash::IndexData *voxelIndex = scene->index.getIndexData();
 	HashEntryVisibilityType *entriesVisibleType = NULL;
@@ -468,6 +482,7 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::GenericRaycast(const ITM
 
 		castRay<TVoxel, TIndex>(
 			pointsRay[locId],
+			&directionalContribution[locId],
 			entriesVisibleType,
 			x, y,
 			voxelData,

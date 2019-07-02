@@ -435,53 +435,54 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth,
 
 	float carveDistance = ORUtils::length(pt_camera) - ORUtils::length(rayStart_camera.toVector3()) - mu;
 	BlockTraversal blockTraversal(rayStart_world, rayDirection_world, carveDistance, voxelSize);
+	ITMVoxelBlockHash::IndexCache cache[N_DIRECTIONS];
 	while(blockTraversal.HasNextBlock())
 	{
 		Vector3i voxelIdx = blockTraversal.GetNextBlock();
 		Vector3f voxelPos = blockTraversal.BlockToWorld(voxelIdx);
 
-		/// Fixed values for distance and weight
-		float distance = 1;
-		float weight = rayStart_camera.toVector3().normalised().z;
-
-		/// find and update voxels
 		Vector3i blockPos;
 		ushort linearIdx;
 		voxelToBlockPosAndOffset(voxelIdx, blockPos, linearIdx);
+
+		/// Fixed values for distance and weight
+		float distance = 1;
+		float weight = 1; //rayStart_camera.toVector3().normalised().z;
+
+		/// find and update voxels
 		if (fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL)
 		{
 			for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
 			{
-				if (weights[direction] < direction_weight_threshold)
-					continue;
+				int foundEntry = false;
+				int index = findVoxel(hashTable, voxelIdx, TSDFDirection(direction), foundEntry, cache[direction]);
 
-				const ITMHashEntry hashEntry = getHashEntry(hashTable, blockPos, TSDFDirection(direction));
-
-				if (not hashEntry.IsValid())
+				if (not foundEntry)
 				{
-					break;
-				}
-				const TVoxel &voxel = voxelArray[hashEntry.ptr * SDF_BLOCK_SIZE3 + linearIdx];
-				if (voxel.w_depth <= 0 or TVoxel::valueToFloat(voxel.sdf) < 0.0f)
 					continue;
+				}
+				const TVoxel &voxel = voxelArray[index];
+//				if (voxel.w_depth <= 0 or TVoxel::valueToFloat(voxel.sdf) < 0.0f)
+//					continue;
 
-				VoxelRayCastingSum &voxelRayCastingSum = entriesRayCasting[hashEntry.ptr * SDF_BLOCK_SIZE3 + linearIdx];
+				VoxelRayCastingSum &voxelRayCastingSum = entriesRayCasting[index];
 				voxelRayCastingSum.update(distance, weight);
 			}
 		}
 		else
 		{
-			const ITMHashEntry hashEntry = getHashEntry(hashTable, blockPos);
+			int foundEntry = false;
+			int index = findVoxel(hashTable, voxelIdx, foundEntry, cache[0]);
 
-			if (not hashEntry.IsValid())
+			if (not foundEntry)
 			{
 				continue;
 			}
-			const TVoxel &voxel = voxelArray[hashEntry.ptr * SDF_BLOCK_SIZE3 + linearIdx];
+			const TVoxel &voxel = voxelArray[index];
 //			if (voxel.w_depth <= 0 or TVoxel::valueToFloat(voxel.sdf) >= 0.0f)
 //				return;
 
-			VoxelRayCastingSum &voxelRayCastingSum = entriesRayCasting[hashEntry.ptr * SDF_BLOCK_SIZE3 + linearIdx];
+			VoxelRayCastingSum &voxelRayCastingSum = entriesRayCasting[index];
 			voxelRayCastingSum.update(distance, weight);
 		}
 	}
@@ -572,7 +573,7 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 					weight = depthWeight(depthValue, normal_camera, directionWeight, sceneParams)
 					         / powf(voxelSize * 100, 3);
 				}
-				if (weight < 1e-1)
+				if (weight < 1e-2)
 					return;
 
 				VoxelRayCastingSum &voxelRayCastingSum = entriesRayCasting[hashEntry.ptr * SDF_BLOCK_SIZE3 + linearIdx];
@@ -664,7 +665,7 @@ buildSpaceCarvingVisibleType(DEVICEPTR(HashEntryVisibilityType)* entriesVisibleT
 	    (depth_measure + mu) > viewFrustum_max)
 		return;
 
-	Vector4f pt_camera = Vector4f(reprojectImagePoint(x, y, depth_measure, projParams_d), 1);
+	Vector3f pt_camera = reprojectImagePoint(x, y, depth_measure, projParams_d);
 
 	Vector3i lastBlockPos_carving(MAX_INT, MAX_INT, MAX_INT);
 
@@ -682,13 +683,8 @@ buildSpaceCarvingVisibleType(DEVICEPTR(HashEntryVisibilityType)* entriesVisibleT
 
 		if (fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL)
 		{
-			float weights[N_DIRECTIONS];
-			Vector3f normal_world = (invM_d * depthNormal[x + y * imgSize.x]).toVector3();
-			ComputeDirectionWeights(normal_world, weights);
 			for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
 			{
-				if (weights[direction] < direction_weight_threshold)
-					continue;
 				SetBlockVisibleType(hashTable, blockCoords, blockDirections, entriesVisibleType,
 				                    blockPos, TSDFDirection(direction));
 			}

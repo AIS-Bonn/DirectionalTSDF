@@ -266,11 +266,30 @@ _CPU_AND_GPU_CODE_ inline void drawPixelNormal(DEVICEPTR(Vector4u)& dest, const 
 }
 
 template<class TVoxel, class TIndex>
-_CPU_AND_GPU_CODE_ inline void drawPixelColour(DEVICEPTR(Vector4u)& dest, const CONSTPTR(Vector3f)& point,
-                                               const CONSTPTR(TVoxel)* voxelBlockData,
-                                               const CONSTPTR(typename TIndex::IndexData)* indexData)
+_CPU_AND_GPU_CODE_ inline void drawPixelColourDirectional(
+	DEVICEPTR(Vector4u)& dest, const CONSTPTR(Vector3f)& point, const Vector6f &directionalContribution,
+	const CONSTPTR(TVoxel)* voxelBlockData, const CONSTPTR(typename TIndex::IndexData)* indexData)
 {
-	// FIXME: directional
+	dest.x = 0;
+	dest.y = 0;
+	dest.z = 0;
+
+	for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
+	{
+		Vector4f clr = VoxelColorReader<TVoxel::hasColorInformation, TVoxel, TIndex>::interpolate(
+			voxelBlockData, indexData, point, TSDFDirection(direction));
+		dest.x += (uchar) (clr.x * 255.0f * directionalContribution[direction]);
+		dest.y += (uchar) (clr.y * 255.0f * directionalContribution[direction]);
+		dest.z += (uchar) (clr.z * 255.0f * directionalContribution[direction]);
+	}
+	dest.w = 255;
+}
+
+template<class TVoxel, class TIndex>
+_CPU_AND_GPU_CODE_ inline void drawPixelColourDefault(DEVICEPTR(Vector4u)& dest, const CONSTPTR(Vector3f)& point,
+                                                      const CONSTPTR(TVoxel)* voxelBlockData,
+                                                      const CONSTPTR(typename TIndex::IndexData)* indexData)
+{
 	Vector4f clr = VoxelColorReader<TVoxel::hasColorInformation, TVoxel, TIndex>::interpolate(voxelBlockData, indexData,
 	                                                                                          point, TSDFDirection::NONE);
 
@@ -354,24 +373,20 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 	return false;
 }
 
+/**
+ *
+ * @param directionalContribution vector of floats that holds the proportional contribution of every direction to the pixel
+ */
 template<class TVoxel, class TIndex>
-_CPU_AND_GPU_CODE_ inline bool castRayDirectional(DEVICEPTR(Vector4f) &pt_out, DEVICEPTR(HashEntryVisibilityType) *entriesVisibleType,
+_CPU_AND_GPU_CODE_ inline bool castRayDirectional(DEVICEPTR(Vector4f) &pt_out, Vector6f *directionalContribution,
+	                                                DEVICEPTR(HashEntryVisibilityType) *entriesVisibleType,
                                                   int x, int y, const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(typename TIndex::IndexData) *voxelIndex,
                                                   Matrix4f invM, Vector4f invProjParams, float oneOverVoxelSize, float mu, const CONSTPTR(Vector2f) & viewFrustum_minmax)
 {
-//	float distance;
-//	return castRayDefault<TVoxel, TIndex>(pt_out, distance, entriesVisibleType, x, y, voxelData, voxelIndex,
-//		invM, invProjParams, oneOverVoxelSize, mu, viewFrustum_minmax, TSDFDirection::Z_NEG);
-
-	bool pt_found = false;
-	int vmIndex;
-
 	Vector3f ptStart_camera = reprojectImagePoint(x, y, viewFrustum_minmax.x, invProjParams);
-	float totalLengthStart = length(ptStart_camera) * oneOverVoxelSize;
 	Vector3f ptStart_world = (invM * Vector4f(ptStart_camera, 1.0f)).toVector3() * oneOverVoxelSize;
 
 	Vector3f ptEnd_camera = reprojectImagePoint(x, y, viewFrustum_minmax.y, invProjParams);
-	float totalLengthMax = length(ptEnd_camera) * oneOverVoxelSize;
 	Vector3f ptEnd_world = (invM * Vector4f(ptEnd_camera, 1.0f)).toVector3() * oneOverVoxelSize;
 
 	Vector3f rayDirection_world = (ptEnd_world - ptStart_world).normalised();
@@ -418,13 +433,11 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional(DEVICEPTR(Vector4f) &pt_out, D
 	/// Find most suitable intersection (innermost one in vicinity of first intersection)
 	float currentIntersectionLength = MAX_LENGTH;
 	int currentIntersectionIdx = -1;
-	float currentWeight = 0;
 	for (TSDFDirection_type idx = 0; idx < N_DIRECTIONS; idx++)
 	{
 		if (directionIntersectionLength[idx] < currentIntersectionLength)
 		{
 			currentIntersectionLength = directionIntersectionLength[idx];
-			currentWeight = directionIntersectionWeight[idx];
 			currentIntersectionIdx = idx;
 		}
 	}
@@ -437,6 +450,9 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional(DEVICEPTR(Vector4f) &pt_out, D
 		{
 			pt_out += Vector4f(directionIntersectionPoint[idx] * directionIntersectionWeight[idx], 0);
 			weightSum += directionIntersectionWeight[idx];
+		} else
+		{
+			directionIntersectionWeight[idx] = 0; // Set 0 to exclude from coloring
 		}
 	}
 
@@ -449,18 +465,26 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional(DEVICEPTR(Vector4f) &pt_out, D
 		return false;
 	}
 
+	if (directionalContribution)
+	{
+		for (int i = 0; i < 6; i++)
+		{
+			directionalContribution->v[i] = directionIntersectionWeight[i] / weightSum;
+		}
+	}
+
 	return true;
 }
 
 template<class TVoxel, class TIndex>
-_CPU_AND_GPU_CODE_ inline bool castRay(DEVICEPTR(Vector4f) &pt_out, DEVICEPTR(HashEntryVisibilityType) *entriesVisibleType,
+_CPU_AND_GPU_CODE_ inline bool castRay(DEVICEPTR(Vector4f) &pt_out, Vector6f *directionalContribution, DEVICEPTR(HashEntryVisibilityType) *entriesVisibleType,
                                        int x, int y, const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(typename TIndex::IndexData) *voxelIndex,
                                        Matrix4f invM, Vector4f invProjParams, float oneOverVoxelSize, float mu, const CONSTPTR(Vector2f) & viewFrustum_minmax,
                                        bool directionalTSDF)
 {
 	float distance;
 	if (directionalTSDF)
-		return castRayDirectional<TVoxel, TIndex>(pt_out, entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams, oneOverVoxelSize, mu, viewFrustum_minmax);
+		return castRayDirectional<TVoxel, TIndex>(pt_out, directionalContribution, entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams, oneOverVoxelSize, mu, viewFrustum_minmax);
 	else
 		return castRayDefault<TVoxel, TIndex>(pt_out, distance, entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams,
 	                                      oneOverVoxelSize, mu, viewFrustum_minmax);
@@ -597,10 +621,19 @@ _CPU_AND_GPU_CODE_ inline void processPixelGrey(DEVICEPTR(Vector4u) &outRenderin
 }
 
 template<class TVoxel, class TIndex>
-_CPU_AND_GPU_CODE_ inline void processPixelColour(DEVICEPTR(Vector4u) &outRendering, const CONSTPTR(Vector3f) & point,
+_CPU_AND_GPU_CODE_ inline void processPixelColourDirectional(
+	DEVICEPTR(Vector4u) &outRendering, const CONSTPTR(Vector3f) &point, const Vector6f &directionalContribution,
 	bool foundPoint, const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(typename TIndex::IndexData) *voxelIndex)
 {
-	if (foundPoint) drawPixelColour<TVoxel, TIndex>(outRendering, point, voxelData, voxelIndex);
+	if (foundPoint) drawPixelColourDirectional<TVoxel, TIndex>(outRendering, point, directionalContribution, voxelData, voxelIndex);
+	else outRendering = Vector4u((uchar)0);
+}
+
+template<class TVoxel, class TIndex>
+_CPU_AND_GPU_CODE_ inline void processPixelColour(DEVICEPTR(Vector4u) &outRendering, const CONSTPTR(Vector3f) & point,
+                                                  bool foundPoint, const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(typename TIndex::IndexData) *voxelIndex)
+{
+	if (foundPoint) drawPixelColourDefault<TVoxel, TIndex>(outRendering, point, voxelData, voxelIndex);
 	else outRendering = Vector4u((uchar)0);
 }
 

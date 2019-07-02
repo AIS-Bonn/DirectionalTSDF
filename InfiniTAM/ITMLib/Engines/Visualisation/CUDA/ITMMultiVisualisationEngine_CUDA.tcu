@@ -91,6 +91,8 @@ void ITMMultiVisualisationEngine_CUDA<TVoxel, TIndex>::RenderImage(const ORUtils
 {
 	ITMRenderStateMultiScene<TVoxel, TIndex> *renderState = (ITMRenderStateMultiScene<TVoxel, TIndex>*)_renderState;
 
+	bool useDirectional = this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL;
+
 	Vector2i imgSize = outputImage->noDims;
 	Matrix4f invM = pose->GetInvM();
 
@@ -107,6 +109,7 @@ void ITMMultiVisualisationEngine_CUDA<TVoxel, TIndex>::RenderImage(const ORUtils
 		typedef ITMMultiIndex<TIndex> ID;
 		genericRaycast_device<VD, ID> << <gridSize, cudaBlockSize >> > (
 			renderState->raycastResult->GetData(MEMORYDEVICE_CUDA),
+			renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA),
 			nullptr,
 			renderState->voxelData_device,
 			renderState->indexData_device,
@@ -116,7 +119,7 @@ void ITMMultiVisualisationEngine_CUDA<TVoxel, TIndex>::RenderImage(const ORUtils
 			oneOverVoxelSize,
 			renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA),
 			mu,
-			this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL
+			useDirectional
 			);
 		ORcudaKernelCheck;
 	}
@@ -124,6 +127,7 @@ void ITMMultiVisualisationEngine_CUDA<TVoxel, TIndex>::RenderImage(const ORUtils
 	Vector3f lightSource = -Vector3f(invM.getColumn(2));
 	Vector4u *outRendering = outputImage->GetData(MEMORYDEVICE_CUDA);
 	Vector4f *pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CUDA);
+	Vector6f *directionalContribution = renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA);
 
 	dim3 cudaBlockSize(8, 8);
 	dim3 gridSize((int)ceil((float)imgSize.x / (float)cudaBlockSize.x), (int)ceil((float)imgSize.y / (float)cudaBlockSize.y));
@@ -133,7 +137,9 @@ void ITMMultiVisualisationEngine_CUDA<TVoxel, TIndex>::RenderImage(const ORUtils
 
 	switch (type) {
 	case IITMVisualisationEngine::RENDER_COLOUR_FROM_VOLUME:
-		renderColour_device<ITMMultiVoxel<TVoxel>, ITMMultiIndex<TIndex> > << <gridSize, cudaBlockSize >> >(outRendering, pointsRay, renderState->voxelData_device,
+		renderColour_device<ITMMultiVoxel<TVoxel>, ITMMultiIndex<TIndex> > << <gridSize, cudaBlockSize >> >(outRendering, pointsRay,
+			useDirectional ? directionalContribution : nullptr,
+			renderState->voxelData_device,
 			renderState->indexData_device, imgSize);
 		ORcudaKernelCheck;
 		break;

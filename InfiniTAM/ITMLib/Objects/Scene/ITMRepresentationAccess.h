@@ -61,6 +61,14 @@ _CPU_AND_GPU_CODE_ inline int findVoxel(const CONSTPTR(ITMLib::ITMVoxelBlockHash
 	return -1;
 }
 
+_CPU_AND_GPU_CODE_ inline int findVoxel(const CONSTPTR(ITMLib::ITMVoxelBlockHash::IndexData) *voxelIndex,
+                                        const THREADPTR(Vector3i) & point, THREADPTR(int) &vmIndex,
+                                        THREADPTR(ITMLib::ITMVoxelBlockHash::IndexCache) & cache)
+{
+	return findVoxel(voxelIndex, point, TSDFDirection::NONE, vmIndex, cache);
+}
+
+
 _CPU_AND_GPU_CODE_ inline int findVoxel(const CONSTPTR(ITMLib::ITMVoxelBlockHash::IndexData) *voxelIndex, Vector3i point, const TSDFDirection direction, THREADPTR(int) &vmIndex)
 {
 	ITMLib::ITMVoxelBlockHash::IndexCache cache;

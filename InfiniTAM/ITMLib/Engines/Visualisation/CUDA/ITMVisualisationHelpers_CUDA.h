@@ -36,7 +36,7 @@ namespace ITMLib
 		Vector4f projParams, float voxelSize);
 
 	template<class TVoxel, class TIndex>
-	__global__ void genericRaycast_device(Vector4f *out_ptsRay, HashEntryVisibilityType *entriesVisibleType, const TVoxel *voxelData,
+	__global__ void genericRaycast_device(Vector4f *out_ptsRay, Vector6f *raycastDirectionalContribution, HashEntryVisibilityType *entriesVisibleType, const TVoxel *voxelData,
 		const typename TIndex::IndexData *voxelIndex, Vector2i imgSize, Matrix4f invM, Vector4f invProjParams,
 		float oneOverVoxelSize, const Vector2f *minmaximg, float mu, bool directionalTSDF)
 	{
@@ -47,11 +47,11 @@ namespace ITMLib
 		int locId = x + y * imgSize.x;
 		int locId2 = (int)floor((float)x / minmaximg_subsample) + (int)floor((float)y / minmaximg_subsample) * imgSize.x;
 
-		castRay<TVoxel, TIndex>(out_ptsRay[locId], entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams, oneOverVoxelSize, mu, minmaximg[locId2], directionalTSDF);
+		castRay<TVoxel, TIndex>(out_ptsRay[locId], &raycastDirectionalContribution[locId], entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams, oneOverVoxelSize, mu, minmaximg[locId2], directionalTSDF);
 	}
 
 	template<class TVoxel, class TIndex>
-	__global__ void genericRaycastMissingPoints_device(Vector4f *forwardProjection, HashEntryVisibilityType *entriesVisibleType, const TVoxel *voxelData,
+	__global__ void genericRaycastMissingPoints_device(Vector4f *forwardProjection, Vector6f *raycastDirectionalContribution, HashEntryVisibilityType *entriesVisibleType, const TVoxel *voxelData,
 		const typename TIndex::IndexData *voxelIndex, Vector2i imgSize, Matrix4f invM, Vector4f invProjParams, float oneOverVoxelSize,
 		int *fwdProjMissingPoints, int noMissingPoints, const Vector2f *minmaximg, float mu, bool directionalTSDF)
 	{
@@ -63,7 +63,7 @@ namespace ITMLib
 		int y = locId / imgSize.x, x = locId - y*imgSize.x;
 		int locId2 = (int)floor((float)x / minmaximg_subsample) + (int)floor((float)y / minmaximg_subsample) * imgSize.x;
 
-		castRay<TVoxel, TIndex>(forwardProjection[locId], entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams, oneOverVoxelSize, mu, minmaximg[locId2], directionalTSDF);
+		castRay<TVoxel, TIndex>(forwardProjection[locId], &raycastDirectionalContribution[locId], entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams, oneOverVoxelSize, mu, minmaximg[locId2], directionalTSDF);
 	}
 
 	template<bool flipNormals>
@@ -204,8 +204,8 @@ namespace ITMLib
 	}
 
 	template<class TVoxel, class TIndex>
-	__global__ void renderColour_device(Vector4u *outRendering, const Vector4f *ptsRay, const TVoxel *voxelData,
-		const typename TIndex::IndexData *voxelIndex, Vector2i imgSize)
+	__global__ void renderColour_device(Vector4u *outRendering, const Vector4f *ptsRay, const Vector6f *directionalContribution,
+		const TVoxel *voxelData, const typename TIndex::IndexData *voxelIndex, Vector2i imgSize)
 	{
 		int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
 
@@ -215,6 +215,14 @@ namespace ITMLib
 
 		Vector4f ptRay = ptsRay[locId];
 
-		processPixelColour<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(), ptRay.w > 0, voxelData, voxelIndex);
+		if (directionalContribution)
+		{
+			processPixelColourDirectional<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(), directionalContribution[locId],
+			                                              ptRay.w > 0, voxelData, voxelIndex);
+		}
+		else
+		{
+			processPixelColour<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(), ptRay.w > 0, voxelData, voxelIndex);
+		}
 	}
 }

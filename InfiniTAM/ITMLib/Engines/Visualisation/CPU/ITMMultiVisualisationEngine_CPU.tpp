@@ -97,6 +97,11 @@ void ITMMultiVisualisationEngine_CPU<TVoxel, TIndex>::RenderImage(const ORUtils:
 	Vector2i imgSize = outputImage->noDims;
 	Matrix4f invM = pose->GetInvM();
 
+	bool useDirectioal = this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL;
+
+	Vector4f *pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CPU);
+	Vector6f *directionalContribution = renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CPU);
+
 	// Generic Raycast
 	float voxelSize = renderState->sceneParams.voxelSize;
 	{
@@ -106,7 +111,6 @@ void ITMMultiVisualisationEngine_CPU<TVoxel, TIndex>::RenderImage(const ORUtils:
 		const Vector2f *minmaximg = renderState->renderingRangeImage->GetData(MEMORYDEVICE_CPU);
 		float mu = renderState->sceneParams.mu;
 		float oneOverVoxelSize = 1.0f / voxelSize;
-		Vector4f *pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CPU);
 
 		typedef ITMMultiVoxel<TVoxel> VD;
 		typedef ITMMultiIndex<TIndex> ID;
@@ -120,14 +124,13 @@ void ITMMultiVisualisationEngine_CPU<TVoxel, TIndex>::RenderImage(const ORUtils:
 			int x = locId - y*imgSize.x;
 			int locId2 = (int)floor((float)x / minmaximg_subsample) + (int)floor((float)y / minmaximg_subsample) * imgSize.x;
 
-			castRay<VD, ID>(pointsRay[locId], NULL, x, y, &renderState->voxelData_host, &renderState->indexData_host, invM, invProjParams, oneOverVoxelSize, mu, minmaximg[locId2],
-				this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL);
+			castRay<VD, ID>(pointsRay[locId], &directionalContribution[locId], NULL, x, y, &renderState->voxelData_host, &renderState->indexData_host, invM, invProjParams, oneOverVoxelSize, mu, minmaximg[locId2],
+				useDirectioal);
 		}
 	}
 
 	Vector3f lightSource = -Vector3f(invM.getColumn(2));
 	Vector4u *outRendering = outputImage->GetData(MEMORYDEVICE_CPU);
-	Vector4f *pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CPU);
 
 	if ((type == IITMVisualisationEngine::RENDER_COLOUR_FROM_VOLUME) &&
 		(!TVoxel::hasColorInformation)) type = IITMVisualisationEngine::RENDER_SHADED_GREYSCALE;
@@ -139,8 +142,16 @@ void ITMMultiVisualisationEngine_CPU<TVoxel, TIndex>::RenderImage(const ORUtils:
 #endif
 		for (int locId = 0; locId < imgSize.x * imgSize.y; locId++) {
 			Vector4f ptRay = pointsRay[locId];
-			processPixelColour<ITMMultiVoxel<TVoxel>, ITMMultiIndex<TIndex> >(outRendering[locId], ptRay.toVector3(), ptRay.w > 0, &(renderState->voxelData_host),
-				&(renderState->indexData_host));
+			if (useDirectioal)
+			{
+				processPixelColourDirectional<ITMMultiVoxel<TVoxel>, ITMMultiIndex<TIndex> >(
+					outRendering[locId], ptRay.toVector3(), directionalContribution[locId],
+					ptRay.w > 0, &(renderState->voxelData_host), &(renderState->indexData_host));
+			} else
+			{
+				processPixelColour<ITMMultiVoxel<TVoxel>, ITMMultiIndex<TIndex> >(outRendering[locId], ptRay.toVector3(), ptRay.w > 0, &(renderState->voxelData_host),
+					&(renderState->indexData_host));
+			}
 		}
 		break;
 	case IITMVisualisationEngine::RENDER_COLOUR_FROM_NORMAL:
