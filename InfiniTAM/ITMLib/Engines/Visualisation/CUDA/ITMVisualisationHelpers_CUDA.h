@@ -108,7 +108,8 @@ namespace ITMLib
 	}
 
 	template<class TVoxel, class TIndex>
-	__global__ void renderGrey_device(Vector4u *outRendering, const Vector4f *ptsRay, const TVoxel *voxelData,
+	__global__ void renderGrey_device(Vector4u *outRendering, const Vector4f *ptsRay,
+		const Vector6f *directionalContribution, const TVoxel *voxelData,
 		const typename TIndex::IndexData *voxelIndex, Vector2i imgSize, Vector3f lightSource)
 	{
 		int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
@@ -119,11 +120,17 @@ namespace ITMLib
 
 		Vector4f ptRay = ptsRay[locId];
 
-		processPixelGrey<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(), ptRay.w > 0, voxelData, voxelIndex, lightSource);
+		if (directionalContribution)
+			processPixelGrey<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
+				&directionalContribution[locId],ptRay.w > 0, voxelData, voxelIndex, lightSource);
+		else
+			processPixelGrey<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
+																			 nullptr,ptRay.w > 0, voxelData, voxelIndex, lightSource);
 	}
 
 	template<class TVoxel, class TIndex>
-	__global__ void renderColourFromNormal_device(Vector4u *outRendering, const Vector4f *ptsRay, const TVoxel *voxelData,
+	__global__ void renderColourFromNormal_device(Vector4u *outRendering, const Vector4f *ptsRay,
+		const Vector6f *directionalContribution, const TVoxel *voxelData,
 		const typename TIndex::IndexData *voxelIndex, Vector2i imgSize, Vector3f lightSource)
 	{
 		int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
@@ -134,11 +141,17 @@ namespace ITMLib
 
 		Vector4f ptRay = ptsRay[locId];
 
-		processPixelNormal<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(), ptRay.w > 0, voxelData, voxelIndex, lightSource);
+		if (directionalContribution)
+			processPixelNormal<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
+			                                   &directionalContribution[locId], ptRay.w > 0, voxelData, voxelIndex, lightSource);
+		else
+			processPixelNormal<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
+																				 nullptr, ptRay.w > 0, voxelData, voxelIndex, lightSource);
 	}
 
 	template<class TVoxel, class TIndex>
-	__global__ void renderColourFromConfidence_device(Vector4u *outRendering, const Vector4f *ptsRay, const TVoxel *voxelData,
+	__global__ void renderColourFromConfidence_device(Vector4u *outRendering, const Vector4f *ptsRay,
+		const Vector6f *directionalContribution, const TVoxel *voxelData,
 		const typename TIndex::IndexData *voxelIndex, Vector2i imgSize, Vector3f lightSource)
 	{
 		int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
@@ -149,12 +162,18 @@ namespace ITMLib
 
 		Vector4f ptRay = ptsRay[locId];
 
-		processPixelConfidence<TVoxel, TIndex>(outRendering[locId], ptRay, ptRay.w > 0, voxelData, voxelIndex, lightSource);
+		if (directionalContribution)
+			processPixelConfidence<TVoxel, TIndex>(outRendering[locId], ptRay, &directionalContribution[locId],
+				ptRay.w > 0, voxelData, voxelIndex, lightSource);
+		else
+			processPixelConfidence<TVoxel, TIndex>(outRendering[locId], ptRay, nullptr,
+			                                       ptRay.w > 0, voxelData, voxelIndex, lightSource);
 	}
 
 	template<class TVoxel, class TIndex>
 	__global__ void renderPointCloud_device(/*Vector4u *outRendering, */Vector4f *locations, Vector4f *colours, uint *noTotalPoints,
-		const Vector4f *ptsRay, const TVoxel *voxelData, const typename TIndex::IndexData *voxelIndex, bool skipPoints,
+		const Vector4f *ptsRay, const Vector6f *directionalContribution, const TVoxel *voxelData,
+		const typename TIndex::IndexData *voxelIndex, bool skipPoints,
 		float voxelSize, Vector2i imgSize, Vector3f lightSource)
 	{
 		__shared__ bool shouldPrefix;
@@ -165,21 +184,22 @@ namespace ITMLib
 
 		int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
 
-		if (x < imgSize.x && y < imgSize.y)
-		{
-			int locId = x + y * imgSize.x;
-			Vector3f outNormal; float angle; Vector4f pointRay;
+		if (x >= imgSize.x && y >= imgSize.y)
+			return;
 
-			pointRay = ptsRay[locId];
-			point = pointRay.toVector3();
-			foundPoint = pointRay.w > 0;
+		int locId = x + y * imgSize.x;
+		Vector3f outNormal; float angle; Vector4f pointRay;
 
-			computeNormalAndAngle<TVoxel, TIndex>(foundPoint, point, voxelData, voxelIndex, lightSource, outNormal, angle);
+		pointRay = ptsRay[locId];
+		point = pointRay.toVector3();
+		foundPoint = pointRay.w > 0;
+		const Vector6f *directional = directionalContribution ? &directionalContribution[locId] : nullptr;
 
-			if (skipPoints && ((x % 2 == 0) || (y % 2 == 0))) foundPoint = false;
+		computeNormalAndAngle<TVoxel, TIndex>(foundPoint, point, directional, voxelData, voxelIndex, lightSource, outNormal, angle);
 
-			if (foundPoint) shouldPrefix = true;
-		}
+		if (skipPoints && ((x % 2 == 0) || (y % 2 == 0))) foundPoint = false;
+
+		if (foundPoint) shouldPrefix = true;
 
 		__syncthreads();
 
@@ -189,9 +209,17 @@ namespace ITMLib
 
 			if (offset != -1)
 			{
-				Vector4f tmp;
-				// FIXME: directional
-				tmp = VoxelColorReader<TVoxel::hasColorInformation, TVoxel, TIndex>::interpolate(voxelData, voxelIndex, point, TSDFDirection::NONE);
+				Vector4f tmp(0, 0, 0, 0);
+				if (directionalContribution)
+				{
+					for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
+					{
+						tmp += directional->v[direction] * VoxelColorReader<TVoxel::hasColorInformation, TVoxel, TIndex>::interpolate(voxelData, voxelIndex, point, TSDFDirection(direction));
+					}
+				} else
+				{
+					tmp = VoxelColorReader<TVoxel::hasColorInformation, TVoxel, TIndex>::interpolate(voxelData, voxelIndex, point, TSDFDirection::NONE);
+				}
 				if (tmp.w > 0.0f) { tmp.x /= tmp.w; tmp.y /= tmp.w; tmp.z /= tmp.w; tmp.w = 1.0f; }
 				colours[offset] = tmp;
 
@@ -216,13 +244,8 @@ namespace ITMLib
 		Vector4f ptRay = ptsRay[locId];
 
 		if (directionalContribution)
-		{
-			processPixelColourDirectional<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(), directionalContribution[locId],
-			                                              ptRay.w > 0, voxelData, voxelIndex);
-		}
+			processPixelColour<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(), &directionalContribution[locId], ptRay.w > 1, voxelData, voxelIndex);
 		else
-		{
-			processPixelColour<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(), ptRay.w > 0, voxelData, voxelIndex);
-		}
+			processPixelColour<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(), nullptr, ptRay.w > 1, voxelData, voxelIndex);
 	}
 }

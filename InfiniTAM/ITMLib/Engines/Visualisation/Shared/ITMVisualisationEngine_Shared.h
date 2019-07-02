@@ -126,6 +126,7 @@ forwardProjectPixel(Vector4f pixel, const CONSTPTR(Matrix4f)& M, const CONSTPTR(
 
 template<class TVoxel, class TIndex>
 _CPU_AND_GPU_CODE_ inline void computeNormalAndAngle(THREADPTR(bool)& foundPoint, const THREADPTR(Vector3f)& point,
+                                                     const Vector6f *directionalContribution,
                                                      const CONSTPTR(TVoxel)* voxelBlockData,
                                                      const CONSTPTR(typename TIndex::IndexData)* indexData,
                                                      const THREADPTR(Vector3f)& lightSource,
@@ -133,11 +134,18 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndAngle(THREADPTR(bool)& foundPoint
 {
 	if (!foundPoint) return;
 
-	// FIXME: directional
-	outNormal = computeSingleNormalFromSDF(voxelBlockData, indexData, point, TSDFDirection::NONE);
-
-	float normScale = 1.0f / sqrt(outNormal.x * outNormal.x + outNormal.y * outNormal.y + outNormal.z * outNormal.z);
-	outNormal *= normScale;
+	if (directionalContribution)
+	{
+		outNormal = Vector3f(0, 0, 0);
+		for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
+		{
+			outNormal = directionalContribution->v[direction] * computeSingleNormalFromSDF(voxelBlockData, indexData, point, TSDFDirection(direction)).normalised();
+		}
+	}
+	else
+	{
+		outNormal = computeSingleNormalFromSDF(voxelBlockData, indexData, point, TSDFDirection::NONE).normalised();
+	}
 
 	angle = outNormal.x * lightSource.x + outNormal.y * lightSource.y + outNormal.z * lightSource.z;
 	if (!(angle > 0.0)) foundPoint = false;
@@ -273,6 +281,40 @@ _CPU_AND_GPU_CODE_ inline void drawPixelColourDirectional(
 	dest.x = 0;
 	dest.y = 0;
 	dest.z = 0;
+
+//	// Debugging: color in contributing directions
+//	const Vector3f directionColors[6] = {
+//		Vector3f(1, 0, 0),
+//		Vector3f(0, 1, 0),
+//		Vector3f(1, 1, 0),
+//		Vector3f(0, 1, 1),
+//		Vector3f(1, 0, 1),
+//		Vector3f(1, 1, 0)
+//	};
+//
+//	for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
+//	{
+//		const Vector3f &clr = directionColors[direction];
+//		dest.x += (uchar) (clr.x * 255.0f * directionalContribution[direction]);
+//		dest.y += (uchar) (clr.y * 255.0f * directionalContribution[direction]);
+//		dest.z += (uchar) (clr.z * 255.0f * directionalContribution[direction]);
+//	}
+
+//	// Debugging: color in strongest contributing direction
+//	int maxIdx = -1;
+//	float maxWeight = 0;
+//	for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
+//	{
+//		if (directionalContribution[direction] > maxWeight)
+//		{
+//			maxIdx = direction;
+//			maxWeight = directionalContribution[direction];
+//		}
+//	}
+//	const Vector3f &clr = directionColors[maxIdx];
+//	dest.x = (uchar) (clr.x * 255.0f);
+//	dest.y = (uchar) (clr.y * 255.0f);
+//	dest.z = (uchar) (clr.z * 255.0f);
 
 	for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
 	{
@@ -607,14 +649,15 @@ _CPU_AND_GPU_CODE_ inline void processPixelConfidence_ImageNormals(DEVICEPTR(Vec
 }
 
 template<class TVoxel, class TIndex>
-_CPU_AND_GPU_CODE_ inline void processPixelGrey(DEVICEPTR(Vector4u) &outRendering, const CONSTPTR(Vector3f) & point, 
+_CPU_AND_GPU_CODE_ inline void processPixelGrey(DEVICEPTR(Vector4u) &outRendering, const CONSTPTR(Vector3f) & point,
+	const Vector6f *directionalContribution,
 	bool foundPoint, const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(typename TIndex::IndexData) *voxelIndex, 
 	Vector3f lightSource)
 {
 	Vector3f outNormal;
 	float angle;
 
-	computeNormalAndAngle<TVoxel, TIndex>(foundPoint, point, voxelData, voxelIndex, lightSource, outNormal, angle);
+	computeNormalAndAngle<TVoxel, TIndex>(foundPoint, point, directionalContribution, voxelData, voxelIndex, lightSource, outNormal, angle);
 
 	if (foundPoint) drawPixelGrey(outRendering, angle);
 	else outRendering = Vector4u((uchar)0);
@@ -630,39 +673,49 @@ _CPU_AND_GPU_CODE_ inline void processPixelColourDirectional(
 }
 
 template<class TVoxel, class TIndex>
-_CPU_AND_GPU_CODE_ inline void processPixelColour(DEVICEPTR(Vector4u) &outRendering, const CONSTPTR(Vector3f) & point,
-                                                  bool foundPoint, const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(typename TIndex::IndexData) *voxelIndex)
+_CPU_AND_GPU_CODE_ inline void processPixelColour(
+	DEVICEPTR(Vector4u) &outRendering, const CONSTPTR(Vector3f) & point,
+	const Vector6f *directionalContribution, bool foundPoint, const CONSTPTR(TVoxel) *voxelData,
+	const CONSTPTR(typename TIndex::IndexData) *voxelIndex)
 {
-	if (foundPoint) drawPixelColourDefault<TVoxel, TIndex>(outRendering, point, voxelData, voxelIndex);
+	if (foundPoint)
+	{
+		if (directionalContribution)
+			drawPixelColourDirectional<TVoxel, TIndex>(outRendering, point, *directionalContribution, voxelData, voxelIndex);
+		else
+			drawPixelColourDefault<TVoxel, TIndex>(outRendering, point, voxelData, voxelIndex);
+	}
 	else outRendering = Vector4u((uchar)0);
 }
 
 template<class TVoxel, class TIndex>
 _CPU_AND_GPU_CODE_ inline void processPixelNormal(DEVICEPTR(Vector4u) &outRendering, const CONSTPTR(Vector3f) & point,
+	const Vector6f *directionalContribution,
 	bool foundPoint, const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(typename TIndex::IndexData) *voxelIndex,
 	Vector3f lightSource)
 {
 	Vector3f outNormal;
 	float angle;
 
-	computeNormalAndAngle<TVoxel, TIndex>(foundPoint, point, voxelData, voxelIndex, lightSource, outNormal, angle);
+	computeNormalAndAngle<TVoxel, TIndex>(foundPoint, point, directionalContribution, voxelData, voxelIndex, lightSource, outNormal, angle);
 
 	if (foundPoint) drawPixelNormal(outRendering, outNormal);
 	else outRendering = Vector4u((uchar)0);
 }
 
 template<class TVoxel, class TIndex>
-_CPU_AND_GPU_CODE_ inline void processPixelConfidence(DEVICEPTR(Vector4u) &outRendering, const CONSTPTR(Vector4f) & point, 
+_CPU_AND_GPU_CODE_ inline void processPixelConfidence(DEVICEPTR(Vector4u) &outRendering, const CONSTPTR(Vector4f) & point,
+	const Vector6f *directionalContribution,
 	bool foundPoint, const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(typename TIndex::IndexData) *voxelIndex, 
 	Vector3f lightSource)
 {
 	Vector3f outNormal;
 	float angle;
 
-	computeNormalAndAngle<TVoxel, TIndex>(foundPoint, TO_VECTOR3(point), voxelData, voxelIndex, lightSource, outNormal, angle);
+	computeNormalAndAngle<TVoxel, TIndex>(foundPoint, TO_VECTOR3(point), directionalContribution, voxelData, voxelIndex, lightSource, outNormal, angle);
 
 	if (foundPoint) drawPixelConfidence(outRendering, angle, point.w - 1.0f);
 	else outRendering = Vector4u((uchar)0);
 }
 
-} //
+} // namespace ITMLib

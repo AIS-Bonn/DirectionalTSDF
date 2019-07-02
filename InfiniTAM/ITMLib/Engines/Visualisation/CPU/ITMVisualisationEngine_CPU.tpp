@@ -11,6 +11,7 @@ using namespace ITMLib;
 
 template<class TVoxel, class TIndex>
 static int RenderPointCloud(Vector4f *locations, Vector4f *colours, const Vector4f *ptsRay,
+                            const Vector6f *directionalContribution,
                             const TVoxel *voxelData, const typename TIndex::IndexData *voxelIndex, bool skipPoints, float voxelSize,
                             Vector2i imgSize, Vector3f lightSource)
 {
@@ -19,19 +20,28 @@ static int RenderPointCloud(Vector4f *locations, Vector4f *colours, const Vector
 	for (int y = 0, locId = 0; y < imgSize.y; y++) for (int x = 0; x < imgSize.x; x++, locId++)
 		{
 			Vector3f outNormal; float angle;
-			Vector4f pointRay = ptsRay[locId];
-			Vector3f point = pointRay.toVector3();
+			const Vector4f &pointRay = ptsRay[locId];
+			const Vector3f &point = pointRay.toVector3();
+			const Vector6f *directional = directionalContribution ? &directionalContribution[locId] : nullptr;
 			bool foundPoint = pointRay.w > 0;
 
-			computeNormalAndAngle<TVoxel, TIndex>(foundPoint, point, voxelData, voxelIndex, lightSource, outNormal, angle);
+			computeNormalAndAngle<TVoxel, TIndex>(foundPoint, point, directional, voxelData, voxelIndex, lightSource, outNormal, angle);
 
 			if (skipPoints && ((x % 2 == 0) || (y % 2 == 0))) foundPoint = false;
 
 			if (foundPoint)
 			{
-				Vector4f tmp;
-				// FIXME: directional
-				tmp = VoxelColorReader<TVoxel::hasColorInformation, TVoxel, TIndex>::interpolate(voxelData, voxelIndex, point, ITMLib::TSDFDirection::NONE);
+				Vector4f tmp(0, 0, 0, 0);
+				if (directionalContribution)
+				{
+					for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
+					{
+						tmp += directional->v[direction] * VoxelColorReader<TVoxel::hasColorInformation, TVoxel, TIndex>::interpolate(voxelData, voxelIndex, point, ITMLib::TSDFDirection(direction));
+					}
+				} else
+				{
+					tmp = VoxelColorReader<TVoxel::hasColorInformation, TVoxel, TIndex>::interpolate(voxelData, voxelIndex, point, ITMLib::TSDFDirection::NONE);
+				}
 				if (tmp.w > 0.0f) { tmp.x /= tmp.w; tmp.y /= tmp.w; tmp.z /= tmp.w; tmp.w = 1.0f; }
 				colours[noTotalPoints] = tmp;
 
@@ -220,7 +230,7 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::RenderImage(const ITMSce
 	Vector2i imgSize = outputImage->noDims;
 	Matrix4f invM = pose->GetInvM();
 
-	bool useDirectioal = this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL;
+	bool useDirectial = this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL;
 
 	Vector4f *pointsRay;
     if (raycastType == IITMVisualisationEngine::RENDER_FROM_OLD_RAYCAST)
@@ -255,17 +265,10 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::RenderImage(const ITMSce
 		for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
 		{
 			Vector4f ptRay = pointsRay[locId];
-			if (useDirectioal)
-			{
-				processPixelColourDirectional<TVoxel, TIndex>(
-					outRendering[locId], ptRay.toVector3(), directionalContribution[locId],
-					ptRay.w > 0, voxelData, voxelIndex);
-			}
-			else
-			{
-				processPixelColour<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(), ptRay.w > 0,
-				                                   voxelData, voxelIndex);
-			}
+			processPixelColour<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
+																				 useDirectial ? &directionalContribution[locId] : nullptr,
+																				 ptRay.w > 0,
+																				 voxelData, voxelIndex);
 		}
 		break;
 	case IITMVisualisationEngine::RENDER_COLOUR_FROM_NORMAL:
@@ -275,7 +278,9 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::RenderImage(const ITMSce
 		for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
 		{
 			Vector4f ptRay = pointsRay[locId];
-			processPixelNormal<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(), ptRay.w > 0, voxelData, voxelIndex, lightSource);
+			processPixelNormal<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
+				useDirectial ? &directionalContribution[locId] : nullptr,
+				ptRay.w > 0, voxelData, voxelIndex, lightSource);
 		}
 		break;
 	case IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE:
@@ -285,7 +290,9 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::RenderImage(const ITMSce
 		for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
 		{
 			Vector4f ptRay = pointsRay[locId];
-			processPixelConfidence<TVoxel, TIndex>(outRendering[locId], ptRay, ptRay.w > 0, voxelData, voxelIndex, lightSource);
+			processPixelConfidence<TVoxel, TIndex>(outRendering[locId], ptRay,
+				useDirectial ? &directionalContribution[locId] : nullptr,
+				ptRay.w > 0, voxelData, voxelIndex, lightSource);
 		}
 		break;
 	case IITMVisualisationEngine::RENDER_SHADED_GREYSCALE_IMAGENORMALS:
@@ -315,7 +322,9 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::RenderImage(const ITMSce
 		for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
 		{
 			Vector4f ptRay = pointsRay[locId];
-			processPixelGrey<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(), ptRay.w > 0, voxelData, voxelIndex, lightSource);
+			processPixelGrey<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
+				useDirectial ? &directionalContribution[locId] : nullptr,
+				ptRay.w > 0, voxelData, voxelIndex, lightSource);
 		}
 	}
 }
@@ -330,6 +339,8 @@ ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::CreatePointCloud(const ITMSce
 	Vector2i imgSize = renderState->raycastResult->noDims;
 	Matrix4f invM = trackingState->pose_d->GetInvM() * view->calib.trafo_rgb_to_depth.calib;
 
+	bool useDirectioal = this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL;
+
 	// this one is generally done for the colour tracker, so yes, update
 	// the list of visible blocks if possible
 	GenericRaycast(scene, imgSize, invM, view->calib.intrinsics_rgb.projectionParamsSimple.all, renderState, true);
@@ -339,6 +350,7 @@ ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::CreatePointCloud(const ITMSce
 		trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CPU),
 		trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CPU),
 		renderState->raycastResult->GetData(MEMORYDEVICE_CPU),
+		useDirectioal ? renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CPU) : nullptr,
 		scene->localVBA.GetVoxelBlocks(),
 		scene->index.getIndexData(),
 		skipPoints,

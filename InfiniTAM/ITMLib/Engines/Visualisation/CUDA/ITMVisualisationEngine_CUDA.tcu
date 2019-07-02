@@ -260,12 +260,16 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::RenderImage(const ITMSc
 			ORcudaKernelCheck;
 			break;
 		case IITMVisualisationEngine::RENDER_COLOUR_FROM_NORMAL:
-			renderColourFromNormal_device<TVoxel, TIndex> <<<gridSize, cudaBlockSize>>>(outRendering, pointsRay, scene->localVBA.GetVoxelBlocks(),
+			renderColourFromNormal_device<TVoxel, TIndex> <<<gridSize, cudaBlockSize>>>(outRendering, pointsRay,
+				useDirectioal ? directionalContribution : nullptr,
+				scene->localVBA.GetVoxelBlocks(),
 				scene->index.getIndexData(), imgSize, lightSource);
 			ORcudaKernelCheck;
 			break;
 		case IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE:
-			renderColourFromConfidence_device<TVoxel, TIndex> <<<gridSize, cudaBlockSize>>>(outRendering, pointsRay, scene->localVBA.GetVoxelBlocks(),
+			renderColourFromConfidence_device<TVoxel, TIndex> <<<gridSize, cudaBlockSize>>>(outRendering, pointsRay,
+				useDirectioal ? directionalContribution : nullptr,
+				scene->localVBA.GetVoxelBlocks(),
 				scene->index.getIndexData(), imgSize, lightSource);
 			ORcudaKernelCheck;
 			break;
@@ -284,7 +288,9 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::RenderImage(const ITMSc
 			break;
 		case IITMVisualisationEngine::RENDER_SHADED_GREYSCALE:
 		default:
-			renderGrey_device<TVoxel, TIndex> <<<gridSize, cudaBlockSize>>>(outRendering, pointsRay, scene->localVBA.GetVoxelBlocks(),
+			renderGrey_device<TVoxel, TIndex> <<<gridSize, cudaBlockSize>>>(outRendering, pointsRay,
+				useDirectioal ? directionalContribution : nullptr,
+				scene->localVBA.GetVoxelBlocks(),
 				scene->index.getIndexData(), imgSize, lightSource);
 			ORcudaKernelCheck;
 			break;
@@ -373,6 +379,8 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::CreatePointCloud(const 
 	Vector2i imgSize = renderState->raycastResult->noDims;
 	Matrix4f invM = trackingState->pose_d->GetInvM() * view->calib.trafo_rgb_to_depth.calib;
 
+	bool useDirectial = this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL;
+
 	GenericRaycast(scene, imgSize, invM, view->calib.intrinsics_rgb.projectionParamsSimple.all, renderState, true);
 	trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
 
@@ -382,11 +390,13 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::CreatePointCloud(const 
 	Vector4f *locations = trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CUDA);
 	Vector4f *colours = trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CUDA);
 	Vector4f *pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CUDA);
+	Vector6f *directionalContribution = renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA);
 
 	dim3 cudaBlockSize(16, 16);
 	dim3 gridSize = getGridSize(imgSize, cudaBlockSize);
-	renderPointCloud_device<TVoxel, TIndex> << <gridSize, cudaBlockSize >> >(locations, colours, noTotalPoints_device,
-		pointsRay, scene->localVBA.GetVoxelBlocks(), scene->index.getIndexData(), skipPoints, scene->sceneParams->voxelSize, imgSize, lightSource);
+	renderPointCloud_device<TVoxel, TIndex> << <gridSize, cudaBlockSize >> >(locations, colours, noTotalPoints_device, pointsRay,
+		useDirectial? directionalContribution : nullptr,
+		scene->localVBA.GetVoxelBlocks(), scene->index.getIndexData(), skipPoints, scene->sceneParams->voxelSize, imgSize, lightSource);
 	ORcudaKernelCheck;
 
 	ORcudaSafeCall(cudaMemcpy(&trackingState->pointCloud->noTotalPoints, noTotalPoints_device, sizeof(uint), cudaMemcpyDeviceToHost));

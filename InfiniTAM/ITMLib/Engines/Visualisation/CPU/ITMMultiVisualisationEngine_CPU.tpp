@@ -142,16 +142,11 @@ void ITMMultiVisualisationEngine_CPU<TVoxel, TIndex>::RenderImage(const ORUtils:
 #endif
 		for (int locId = 0; locId < imgSize.x * imgSize.y; locId++) {
 			Vector4f ptRay = pointsRay[locId];
-			if (useDirectioal)
-			{
-				processPixelColourDirectional<ITMMultiVoxel<TVoxel>, ITMMultiIndex<TIndex> >(
-					outRendering[locId], ptRay.toVector3(), directionalContribution[locId],
-					ptRay.w > 0, &(renderState->voxelData_host), &(renderState->indexData_host));
-			} else
-			{
-				processPixelColour<ITMMultiVoxel<TVoxel>, ITMMultiIndex<TIndex> >(outRendering[locId], ptRay.toVector3(), ptRay.w > 0, &(renderState->voxelData_host),
-					&(renderState->indexData_host));
-			}
+			processPixelColour<ITMMultiVoxel<TVoxel>, ITMMultiIndex<TIndex> >(
+				outRendering[locId], ptRay.toVector3(),
+				useDirectioal ? &directionalContribution[locId] : nullptr,
+				ptRay.w > 0, &(renderState->voxelData_host),
+				&(renderState->indexData_host));
 		}
 		break;
 	case IITMVisualisationEngine::RENDER_COLOUR_FROM_NORMAL:
