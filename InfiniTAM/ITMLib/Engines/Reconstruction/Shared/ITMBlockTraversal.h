@@ -31,7 +31,7 @@ struct BlockTraversal
 		  step_size(Vector3i(dir.x > 0 ? 1 : -1,
 		                     dir.y > 0 ? 1 : -1,
 		                     dir.z > 0 ? 1 : -1)),
-		  tDelta(fabs(block_size / length(dir)))
+		  tDelta(fabs(block_size / length(direction)))
 	{
 		if (ORUtils::length(direction) == 0)
 		{
