@@ -46,12 +46,12 @@ try
 	}
 
 	printf("initialising ...\n");
-	ITMLibSettings *internalSettings = new ITMLibSettings();
+	std::shared_ptr<ITMLibSettings> internalSettings = std::make_shared<ITMLibSettings>();
 
 	ImageSourceEngine *imageSource;
 	IMUSourceEngine *imuSource = NULL;
 	printf("using calibration file: %s\n", calibFile);
-	if (imagesource_part2 == NULL) 
+	if (imagesource_part2 == NULL)
 	{
 		printf("using OpenNI device: %s\n", (imagesource_part1==NULL)?"<OpenNI default device>":imagesource_part1);
 		imageSource = new OpenNIEngine(calibFile, imagesource_part1);
@@ -86,7 +86,6 @@ try
 	CLIEngine::Instance()->Shutdown();
 
 	delete mainEngine;
-	delete internalSettings;
 	delete imageSource;
 	return 0;
 }
