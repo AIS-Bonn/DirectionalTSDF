@@ -400,7 +400,7 @@ inline void SetBlockAllocAndVisibleType(const CONSTPTR(ITMHashEntry)* hashTable,
 
 template<class TVoxel>
 _CPU_AND_GPU_CODE_
-void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth,
+void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* depthNormals,
                        const Matrix4f& invM_d,
                        const Vector4f& invProjParams_d, const Vector4f& invProjParams_rgb,
                        const ITMFusionParams& fusionParams,
@@ -418,14 +418,17 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth,
 	int idx = y * imgSize.x + x;
 
 	float depthValue = depth[idx];
-	if (depthValue <= 0 or (depthValue - mu) < viewFrustum_min or (depthValue + mu) > viewFrustum_max)
+	Vector4f normal_camera = depthNormals[idx];
+	if (depthValue <= 0 or (depthValue - mu) < viewFrustum_min or (depthValue + mu) > viewFrustum_max
+	    or normal_camera.w != 1)
 		return;
+
 
 	Vector3f pt_camera = reprojectImagePoint(x, y, depthValue, invProjParams_d);
 	Vector3f pt_world = (invM_d * Vector4f(pt_camera, 1)).toVector3();
 	Vector4f rayStart_camera = Vector4f(reprojectImagePoint(x, y, viewFrustum_min, invProjParams_d), 1);
 	Vector3f rayStart_world = (invM_d * rayStart_camera).toVector3();
-	Vector3f rayDirection_world = (invM_d * Vector4f(rayStart_camera.toVector3().normalised(), 0)).toVector3();
+	Vector3f rayDirection_world = (pt_world - rayStart_world).normalised();
 
 	float weights[N_DIRECTIONS];
 	if (fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL)
@@ -433,7 +436,14 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth,
 		ComputeDirectionWeights(-rayDirection_world, weights);
 	}
 
-	float carveDistance = ORUtils::length(pt_camera) - ORUtils::length(rayStart_camera.toVector3()) - mu;
+	Matrix4f M_d; invM_d.inv(M_d);
+
+//	float carveDistance = ORUtils::length(pt_world - rayStart_world) - 1 * mu;
+	normal_camera.w = 0; // rotation-only transformation
+	Vector3f normal_world = (invM_d * normal_camera).toVector3();
+	float carveDistance = ORUtils::length(pt_world - rayStart_world)
+		- fabs(1.0 / dot(normal_world, rayDirection_world)) * mu;
+
 	BlockTraversal blockTraversal(rayStart_world, rayDirection_world, carveDistance, voxelSize);
 	ITMVoxelBlockHash::IndexCache cache[N_DIRECTIONS];
 	while(blockTraversal.HasNextBlock())
@@ -447,7 +457,8 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth,
 
 		/// Fixed values for distance and weight
 		float distance = 1;
-		float weight = 1; //rayStart_camera.toVector3().normalised().z;
+		// TODO: down weight, if close to surface
+		float weight = 1 * weightNormal(normal_camera); //rayStart_camera.toVector3().normalised().z;
 
 		/// find and update voxels
 		if (fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL)
@@ -458,12 +469,7 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth,
 				int index = findVoxel(hashTable, voxelIdx, TSDFDirection(direction), foundEntry, cache[direction]);
 
 				if (not foundEntry)
-				{
 					continue;
-				}
-				const TVoxel &voxel = voxelArray[index];
-//				if (voxel.w_depth <= 0 or TVoxel::valueToFloat(voxel.sdf) < 0.0f)
-//					continue;
 
 				VoxelRayCastingSum &voxelRayCastingSum = entriesRayCasting[index];
 				voxelRayCastingSum.update(distance, weight);
@@ -475,12 +481,7 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth,
 			int index = findVoxel(hashTable, voxelIdx, foundEntry, cache[0]);
 
 			if (not foundEntry)
-			{
 				continue;
-			}
-			const TVoxel &voxel = voxelArray[index];
-//			if (voxel.w_depth <= 0 or TVoxel::valueToFloat(voxel.sdf) >= 0.0f)
-//				return;
 
 			VoxelRayCastingSum &voxelRayCastingSum = entriesRayCasting[index];
 			voxelRayCastingSum.update(distance, weight);
@@ -529,6 +530,7 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 	Vector3f rayStart = pt_world - mu * rayDirection;
 
 	BlockTraversal blockTraversal(rayStart, rayDirection, 2 * mu, voxelSize);
+	ITMVoxelBlockHash::IndexCache cache[N_DIRECTIONS];
 	while(blockTraversal.HasNextBlock())
 	{
 		Vector3i voxelIdx = blockTraversal.GetNextBlock();
@@ -543,7 +545,7 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 		}
 		else
 		{
-			distance = SIGN(-ORUtils::dot(voxelSurfaceOffset, rayDirection)) * ORUtils::length(voxelSurfaceOffset);
+			distance = SIGN(ORUtils::dot(voxelSurfaceOffset, normal_world)) * ORUtils::length(voxelSurfaceOffset);
 		}
 		distance = MAX(-1.0, MIN(1.0f, distance / mu));
 
@@ -560,9 +562,9 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 				if (weights[direction] < direction_weight_threshold)
 					continue;
 
-				const ITMHashEntry hashEntry = getHashEntry(hashTable, blockPos, TSDFDirection(direction));
-
-				if (not hashEntry.IsValid())
+				int foundEntry = false;
+				int index = findVoxel(hashTable, voxelIdx, TSDFDirection(direction), foundEntry, cache[direction]);
+				if (not foundEntry)
 				{
 					break;
 				}
@@ -576,17 +578,17 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 				if (weight < 1e-2)
 					return;
 
-				VoxelRayCastingSum &voxelRayCastingSum = entriesRayCasting[hashEntry.ptr * SDF_BLOCK_SIZE3 + linearIdx];
+				VoxelRayCastingSum &voxelRayCastingSum = entriesRayCasting[index];
 				voxelRayCastingSum.update(distance, weight);
 			}
 		}
 		else
 		{
-			const ITMHashEntry hashEntry = getHashEntry(hashTable, blockPos);
-
-			if (not hashEntry.IsValid())
+			int foundEntry = false;
+			int index = findVoxel(hashTable, voxelIdx, foundEntry, cache[0]);
+			if (not foundEntry)
 			{
-				continue;
+				break;
 			}
 
 			if (fusionParams.useWeighting)
@@ -598,7 +600,7 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 			if (weight < 1e-1)
 				return;
 
-			VoxelRayCastingSum &voxelRayCastingSum = entriesRayCasting[hashEntry.ptr * SDF_BLOCK_SIZE3 + linearIdx];
+			VoxelRayCastingSum &voxelRayCastingSum = entriesRayCasting[index];
 			voxelRayCastingSum.update(distance, weight);
 		}
 	}
@@ -666,13 +668,15 @@ buildSpaceCarvingVisibleType(DEVICEPTR(HashEntryVisibilityType)* entriesVisibleT
 		return;
 
 	Vector3f pt_camera = reprojectImagePoint(x, y, depth_measure, projParams_d);
+	Vector3f pt_world = (invM_d * Vector4f(pt_camera, 1)).toVector3();
+	Vector4f rayStart_camera = Vector4f(reprojectImagePoint(x, y, viewFrustum_min, projParams_d), 1);
+	Vector3f rayStart_world = (invM_d * rayStart_camera).toVector3();
+	Vector3f rayDirection_world = (pt_world - rayStart_world).normalised();
 
 	Vector3i lastBlockPos_carving(MAX_INT, MAX_INT, MAX_INT);
 
-	Vector4f rayStart_camera = Vector4f(reprojectImagePoint(x, y, viewFrustum_min, projParams_d), 1);
-	Vector3f rayStart_world = (invM_d * rayStart_camera).toVector3();
-	Vector3f rayDirection_world = (invM_d * Vector4f(rayStart_camera.toVector3().normalised(), 0)).toVector3();
-	float carveDistance = ORUtils::length(pt_camera) - ORUtils::length(rayStart_camera.toVector3()) - mu;
+//	float carveDistance = ORUtils::length(pt_camera) - ORUtils::length(rayStart_camera.toVector3()) - mu;
+	float carveDistance = ORUtils::length(pt_world - rayStart_world) - 0 * mu;
 	BlockTraversal blockTraversal_carving(rayStart_world, rayDirection_world, carveDistance, voxelSize);
 	while(blockTraversal_carving.HasNextBlock())
 	{
@@ -753,8 +757,6 @@ buildHashAllocAndVisibleType(DEVICEPTR(HashEntryAllocType)* entriesAllocType,
 		ray_direction = camera_ray_world.toVector3();
 	}
 	ray_start = pt_world.toVector3() - mu * ray_direction;
-
-	Vector3i lastBlockPos_carving(MAX_INT, MAX_INT, MAX_INT);
 
 	BlockTraversal blockTraversal(ray_start, ray_direction, 2 * mu, voxelSize);
 	Vector3i lastBlockPos(MAX_INT, MAX_INT, MAX_INT);

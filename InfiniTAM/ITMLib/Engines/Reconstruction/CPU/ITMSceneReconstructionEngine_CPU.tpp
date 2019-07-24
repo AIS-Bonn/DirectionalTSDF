@@ -92,7 +92,7 @@ void ITMSceneReconstructionEngine_CPU_common<TVoxel, TIndex>::IntegrateIntoScene
 	for (int y = 0; y < view->depth->noDims.y; y++) for (int x = 0; x < view->depth->noDims.x; x++)
 	{
 		if (this->settings->fusionParams.useSpaceCarving)
-			rayCastCarveSpace<TVoxel>(x, y, view->depth->noDims, depth, invM_d,
+			rayCastCarveSpace<TVoxel>(x, y, view->depth->noDims, depth, depthNormals, invM_d,
 																invProjParams_d, projParams_rgb,
 																this->settings->fusionParams, this->settings->sceneParams,
 																hashTable, entriesRayCasting, localVBA);

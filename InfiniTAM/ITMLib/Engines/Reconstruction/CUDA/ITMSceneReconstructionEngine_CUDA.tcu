@@ -116,7 +116,7 @@ void rayCastUpdate_device(
 		return;
 
 	if (fusionParams.useSpaceCarving)
-		rayCastCarveSpace<TVoxel>(x, y, imgSize, depth, invM_d,
+		rayCastCarveSpace<TVoxel>(x, y, imgSize, depth, depthNormals, invM_d,
 															invProjParams_d, invProjParams_rgb, fusionParams, sceneParams,
 															hashTable, entriesRayCasting, localVBA);
 
