@@ -2,15 +2,16 @@
 
 #include "ITMBasicEngine.h"
 
-#include "../Engines/LowLevel/ITMLowLevelEngineFactory.h"
-#include "../Engines/Meshing/ITMMeshingEngineFactory.h"
-#include "../Engines/ViewBuilding/ITMViewBuilderFactory.h"
-#include "../Engines/Visualisation/ITMVisualisationEngineFactory.h"
-#include "../Objects/RenderStates/ITMRenderStateFactory.h"
-#include "../Trackers/ITMTrackerFactory.h"
+#include "ITMLib/Engines/LowLevel/ITMLowLevelEngineFactory.h"
+#include "ITMLib/Engines/Meshing/ITMMeshingEngineFactory.h"
+#include "ITMLib/Engines/ViewBuilding/ITMViewBuilderFactory.h"
+#include "ITMLib/Engines/Visualisation/ITMVisualisationEngineFactory.h"
+#include "ITMLib/Objects/RenderStates/ITMRenderStateFactory.h"
+#include "ITMLib/Trackers/ITMTrackerFactory.h"
+#include "ITMLib/Utils/ITMTimer.h"
 
-#include "../../ORUtils/NVTimer.h"
-#include "../../ORUtils/FileUtils.h"
+#include "ORUtils/NVTimer.h"
+#include "ORUtils/FileUtils.h"
 
 //#define OUTPUT_TRAJECTORY_QUATERNIONS
 
@@ -113,8 +114,9 @@ void ITMBasicEngine<TVoxel, TIndex>::SaveToFile()
 	// throws error if any of the saves fail
 
 	std::string saveOutputDirectory = "State/";
-	std::string relocaliserOutputDirectory = saveOutputDirectory + "Relocaliser/", sceneOutputDirectory = saveOutputDirectory + "Scene/";
-	
+	std::string relocaliserOutputDirectory = saveOutputDirectory + "Relocaliser/";
+	std::string sceneOutputDirectory = saveOutputDirectory + "Scene/";
+
 	MakeDir(saveOutputDirectory.c_str());
 	MakeDir(relocaliserOutputDirectory.c_str());
 	MakeDir(sceneOutputDirectory.c_str());
@@ -243,6 +245,9 @@ static void QuaternionFromRotationMatrix(const double *matrix, double *q) {
 template <typename TVoxel, typename TIndex>
 ITMTrackingState::TrackingResult ITMBasicEngine<TVoxel,TIndex>::ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement)
 {
+	this->timeStats.Reset();
+	ITMTimer timer;
+
 	bool modelSensorNoise = (
 		settings->fusionParams.useWeighting or
 		settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL or
@@ -273,6 +278,7 @@ ITMTrackingState::TrackingResult ITMBasicEngine<TVoxel,TIndex>::ProcessFrame(ITM
 	}
 
 	//relocalisation
+	timer.Tick();
 	int addKeyframeIdx = -1;
 	if (settings->behaviourOnFailure == ITMLibSettings::FAILUREMODE_RELOCALISE)
 	{
@@ -302,6 +308,7 @@ ITMTrackingState::TrackingResult ITMBasicEngine<TVoxel,TIndex>::ProcessFrame(ITM
 			trackerResult = trackingState->trackerResult;
 		}
 	}
+	this->timeStats.relocalization.relocalization = timer.Tock();
 
 	bool didFusion = false;
 	if ((trackerResult == ITMTrackingState::TRACKING_GOOD || !trackingInitialised) && (fusionActive) && (relocalisationCount == 0)) {
@@ -341,8 +348,13 @@ ITMTrackingState::TrackingResult ITMBasicEngine<TVoxel,TIndex>::ProcessFrame(ITM
 	QuaternionFromRotationMatrix(R, q);
 	fprintf(stderr, "%f %f %f %f %f %f %f\n", t[0], t[1], t[2], q[1], q[2], q[3], q[0]);
 #endif
-    
-    return trackerResult;
+
+	this->timeStats.preprocessing = viewBuilder->GetTimeStats();
+	this->timeStats.tracking = trackingController->GetTimeStats();
+//	this->timeStats.relocalization
+	this->timeStats.reconstruction = denseMapper->GetSceneReconstructionEngine()->GetTimeStats();
+
+  return trackerResult;
 }
 
 template <typename TVoxel, typename TIndex>

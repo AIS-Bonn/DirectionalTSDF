@@ -29,6 +29,8 @@ namespace ITMLib
 		/// Update the visible list (this can be called to update the visible list when fusion is turned off)
 		void UpdateVisibleList(const ITMView *view, const ITMTrackingState *trackingState, ITMScene<TVoxel, TIndex> *scene, ITMRenderState *renderState, bool resetVisibleList = false);
 
+		const ITMSceneReconstructionEngine<TVoxel,TIndex> *GetSceneReconstructionEngine() const;
+
 		/** \brief Constructor
 		    Ommitting a separate image size for the depth images
 		    will assume same resolution as for the RGB images.

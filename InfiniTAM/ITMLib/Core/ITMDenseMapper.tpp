@@ -2,9 +2,10 @@
 
 #include "ITMDenseMapper.h"
 
-#include "../Engines/Reconstruction/ITMSceneReconstructionEngineFactory.h"
-#include "../Engines/Swapping/ITMSwappingEngineFactory.h"
-#include "../Objects/RenderStates/ITMRenderState_VH.h"
+#include "ITMLib/Engines/Reconstruction/ITMSceneReconstructionEngineFactory.h"
+#include "ITMLib/Engines/Swapping/ITMSwappingEngineFactory.h"
+#include "ITMLib/Objects/RenderStates/ITMRenderState_VH.h"
+#include "ITMLib/Utils/ITMTimer.h"
 using namespace ITMLib;
 
 template<class TVoxel, class TIndex>
@@ -32,12 +33,16 @@ void ITMDenseMapper<TVoxel,TIndex>::ResetScene(ITMScene<TVoxel,TIndex> *scene) c
 template<class TVoxel, class TIndex>
 void ITMDenseMapper<TVoxel,TIndex>::ProcessFrame(const ITMView *view, const ITMTrackingState *trackingState, ITMScene<TVoxel,TIndex> *scene, ITMRenderState *renderState, bool resetVisibleList)
 {
+	sceneRecoEngine->GetTimeStats().Reset();
+
 	// allocation
 	sceneRecoEngine->AllocateSceneFromDepth(scene, view, trackingState, renderState, false, resetVisibleList);
 
 	// integration
 	sceneRecoEngine->IntegrateIntoScene(scene, view, trackingState, renderState);
 
+	ITMTimer timer;
+	timer.Tick();
 	if (swappingEngine != NULL) {
 		// swapping: CPU -> GPU
 		if (swappingMode == ITMLibSettings::SWAPPINGMODE_ENABLED) swappingEngine->IntegrateGlobalIntoLocal(scene, renderState);
@@ -55,10 +60,17 @@ void ITMDenseMapper<TVoxel,TIndex>::ProcessFrame(const ITMView *view, const ITMT
 			break;
 		} 
 	}
+	sceneRecoEngine->GetTimeStats().swapping += timer.Tock();
 }
 
 template<class TVoxel, class TIndex>
 void ITMDenseMapper<TVoxel,TIndex>::UpdateVisibleList(const ITMView *view, const ITMTrackingState *trackingState, ITMScene<TVoxel,TIndex> *scene, ITMRenderState *renderState, bool resetVisibleList)
 {
 	sceneRecoEngine->AllocateSceneFromDepth(scene, view, trackingState, renderState, true, resetVisibleList);
+}
+
+template<class TVoxel, class TIndex>
+const ITMSceneReconstructionEngine<TVoxel, TIndex>* ITMDenseMapper<TVoxel, TIndex>::GetSceneReconstructionEngine() const
+{
+	return sceneRecoEngine;
 }

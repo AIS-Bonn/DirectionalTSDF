@@ -3,6 +3,7 @@
 #include <memory>
 #include <ITMLib/Utils/ITMLibSettings.h>
 #include <ITMLib/Utils/ITMSceneParams.h>
+#include <ITMLib/Utils/ITMTimer.h>
 #include "ITMSceneReconstructionEngine_CUDA.h"
 
 #include "../Shared/ITMSceneReconstructionEngine_Shared.h"
@@ -115,14 +116,32 @@ void rayCastUpdate_device(
 	if (x >= imgSize.x or y >= imgSize.y)
 		return;
 
-	if (fusionParams.useSpaceCarving)
-		rayCastCarveSpace<TVoxel>(x, y, imgSize, depth, depthNormals, invM_d,
-															invProjParams_d, invProjParams_rgb, fusionParams, sceneParams,
-															hashTable, entriesRayCasting, localVBA);
-
 	rayCastUpdate<TVoxel>(x, y, imgSize, depth, depthNormals, invM_d,
 	                      invProjParams_d, invProjParams_rgb, fusionParams, sceneParams,
 	                      hashTable, entriesRayCasting);
+}
+
+template<class TVoxel>
+__global__
+void rayCastCarveSpace_device(
+	Vector2i imgSize, float* depth, Vector4f* depthNormals,
+	const Matrix4f invM_d,
+	const Vector4f invProjParams_d, const Vector4f invProjParams_rgb,
+	const ITMFusionParams fusionParams,
+	const ITMSceneParams sceneParams,
+	const ITMHashEntry* hashTable,
+	VoxelRayCastingSum* entriesRayCasting,
+	TVoxel *localVBA)
+{
+	int x = threadIdx.x + blockIdx.x * blockDim.x;
+	int y = threadIdx.y + blockIdx.y * blockDim.y;
+
+	if (x >= imgSize.x or y >= imgSize.y)
+		return;
+
+	rayCastCarveSpace<TVoxel>(x, y, imgSize, depth, depthNormals, invM_d,
+														invProjParams_d, invProjParams_rgb, fusionParams, sceneParams,
+														hashTable, entriesRayCasting, localVBA);
 }
 
 template<class TVoxel, class TIndex>
@@ -131,6 +150,9 @@ ITMSceneReconstructionEngine_CUDA_common<TVoxel, TIndex>::IntegrateIntoSceneRayC
 	ITMScene<TVoxel, TIndex>* scene, const ITMView* view, const ITMTrackingState* trackingState,
 	const ITMRenderState* renderState)
 {
+	ITMTimer timer;
+	timer.Tick();
+
 	Matrix4f invM_d;
 	trackingState->pose_d->GetM().inv(invM_d);
 	Vector4f projParams_d = view->calib.intrinsics_d.projectionParamsSimple.all;
@@ -168,8 +190,21 @@ ITMSceneReconstructionEngine_CUDA_common<TVoxel, TIndex>::IntegrateIntoSceneRayC
 		imgSize, depth, depthNormals, invM_d, invProjParams_d, projParams_rgb, this->settings->fusionParams, this->settings->sceneParams,
 		hashTable, entriesRayCasting, localVBA);
 	ORcudaKernelCheck;
+	this->timeStats.fusion += timer.Tock();
 
-	/// 3. Collect per voxel summation values, update voxel
+	/// 3. Ray cast space carving for every pixel
+	timer.Tick();
+	if (this->settings->fusionParams.useSpaceCarving)
+	{
+		rayCastCarveSpace_device<TVoxel> << <gridSizeUpdate, blockSizeUpdate >> >(
+			imgSize, depth, depthNormals, invM_d, invProjParams_d, projParams_rgb, this->settings->fusionParams, this->settings->sceneParams,
+				hashTable, entriesRayCasting, localVBA);
+		ORcudaKernelCheck;
+	}
+	this->timeStats.carving = timer.Tock();
+
+	/// 4. Collect per voxel summation values, update voxel
+	timer.Tick();
 	rayCastCombine_device<TVoxel> << <gridSizeCombine, blockSizeCombine >> >(
 		localVBA,
 		hashTable,
@@ -178,6 +213,8 @@ ITMSceneReconstructionEngine_CUDA_common<TVoxel, TIndex>::IntegrateIntoSceneRayC
 		this->settings->sceneParams
 		);
 	ORcudaKernelCheck;
+
+	this->timeStats.fusion += timer.Tock();
 }
 
 template<class TVoxel>
@@ -239,6 +276,8 @@ template<class TVoxel>
 void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateSceneFromDepth(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view,
 	const ITMTrackingState *trackingState, const ITMRenderState *renderState, bool onlyUpdateVisibleList, bool resetVisibleList)
 {
+	ITMTimer timer;
+	timer.Tick();
 	Vector2i depthImgSize = view->depth->noDims;
 	float voxelSize = scene->sceneParams->voxelSize;
 
@@ -300,7 +339,11 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 		scene->sceneParams->viewFrustum_min, scene->sceneParams->viewFrustum_max, this->settings->fusionParams);
 	ORcudaKernelCheck;
 
+	this->timeStats.buildingVisibilityList = timer.Tock();
+
 	bool useSwapping = scene->globalCache != NULL;
+
+	timer.Tick();
 	if (onlyUpdateVisibleList) useSwapping = false;
 	if (!onlyUpdateVisibleList)
 	{
@@ -309,7 +352,9 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 			blockCoords_device, blockDirections_device);
 		ORcudaKernelCheck;
 	}
+	this->timeStats.allocation += timer.Tock();
 
+	timer.Tick();
 	if (useSwapping)
 	{
 		buildVisibleList_kernel<true> << <gridSizeAL, cudaBlockSizeAL >> >(hashTable, swapStates, noTotalEntries, visibleEntryIDs,
@@ -322,13 +367,16 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 			(AllocationTempData*)allocationTempData_device, entriesVisibleType, M_d, projParams_d, depthImgSize, voxelSize);
 		ORcudaKernelCheck;
 	}
+	this->timeStats.buildingVisibilityList += timer.Tock();
 
 	//reallocate deleted entries from previous swap operation
 	if (useSwapping)
 	{
+		timer.Tick();
 		reAllocateSwappedOutVoxelBlocks_device << <gridSizeAL, cudaBlockSizeAL >> >(voxelAllocationList, hashTable, noTotalEntries,
 			(AllocationTempData*)allocationTempData_device, entriesVisibleType);
 		ORcudaKernelCheck;
+		this->timeStats.swapping += timer.Tock();
 	}
 
 	ORcudaSafeCall(cudaMemcpy(tempData, allocationTempData_device, sizeof(AllocationTempData), cudaMemcpyDeviceToHost));
@@ -342,6 +390,9 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::IntegrateInto
 	ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view,
 	const ITMTrackingState *trackingState, const ITMRenderState *renderState)
 {
+	ITMTimer timer;
+	timer.Tick();
+
 	Vector2i rgbImgSize = view->rgb->noDims;
 	Vector2i depthImgSize = view->depth->noDims;
 	float voxelSize = scene->sceneParams->voxelSize;
@@ -384,6 +435,8 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::IntegrateInto
 			this->settings->fusionParams, this->settings->sceneParams);
 		ORcudaKernelCheck;
 	}
+
+	this->timeStats.fusion = timer.Tock();
 }
 
 // plain voxel array

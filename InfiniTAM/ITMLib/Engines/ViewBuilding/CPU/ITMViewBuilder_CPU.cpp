@@ -2,9 +2,10 @@
 
 #include "ITMViewBuilder_CPU.h"
 
-#include "../Shared/ITMViewBuilder_Shared.h"
-#include "../../../../ORUtils/MetalContext.h"
-#include <ORUtils/FileUtils.h>
+#include "ITMLib/Engines/ViewBuilding/Shared/ITMViewBuilder_Shared.h"
+#include "ORUtils/MetalContext.h"
+#include "ORUtils/FileUtils.h"
+#include "ITMLib/Utils/ITMTimer.h"
 
 using namespace ITMLib;
 using namespace ORUtils;
@@ -28,7 +29,11 @@ void saveNormalImage(ITMView *view, const std::string &path)
 }
 
 void ITMViewBuilder_CPU::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, bool useBilateralFilter, bool modelSensorNoise, bool storePreviousImage)
-{ 
+{
+	timeStats.Reset();
+	ITMTimer timer;
+	timer.Tick();
+
 	if (*view_ptr == nullptr)
 	{
 		*view_ptr = new ITMView(calib, rgbImage->noDims, rawDepthImage->noDims, false);
@@ -67,9 +72,11 @@ void ITMViewBuilder_CPU::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage
 	default:
 		break;
 	}
+	timeStats.copyImages = timer.Tock();
 
 	if (useBilateralFilter)
 	{
+		timer.Tick();
 		//5 steps of bilateral filtering
 		this->DepthFiltering(this->floatImage, view->depth);
 		this->DepthFiltering(view->depth, this->floatImage);
@@ -77,13 +84,15 @@ void ITMViewBuilder_CPU::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage
 		this->DepthFiltering(view->depth, this->floatImage);
 		this->DepthFiltering(this->floatImage, view->depth);
 		view->depth->SetFrom(this->floatImage, MemoryBlock<float>::CPU_TO_CPU);
+		timeStats.bilateralFilter = timer.Tock();
 	}
 
 	if (modelSensorNoise)
 	{
+		timer.Tick();
 		this->ComputeNormalAndWeights(this->normals, view->depthUncertainty, view->depth, view->calib.intrinsics_d.projectionParamsSimple.all);
 		this->NormalFiltering(view->depthNormal, this->normals);
-
+		timeStats.normalEstimation = timer.Tock();
 		saveNormalImage(view, "/tmp/normals.png");
 	}
 }

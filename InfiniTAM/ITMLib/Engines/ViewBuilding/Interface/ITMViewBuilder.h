@@ -2,8 +2,9 @@
 
 #pragma once
 
-#include "../../../Objects/Camera/ITMRGBDCalib.h"
-#include "../../../Objects/Views/ITMViewIMU.h"
+#include "ITMLib/Objects/Camera/ITMRGBDCalib.h"
+#include "ITMLib/Objects/Views/ITMViewIMU.h"
+#include "ITMLib/Objects/Stats/ITMPreprocessingTimeStats.h"
 
 namespace ITMLib
 {
@@ -17,6 +18,8 @@ namespace ITMLib
 		ITMFloatImage *floatImage;
 		ITMFloat4Image *normals;
 
+		ITMPreprocessingTimeStats timeStats;
+
 	public:
 		virtual void ConvertDisparityToDepth(ITMFloatImage *depth_out, const ITMShortImage *disp_in, const ITMIntrinsics *depthIntrinsics,
 			Vector2f disparityCalibParams) = 0;
@@ -28,6 +31,11 @@ namespace ITMLib
 
 		virtual void UpdateView(ITMView **view, ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, bool useBilateralFilter, bool modelSensorNoise = false, bool storePreviousImage = true) = 0;
 		virtual void UpdateView(ITMView **view, ITMUChar4Image *rgbImage, ITMShortImage *depthImage, bool useBilateralFilter, ITMIMUMeasurement *imuMeasurement, bool modelSensorNoise = false, bool storePreviousImage = true) = 0;
+
+		const ITMPreprocessingTimeStats &GetTimeStats() const
+		{
+			return timeStats;
+		}
 
 		ITMViewBuilder(const ITMRGBDCalib& calib_)
 		: calib(calib_)

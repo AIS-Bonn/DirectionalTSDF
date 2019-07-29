@@ -71,6 +71,9 @@ void ITMSceneReconstructionEngine_CPU_common<TVoxel, TIndex>::IntegrateIntoScene
 	ITMScene<TVoxel, TIndex>* scene, const ITMView* view, const ITMTrackingState* trackingState,
 	const ITMRenderState* renderState)
 {
+	ITMTimer timer;
+	timer.Tick();
+
 	Matrix4f invM_d;
 	trackingState->pose_d->GetM().inv(invM_d);
 	Vector4f projParams_d = view->calib.intrinsics_d.projectionParamsSimple.all;
@@ -91,18 +94,29 @@ void ITMSceneReconstructionEngine_CPU_common<TVoxel, TIndex>::IntegrateIntoScene
 	/// 1. Ray trace every pixel, sum up results
 	for (int y = 0; y < view->depth->noDims.y; y++) for (int x = 0; x < view->depth->noDims.x; x++)
 	{
-		if (this->settings->fusionParams.useSpaceCarving)
-			rayCastCarveSpace<TVoxel>(x, y, view->depth->noDims, depth, depthNormals, invM_d,
-																invProjParams_d, projParams_rgb,
-																this->settings->fusionParams, this->settings->sceneParams,
-																hashTable, entriesRayCasting, localVBA);
 		rayCastUpdate<TVoxel>(x, y, view->depth->noDims, depth, depthNormals, invM_d,
 		                      invProjParams_d, projParams_rgb,
 		                      this->settings->fusionParams, this->settings->sceneParams,
 		                      hashTable, entriesRayCasting);
 	}
+	this->timeStats.fusion += timer.Tock();
 
-	/// 2. Collect per-voxel summation values, fuse into voxels
+	/// 2. Ray trace space carve every pixel, sum up results
+	if (this->settings->fusionParams.useSpaceCarving)
+	{
+		timer.Tick();
+		for (int y = 0; y < view->depth->noDims.y; y++) for (int x = 0; x < view->depth->noDims.x; x++)
+		{
+				rayCastCarveSpace<TVoxel>(x, y, view->depth->noDims, depth, depthNormals, invM_d,
+																	invProjParams_d, projParams_rgb,
+																	this->settings->fusionParams, this->settings->sceneParams,
+																	hashTable, entriesRayCasting, localVBA);
+		}
+		this->timeStats.carving += timer.Tock();
+	}
+
+	/// 3. Collect per-voxel summation values, fuse into voxels
+	timer.Tick();
 	const ITMRenderState_VH *renderState_vh = dynamic_cast<const ITMRenderState_VH*>(renderState);
 	int noVisibleEntries = renderState_vh->noVisibleEntries;
 	const int *visibleEntryIds = renderState_vh->GetVisibleEntryIDs();
@@ -119,6 +133,7 @@ void ITMSceneReconstructionEngine_CPU_common<TVoxel, TIndex>::IntegrateIntoScene
 			rayCastCombine<TVoxel>(localVoxelBlock[locId], rayCastingSum[locId], *(scene->sceneParams));
 		}
 	}
+	this->timeStats.fusion += timer.Tock();
 }
 
 template<class TVoxel>
@@ -126,6 +141,9 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateIntoS
 	ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view,
 	const ITMTrackingState *trackingState, const ITMRenderState *renderState)
 {
+	ITMTimer timer;
+	timer.Tick();
+
 	Vector2i rgbImgSize = view->rgb->noDims;
 	Vector2i depthImgSize = view->depth->noDims;
 	float voxelSize = scene->sceneParams->voxelSize;
@@ -191,6 +209,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateIntoS
 				depth, depthNormals, confidence, depthImgSize, rgb, rgbImgSize);
 		}
 	}
+	this->timeStats.fusion += timer.Tock();
 }
 
 void allocateVoxelBlocksList(
@@ -308,6 +327,8 @@ template<class TVoxel>
 void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneFromDepth(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view,
 	const ITMTrackingState *trackingState, const ITMRenderState *renderState, bool onlyUpdateVisibleList, bool resetVisibleList)
 {
+	ITMTimer timer;
+	timer.Tick();
 	Vector2i depthImgSize = view->depth->noDims;
 	float voxelSize = scene->sceneParams->voxelSize;
 
@@ -380,15 +401,19 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 			scene->sceneParams->viewFrustum_min, scene->sceneParams->viewFrustum_max,
 			this->settings->fusionParams);
 	}
+	this->timeStats.buildingVisibilityList += timer.Tock();
 
+	timer.Tick();
 	if (onlyUpdateVisibleList) useSwapping = false;
 	if (!onlyUpdateVisibleList)
 	{
 		allocateVoxelBlocksList(voxelAllocationList, excessAllocationList, hashTable, noTotalEntries,
 			&allocationTempData, entriesAllocType, entriesVisibleType, blockCoords, blockDirections);
 	}
+	this->timeStats.allocation += timer.Tock();
 
 	// Collect list of visible HashEntries
+	timer.Tick();
 	if (useSwapping)
 	{
 		buildVisibleList_cpu<true>(hashTable, swapStates, noTotalEntries, visibleEntryIDs,
@@ -399,10 +424,12 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 		                           &allocationTempData, entriesVisibleType, M_d, projParams_d,
 		                           depthImgSize, voxelSize);
 	}
+	this->timeStats.buildingVisibilityList += timer.Tock();
 
 	//reallocate deleted ones from previous swap operation
 	if (useSwapping)
 	{
+		timer.Tick();
 		for (int targetIdx = 0; targetIdx < noTotalEntries; targetIdx++)
 		{
 			int vbaIdx;
@@ -415,6 +442,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 				else allocationTempData.noAllocatedVoxelEntries++; // Avoid leaks
 			}
 		}
+		this->timeStats.swapping += timer.Tock();
 	}
 
 	renderState_vh->noVisibleEntries = allocationTempData.noVisibleEntries;
@@ -446,6 +474,9 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMPlainVoxelArray>::IntegrateInto
 	ITMScene<TVoxel, ITMPlainVoxelArray> *scene, const ITMView *view,
 	const ITMTrackingState *trackingState, const ITMRenderState *renderState)
 {
+	ITMTimer timer;
+	timer.Tick();
+
 	Vector2i rgbImgSize = view->rgb->noDims;
 	Vector2i depthImgSize = view->depth->noDims;
 	float voxelSize = scene->sceneParams->voxelSize;
@@ -493,6 +524,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMPlainVoxelArray>::IntegrateInto
 			voxelArray[locId], TSDFDirection::NONE, pt_model, M_d, projParams_d, M_rgb, projParams_rgb, scene->sceneParams,
 			depth, depthImgSize, rgb, rgbImgSize);
 	}
+	this->timeStats.fusion = timer.Tock();
 }
 
 template<class TVoxel, class TIndex>

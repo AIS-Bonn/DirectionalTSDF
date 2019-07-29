@@ -2,9 +2,10 @@
 
 #include "ITMViewBuilder_CUDA.h"
 
-#include "../Shared/ITMViewBuilder_Shared.h"
-#include "../../../../ORUtils/CUDADefines.h"
-#include "../../../../ORUtils/MemoryBlock.h"
+#include "ITMLib/Engines/ViewBuilding/Shared/ITMViewBuilder_Shared.h"
+#include "ORUtils/CUDADefines.h"
+#include "ORUtils/MemoryBlock.h"
+#include "ITMLib/Utils/ITMTimer.h"
 
 using namespace ITMLib;
 using namespace ORUtils;
@@ -33,6 +34,10 @@ __global__ void ComputeNormalAndWeight_device(const float* depth_in, Vector4f* n
 
 void ITMViewBuilder_CUDA::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, bool useBilateralFilter, bool modelSensorNoise, bool storePreviousImage)
 {
+	timeStats.Reset();
+	ITMTimer timer;
+	timer.Tick();
+
 	if (*view_ptr == nullptr)
 	{
 		*view_ptr = new ITMView(calib, rgbImage->noDims, rawDepthImage->noDims, true);
@@ -72,9 +77,11 @@ void ITMViewBuilder_CUDA::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImag
 	default:
 		break;
 	}
+	timeStats.copyImages += timer.Tock();
 
 	if (useBilateralFilter)
 	{
+		timer.Tick();
 		//5 steps of bilateral filtering
 		this->DepthFiltering(this->floatImage, view->depth);
 		this->DepthFiltering(view->depth, this->floatImage);
@@ -82,12 +89,15 @@ void ITMViewBuilder_CUDA::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImag
 		this->DepthFiltering(view->depth, this->floatImage);
 		this->DepthFiltering(this->floatImage, view->depth);
 		view->depth->SetFrom(this->floatImage, MemoryBlock<float>::CUDA_TO_CUDA);
+		timeStats.bilateralFilter = timer.Tock();
 	}
 
 	if (modelSensorNoise)
 	{
+		timer.Tick();
 		this->ComputeNormalAndWeights(this->normals, view->depthUncertainty, view->depth, view->calib.intrinsics_d.projectionParamsSimple.all);
 		this->NormalFiltering(view->depthNormal, this->normals);
+		timeStats.normalEstimation = timer.Tock();
 	}
 }
 

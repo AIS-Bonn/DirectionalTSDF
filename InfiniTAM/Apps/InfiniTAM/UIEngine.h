@@ -2,13 +2,14 @@
 
 #pragma once
 
-#include "../../InputSource/ImageSourceEngine.h"
-#include "../../InputSource/IMUSourceEngine.h"
-#include "../../InputSource/FFMPEGWriter.h"
-#include "../../ITMLib/Core/ITMMainEngine.h"
-#include "../../ITMLib/Utils/ITMLibSettings.h"
-#include "../../ORUtils/FileUtils.h"
-#include "../../ORUtils/NVTimer.h"
+#include "InputSource/ImageSourceEngine.h"
+#include "InputSource/IMUSourceEngine.h"
+#include "InputSource/FFMPEGWriter.h"
+#include "ITMLib/Core/ITMMainEngine.h"
+#include "ITMLib/Utils/ITMLibSettings.h"
+#include "ITMLib/Engines/Statistics/ITMStatisticsEngine.h"
+#include "ORUtils/FileUtils.h"
+#include "ORUtils/NVTimer.h"
 
 #include <vector>
 
@@ -39,6 +40,7 @@ namespace InfiniTAM
 			InputSource::IMUSourceEngine *imuSource;
 			ITMLib::ITMLibSettings internalSettings;
 			ITMLib::ITMMainEngine *mainEngine;
+			ITMLib::ITMStatisticsEngine statisticsEngine;
 
 			StopWatchInterface *timer_instant;
 			StopWatchInterface *timer_average;

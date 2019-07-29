@@ -2,9 +2,10 @@
 
 #pragma once
 
-#include "../Objects/Misc/ITMIMUMeasurement.h"
-#include "../Trackers/Interface/ITMTracker.h"
-#include "../Utils/ITMLibSettings.h"
+#include "ITMLib/Objects/Misc/ITMIMUMeasurement.h"
+#include "ITMLib/Objects/Stats/ITMTimeStats.h"
+#include "ITMLib/Trackers/Interface/ITMTracker.h"
+#include "ITMLib/Utils/ITMLibSettings.h"
 
 /** \mainpage
     This is the API reference documentation for InfiniTAM. For a general
@@ -69,7 +70,7 @@ namespace ITMLib
 		virtual ITMTrackingState* GetTrackingState(void) = 0;
 
 		/// Process a frame with rgb and depth images and optionally a corresponding imu measurement
-        virtual ITMTrackingState::TrackingResult ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement = NULL) = 0;
+    virtual ITMTrackingState::TrackingResult ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement = NULL) = 0;
 
 		/// Get a result image as output
 		virtual Vector2i GetImageSize(void) const = 0;
@@ -84,5 +85,13 @@ namespace ITMLib
 		virtual void LoadFromFile() { };
 
 		virtual ~ITMMainEngine() {}
+
+		const ITMTimeStats &GetTimeStats() const
+		{
+			return timeStats;
+		}
+
+	protected:
+		ITMTimeStats timeStats;
 	};
-}
+} // namespace ITMLib

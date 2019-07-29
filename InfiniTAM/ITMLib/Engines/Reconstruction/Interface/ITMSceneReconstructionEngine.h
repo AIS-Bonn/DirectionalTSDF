@@ -10,6 +10,7 @@
 #include "ITMLib/Objects/Tracking/ITMTrackingState.h"
 #include "ITMLib/Objects/Views/ITMView.h"
 #include "ITMLib/Utils/ITMLibSettings.h"
+#include "ITMLib/Objects/Stats/ITMReconstructionTimeStats.h"
 
 namespace ITMLib
 {
@@ -82,6 +83,16 @@ namespace ITMLib
 			}
 		}
 
+		ITMReconstructionTimeStats &GetTimeStats()
+		{
+			return timeStats;
+		}
+
+		const ITMReconstructionTimeStats &GetTimeStats() const
+		{
+			return timeStats;
+		}
+
 		ITMSceneReconstructionEngine(void) { }
 		virtual ~ITMSceneReconstructionEngine(void) { }
 
@@ -92,6 +103,8 @@ namespace ITMLib
 		 * Per-hash entry summation values for ray casting fusion update
 		 */
 		ORUtils::MemoryBlock<VoxelRayCastingSum> *entriesRayCasting;
+
+		ITMReconstructionTimeStats timeStats;
 
 		virtual void IntegrateIntoSceneVoxelProjection(ITMScene<TVoxel, TIndex>* scene, const ITMView* view,
 		                                               const ITMTrackingState* trackingState,

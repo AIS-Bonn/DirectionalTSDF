@@ -513,6 +513,8 @@ void UIEngine::Initialise(int & argc, char** argv, ImageSourceEngine *imageSourc
 		strcpy(this->outFolder, outFolder);
 	}
 
+	this->statisticsEngine.Initialize(std::string(outFolder));
+
 	//Vector2i winSize;
 	//int textHeight = 30; // Height of text area
 	//winSize.x = 2 * MAX(imageSource->getRGBImageSize().x, imageSource->getDepthImageSize().x);
@@ -652,6 +654,8 @@ void UIEngine::ProcessFrame()
 #endif
 	sdkStopTimer(&timer_instant); sdkStopTimer(&timer_average);
 
+	statisticsEngine.LogTimeStats(mainEngine->GetTimeStats());
+
 	//processedTime = sdkGetTimerValue(&timer_instant);
 	processedTime = sdkGetAverageTimerValue(&timer_average);
 
@@ -663,6 +667,8 @@ void UIEngine::Shutdown()
 {
 	sdkDeleteTimer(&timer_instant);
 	sdkDeleteTimer(&timer_average);
+
+	statisticsEngine.CloseAll();
 
 	if (rgbVideoWriter != NULL) delete rgbVideoWriter;
 	if (depthVideoWriter != NULL) delete depthVideoWriter;

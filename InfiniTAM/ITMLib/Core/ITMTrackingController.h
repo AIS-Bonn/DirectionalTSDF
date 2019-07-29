@@ -4,10 +4,12 @@
 
 #include <stdexcept>
 
-#include "../Engines/Visualisation/Interface/ITMSurfelVisualisationEngine.h"
-#include "../Engines/Visualisation/Interface/ITMVisualisationEngine.h"
-#include "../Trackers/Interface/ITMTracker.h"
-#include "../Utils/ITMLibSettings.h"
+#include "ITMLib/Engines/Visualisation/Interface/ITMSurfelVisualisationEngine.h"
+#include "ITMLib/Engines/Visualisation/Interface/ITMVisualisationEngine.h"
+#include "ITMLib/Trackers/Interface/ITMTracker.h"
+#include "ITMLib/Objects/Stats/ITMTrackingTimeStats.h"
+#include "ITMLib/Utils/ITMLibSettings.h"
+#include "ITMLib/Utils/ITMTimer.h"
 
 namespace ITMLib
 {
@@ -18,17 +20,24 @@ namespace ITMLib
 	private:
 		std::shared_ptr<const ITMLibSettings> settings;
 		ITMTracker *tracker;
+		ITMTrackingTimeStats timeStats;
 
 	public:
 		void Track(ITMTrackingState *trackingState, const ITMView *view)
 		{
+			timeStats.Reset();
+			ITMTimer timer;
+			timer.Tick();
 			tracker->TrackCamera(trackingState, view);
+			timeStats.tracking = timer.Tock();
 		}
 
 		template <typename TSurfel>
 		void Prepare(ITMTrackingState *trackingState, const ITMSurfelScene<TSurfel> *scene, const ITMView *view,
 			const ITMSurfelVisualisationEngine<TSurfel> *visualisationEngine, ITMSurfelRenderState *renderState)
 		{
+			ITMTimer timer;
+			timer.Tick();
 			if (!tracker->requiresPointCloudRendering())
 				return;
 
@@ -59,12 +68,15 @@ namespace ITMLib
 					trackingState->age_pointCloud++;
 				}
 			}
+			timeStats.rendering = timer.Tock();
 		}
 
 		template <typename TVoxel, typename TIndex>
 		void Prepare(ITMTrackingState *trackingState, const ITMScene<TVoxel,TIndex> *scene, const ITMView *view,
 			const ITMVisualisationEngine<TVoxel,TIndex> *visualisationEngine, ITMRenderState *renderState)
 		{
+			ITMTimer timer;
+			timer.Tick();
 			if (!tracker->requiresPointCloudRendering())
 				return;
 
@@ -96,6 +108,7 @@ namespace ITMLib
 					trackingState->age_pointCloud++;
 				}
 			}
+			timeStats.rendering += timer.Tock();
 		}
 
 		ITMTrackingController(ITMTracker *tracker, const std::shared_ptr<const ITMLibSettings>& settings)
@@ -112,5 +125,10 @@ namespace ITMLib
 		// Suppress the default copy constructor and assignment operator
 		ITMTrackingController(const ITMTrackingController&);
 		ITMTrackingController& operator=(const ITMTrackingController&);
+
+		const ITMTrackingTimeStats &GetTimeStats() const
+		{
+			return timeStats;
+		}
 	};
 }
