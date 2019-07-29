@@ -193,11 +193,11 @@ Engines/Reconstruction/Shared/ITMSurfelSceneReconstructionEngine_Shared.h
 
 ##
 SET(ITMLIB_ENGINES_STATS_SOURCES
-Engines/Statistics/ITMStatisticsEngine.cpp
+  Engines/Logging/ITMLoggingEngine.cpp
 )
 
 SET(ITMLIB_ENGINES_STATS_HEADERS
-Engines/Statistics/ITMStatisticsEngine.h
+  Engines/Logging/ITMLoggingEngine.h
 )
 
 ##

@@ -8,11 +8,12 @@
 #include <fstream>
 
 #include "ITMLib/Objects/Stats/ITMTimeStats.h"
+#include "ITMLib/Objects/Tracking/ITMTrackingState.h"
 
 namespace ITMLib
 {
 
-class ITMStatisticsEngine
+class ITMLoggingEngine
 {
 public:
 	void Initialize(const std::string &outputDirectory);
@@ -21,10 +22,14 @@ public:
 
 	void LogTimeStats(const ITMTimeStats &timeStats);
 
+	void LogPose(const ITMTrackingState &trackingState);
+
 private:
 	std::string m_outputDirectory;
 
 	std::ofstream m_timeStatsFile;
+
+	std::ofstream m_trackingFile;
 };
 
 } // namespace ITMLib

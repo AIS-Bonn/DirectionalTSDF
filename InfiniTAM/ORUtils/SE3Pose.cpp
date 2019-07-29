@@ -265,6 +265,45 @@ Matrix3<float> SE3Pose::GetR(void) const
 	return R;
 }
 
+Vector4<float> SE3Pose::GetQ(void) const
+{
+	const float mu = 1e-6;
+
+	Matrix3<float> R = GetR();
+	float values[4]; // x, y, z, w
+
+	// "Quaternion Calculus and Fast Animation", Ken Shoemake, 1987 SIGGRAPH course notes
+	float trace = R.m00 + R.m11 + R.m22;
+	if (trace > 0)
+	{
+		trace = sqrt(1 + trace);
+		float s = 1 / (2 * trace);
+		values[3] = 0.5 * trace;
+		values[0] = (R.m21 - R.m12) * s;
+		values[1] = (R.m02 - R.m20) * s;
+		values[2] = (R.m10 - R.m01) * s;
+	}
+	else
+	{
+		int i = 0;
+		if (R.m11 > R.m00)
+			i = 1;
+		if (R.m22 > R.at(i, i))
+			i = 2;
+		int j = (i+1)%3;
+		int k = (j+1)%3;
+
+		trace = sqrt(R.at(i,i) - R.at(j,j) - R.at(k,k) + 1.0);
+		float s = 1 / (2 * trace);
+		values[i] = 0.5 * trace;
+		values[3] = (R.at(k, j) - R.at(j, k)) * s;
+		values[j] = (R.at(j, i) + R.at(i, j)) * s;
+		values[k] = (R.at(k, i) + R.at(i, k)) * s;
+	}
+	return Vector4<float>(values[0], values[1], values[2], values[3]);
+}
+
+
 Vector3<float> SE3Pose::GetT(void) const
 {
 	Vector3<float> T;

@@ -60,6 +60,7 @@ namespace ORUtils
 		const Matrix4<float> & GetM(void) const { return M; }
 
 		Matrix3<float> GetR(void) const;
+		Vector4<float> GetQ(void) const;
 		Vector3<float> GetT(void) const;
 
 		void GetParams(Vector3<float> &translation, Vector3<float> &rotation) const;

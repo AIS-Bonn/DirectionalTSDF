@@ -655,6 +655,7 @@ void UIEngine::ProcessFrame()
 	sdkStopTimer(&timer_instant); sdkStopTimer(&timer_average);
 
 	statisticsEngine.LogTimeStats(mainEngine->GetTimeStats());
+	statisticsEngine.LogPose(*mainEngine->GetTrackingState());
 
 	//processedTime = sdkGetTimerValue(&timer_instant);
 	processedTime = sdkGetAverageTimerValue(&timer_average);
