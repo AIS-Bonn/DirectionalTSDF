@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <iostream>
 
+#include <experimental/filesystem>
 #include "UIEngine.h"
 
 #include "../../InputSource/OpenNIEngine.h"
@@ -21,6 +22,7 @@
 using namespace InfiniTAM::Engine;
 using namespace InputSource;
 using namespace ITMLib;
+namespace fs = std::experimental::filesystem;
 
 /** Create a default source of depth images from a list of command line
     arguments. Typically, @para arg1 would identify the calibration file to
@@ -150,6 +152,21 @@ static void CreateDefaultImageSource(ImageSourceEngine* & imageSource, IMUSource
 	}
 }
 
+static void CreateTUMImageSource(ImageSourceEngine* & imageSource, IMUSourceEngine* & imuSource,
+	const int argc, char **argv)
+{
+	if (argc != 4)
+	{
+		printf("usage: %s TUM <calibfile> directory\n", argv[0]);
+		exit(-1);
+	}
+
+	const char *calibFile = argv[2];
+
+	TUMPathGenerator pathGenerator(argv[3]);
+	imageSource = new ImageFileReader<TUMPathGenerator>(calibFile, pathGenerator);
+}
+
 int main(int argc, char** argv)
 try
 {
@@ -184,7 +201,14 @@ try
 	ImageSourceEngine *imageSource = NULL;
 	IMUSourceEngine *imuSource = NULL;
 
-	CreateDefaultImageSource(imageSource, imuSource, arg1, arg2, arg3, arg4);
+	if (strncmp(arg1, "TUM", 3) == 0)
+	{
+		CreateTUMImageSource(imageSource, imuSource, argc, argv);
+	}
+	else
+	{
+		CreateDefaultImageSource(imageSource, imuSource, arg1, arg2, arg3, arg4);
+	}
 	if (imageSource==NULL)
 	{
 		std::cout << "failed to open any image stream" << std::endl;

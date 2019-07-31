@@ -79,7 +79,14 @@ namespace InputSource {
 		virtual ITMLib::ITMRGBDCalib getCalib() const;
 	};
 
-	class ImageMaskPathGenerator
+	class PathGeneratorBase
+	{
+	public:
+		virtual std::string getRgbImagePath(size_t currentFrameNo) const = 0;
+		virtual std::string getDepthImagePath(size_t currentFrameNo) const = 0;
+	};
+
+	class ImageMaskPathGenerator : public PathGeneratorBase
 	{
 	private:
 		static const int BUF_SIZE = 2048;
@@ -88,11 +95,11 @@ namespace InputSource {
 
 	public:
 		ImageMaskPathGenerator(const char *rgbImageMask, const char *depthImageMask);
-		std::string getRgbImagePath(size_t currentFrameNo) const;
-		std::string getDepthImagePath(size_t currentFrameNo) const;
+		std::string getRgbImagePath(size_t currentFrameNo) const override;
+		std::string getDepthImagePath(size_t currentFrameNo) const override;
 	};
 
-	class ImageListPathGenerator
+	class ImageListPathGenerator : public PathGeneratorBase
 	{
 	private:
 		std::vector<std::string> depthImagePaths;
@@ -102,9 +109,20 @@ namespace InputSource {
 
 	public:
 		ImageListPathGenerator(const std::vector<std::string>& rgbImagePaths_, const std::vector<std::string>& depthImagePaths_);
-		std::string getRgbImagePath(size_t currentFrameNo) const;
-		std::string getDepthImagePath(size_t currentFrameNo) const;
+		std::string getRgbImagePath(size_t currentFrameNo) const override;
+		std::string getDepthImagePath(size_t currentFrameNo) const override;
+	};
 
+	class TUMPathGenerator : public PathGeneratorBase
+	{
+	private:
+		std::vector<std::string> depthImagePaths;
+		std::vector<std::string> rgbImagePaths;
+
+	public:
+		explicit TUMPathGenerator(const std::string &directory);
+		std::string getRgbImagePath(size_t currentFrameNo) const override;
+		std::string getDepthImagePath(size_t currentFrameNo) const override;
 	};
 
 	template <typename PathGenerator>

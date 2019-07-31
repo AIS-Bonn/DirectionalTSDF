@@ -5,11 +5,16 @@
 #include "../ITMLib/Objects/Camera/ITMCalibIO.h"
 #include "../ORUtils/FileUtils.h"
 
+#include <experimental/filesystem>
 #include <stdexcept>
 #include <stdio.h>
+#include <fstream>
+#include <iostream>
 
 using namespace InputSource;
 using namespace ITMLib;
+
+namespace fs = std::experimental::filesystem;
 
 BaseImageSourceEngine::BaseImageSourceEngine(const char *calibFilename)
 {
@@ -284,3 +289,52 @@ void BlankImageGenerator::getImages(ITMUChar4Image *rgb, ITMShortImage *rawDepth
 
 template class InputSource::ImageFileReader<ImageMaskPathGenerator>;
 template class InputSource::ImageFileReader<ImageListPathGenerator>;
+template class InputSource::ImageFileReader<TUMPathGenerator>;
+
+TUMPathGenerator::TUMPathGenerator(const std::string& dir)
+{
+	fs::path directory(dir);
+	std::string line;
+
+	std::ifstream rgb_file(directory / "rgb.txt");
+	while (std::getline(rgb_file, line))
+	{
+		if (line[0] == '#')
+			continue;
+		float timestamp;
+		std::string filename;
+		std::istringstream iss(line);
+		if (!(iss >> timestamp >> filename)) {
+			std::cout << "error parsing line: \"" << line << "\"" << std::endl;
+		}
+		rgbImagePaths.push_back(directory / filename);
+	}
+
+	std::ifstream depth_file(directory / "depth.txt");
+	while (std::getline(depth_file, line))
+	{
+		if (line[0] == '#')
+			continue;
+		float timestamp;
+		std::string filename;
+		std::istringstream iss(line);
+		if (!(iss >> timestamp >> filename)) {
+			std::cout << "error parsing line: \"" << line << "\"" << std::endl;
+		}
+		depthImagePaths.push_back(directory / filename);
+	}
+}
+
+std::string TUMPathGenerator::getRgbImagePath(size_t currentFrameNo) const
+{
+	if (currentFrameNo >= rgbImagePaths.size())
+		return "NO MORE RGB IMAGES";
+	return rgbImagePaths.at(currentFrameNo);
+}
+
+std::string TUMPathGenerator::getDepthImagePath(size_t currentFrameNo) const
+{
+	if (currentFrameNo >= depthImagePaths.size())
+		return "NO MORE DEPTH IMAGES";
+	return depthImagePaths.at(currentFrameNo);
+}
