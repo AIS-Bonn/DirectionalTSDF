@@ -44,7 +44,10 @@ void ITMLoggingEngine::LogTimeStats(const ITMTimeStats& timeStats)
 
 void ITMLoggingEngine::LogPose(const ITMTrackingState& trackingState)
 {
-	Vector3f T = trackingState.pose_d->GetT();
+	Matrix4f invM = trackingState.pose_d->GetInvM();
+	Vector3f T;
+	for (int i = 0; i < 3; ++i) T[i] = invM.m[3 * 4 + i];
+
 	Vector4f Q = trackingState.pose_d->GetQ();
 
 	m_trackingFile << T.x << " " << T.y << " " << T.z << " " << Q.x << " " << Q.y << " " << Q.z << " " << Q.w;
