@@ -741,17 +741,14 @@ buildSpaceCarvingVisibleType(DEVICEPTR(HashEntryVisibilityType)* entriesVisibleT
 	Vector3f rayStart_world = (invM_d * rayStart_camera).toVector3();
 	Vector3f rayDirection_world = (pt_world - rayStart_world).normalised();
 
-	Vector3i lastBlockPos_carving(MAX_INT, MAX_INT, MAX_INT);
-
-//	float carveDistance = ORUtils::length(pt_camera) - ORUtils::length(rayStart_camera.toVector3()) - mu;
-	float carveDistance = ORUtils::length(pt_world - rayStart_world) - 0 * mu;
-	BlockTraversal blockTraversal_carving(rayStart_world, rayDirection_world, carveDistance, voxelSize);
+//	float carveDistance = ORUtils::length(pt_world - rayStart_world)
+//	                      - fabs(1.0 / dot(normal_world, rayDirection_world)) * mu;
+	float carveDistance = ORUtils::length(pt_world - rayStart_world) - 1 * mu;
+	BlockTraversal blockTraversal_carving(rayStart_world, rayDirection_world, carveDistance,
+		voxelSize * SDF_BLOCK_SIZE, false);
 	while(blockTraversal_carving.HasNextBlock())
 	{
-		Vector3i voxelPos = blockTraversal_carving.GetNextBlock();
-		Vector3i blockPos = voxelToBlockPos(voxelPos);
-		if (blockPos == lastBlockPos_carving)
-			continue;
+		Vector3i blockPos = blockTraversal_carving.GetNextBlock();
 
 		if (fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL)
 		{
@@ -765,7 +762,6 @@ buildSpaceCarvingVisibleType(DEVICEPTR(HashEntryVisibilityType)* entriesVisibleT
 		{
 			SetBlockVisibleType(hashTable, blockCoords, blockDirections, entriesVisibleType, blockPos);
 		}
-		lastBlockPos_carving = blockPos;
 	}
 }
 
