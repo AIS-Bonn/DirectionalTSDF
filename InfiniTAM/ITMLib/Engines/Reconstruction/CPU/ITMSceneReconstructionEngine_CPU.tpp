@@ -102,24 +102,67 @@ void ITMSceneReconstructionEngine_CPU_common<TVoxel, TIndex>::IntegrateIntoScene
 	this->timeStats.fusion += timer.Tock();
 
 	/// 2. Ray trace space carve every pixel, sum up results
+	const ITMRenderState_VH *renderState_vh = dynamic_cast<const ITMRenderState_VH*>(renderState);
+	int noVisibleEntries = renderState_vh->noVisibleEntries;
+	const int *visibleEntryIds = renderState_vh->GetVisibleEntryIDs();
 	if (this->settings->fusionParams.useSpaceCarving)
 	{
 		timer.Tick();
-		for (int y = 0; y < view->depth->noDims.y; y++) for (int x = 0; x < view->depth->noDims.x; x++)
+		if (this->settings->fusionParams.carvingMode == CarvingMode::CARVINGMODE_RAY_CASTING)
 		{
-				rayCastCarveSpace<TVoxel>(x, y, view->depth->noDims, depth, depthNormals, invM_d,
-																	invProjParams_d, projParams_rgb,
-																	this->settings->fusionParams, this->settings->sceneParams,
-																	hashTable, entriesRayCasting, localVBA);
+			for (int y = 0; y < view->depth->noDims.y; y++) for (int x = 0; x < view->depth->noDims.x; x++)
+			{
+					rayCastCarveSpace<TVoxel>(x, y, view->depth->noDims, depth, depthNormals, invM_d,
+																		invProjParams_d, projParams_rgb,
+																		this->settings->fusionParams, this->settings->sceneParams,
+																		hashTable, entriesRayCasting, localVBA);
+			}
+		} else
+		{
+			bool stopIntegratingAtMaxW = scene->sceneParams->stopIntegratingAtMaxW;
+			int maxW = scene->sceneParams->maxW;
+			float voxelSize = scene->sceneParams->voxelSize;
+			Matrix4f M_d = trackingState->pose_d->GetM();
+			Matrix4f M_rgb = view->calib.trafo_rgb_to_depth.calib_inv * M_d;
+			Vector2i depthImgSize = view->depth->noDims;
+			Vector2i rgbImgSize = view->rgb->noDims;
+			for (int entryId = 0; entryId < noVisibleEntries; entryId++)
+			{
+				const ITMHashEntry &currentHashEntry = hashTable[visibleEntryIds[entryId]];
+
+				if (currentHashEntry.ptr < 0) continue;
+
+				Vector3i globalPos = blockToVoxelPos(Vector3i(currentHashEntry.pos.x, currentHashEntry.pos.y, currentHashEntry.pos.z));
+
+				TVoxel *localVoxelBlock = &(localVBA[currentHashEntry.ptr * (SDF_BLOCK_SIZE3)]);
+
+				for (int z = 0; z < SDF_BLOCK_SIZE; z++) for (int y = 0; y < SDF_BLOCK_SIZE; y++) for (int x = 0; x < SDF_BLOCK_SIZE; x++)
+						{
+							Vector4f pt_model; int locId;
+
+							locId = VoxelIndicesToOffset(x, y, z);
+
+							if (stopIntegratingAtMaxW) if (localVoxelBlock[locId].w_depth == maxW) continue;
+							//if (approximateIntegration) if (localVoxelBlock[locId].w_depth != 0) continue;
+
+							pt_model.x = (float)(globalPos.x + x) * voxelSize;
+							pt_model.y = (float)(globalPos.y + y) * voxelSize;
+							pt_model.z = (float)(globalPos.z + z) * voxelSize;
+							pt_model.w = 1.0f;
+
+							voxelProjectionCarveSpace(
+								localVoxelBlock[locId], TSDFDirection(currentHashEntry.direction),
+								pt_model, M_d, projParams_d, M_rgb, projParams_rgb,
+								this->settings->fusionParams, this->settings->sceneParams, depth, depthNormals, confidence,
+								depthImgSize, rgb, rgbImgSize);
+						}
+			}
 		}
 		this->timeStats.carving += timer.Tock();
 	}
 
 	/// 3. Collect per-voxel summation values, fuse into voxels
 	timer.Tick();
-	const ITMRenderState_VH *renderState_vh = dynamic_cast<const ITMRenderState_VH*>(renderState);
-	int noVisibleEntries = renderState_vh->noVisibleEntries;
-	const int *visibleEntryIds = renderState_vh->GetVisibleEntryIDs();
 	for (int entryId = 0; entryId < noVisibleEntries; entryId++)
 	{
 		const ITMHashEntry &currentHashEntry = hashTable[visibleEntryIds[entryId]];

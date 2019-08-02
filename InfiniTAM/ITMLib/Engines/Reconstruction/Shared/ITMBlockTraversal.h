@@ -79,7 +79,6 @@ struct BlockTraversal
 		if (round_to_nearest)
 		{
 			Vector3f sign(p.x > 0 ? 1 : -1, p.y > 0 ? 1 : -1, p.z > 0 ? 1 : -1);
-			Vector3f asdf = p + sign * 0.5f;
 			return (p + sign * 0.5f).toInt();
 		}
 		Vector3i idx = p.toInt();

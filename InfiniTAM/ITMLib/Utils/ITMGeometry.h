@@ -54,4 +54,9 @@ _CPU_AND_GPU_CODE_ inline void voxelToBlockPosAndOffset(
 					 - blockPos.z * SDF_BLOCK_SIZE3;
 }
 
+_CPU_AND_GPU_CODE_ inline Vector3f voxelIdxToWorldPos(const Vector3i &voxelIdx, const float voxelSize)
+{
+	return voxelIdx.toFloat() * voxelSize;
+}
+
 } // namespace ITMLib

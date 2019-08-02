@@ -144,6 +144,47 @@ void rayCastCarveSpace_device(
 														hashTable, entriesRayCasting, localVBA);
 }
 
+template<class TVoxel, bool stopMaxW>
+__global__ void voxelProjectionCarveSpace_device(
+	TVoxel *localVBA, const ITMHashEntry *hashTable, int *visibleEntryIDs,
+  const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, const Vector4f *depthNormals,
+  const float *confidence, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d,
+  Vector4f projParams_rgb, const ITMFusionParams fusionParams,
+  const ITMSceneParams sceneParams)
+{
+	Vector3i globalPos;
+	int entryId = visibleEntryIDs[blockIdx.x];
+
+	const ITMHashEntry &currentHashEntry = hashTable[entryId];
+
+	if (currentHashEntry.ptr < 0) return;
+
+	globalPos = currentHashEntry.pos.toInt() * SDF_BLOCK_SIZE;
+
+	TVoxel *localVoxelBlock = &(localVBA[currentHashEntry.ptr * SDF_BLOCK_SIZE3]);
+
+	int x = threadIdx.x, y = threadIdx.y, z = threadIdx.z;
+
+	Vector4f pt_model; int locId;
+
+	locId = x + y * SDF_BLOCK_SIZE + z * SDF_BLOCK_SIZE * SDF_BLOCK_SIZE;
+
+	if (stopMaxW) if (localVoxelBlock[locId].w_depth == sceneParams.maxW) return;
+	//if (approximateIntegration) if (localVoxelBlock[locId].w_depth != 0) return;
+
+	float voxelSize = sceneParams.voxelSize;
+	pt_model.x = (float)(globalPos.x + x) * voxelSize;
+	pt_model.y = (float)(globalPos.y + y) * voxelSize;
+	pt_model.z = (float)(globalPos.z + z) * voxelSize;
+	pt_model.w = 1.0f;
+
+	voxelProjectionCarveSpace(
+		localVoxelBlock[locId], TSDFDirection(currentHashEntry.direction),
+		pt_model, M_d, projParams_d, M_rgb, projParams_rgb,
+		fusionParams, sceneParams, depth, depthNormals, confidence,
+		depthImgSize, rgb, rgbImgSize);
+}
+
 template<class TVoxel, class TIndex>
 void
 ITMSceneReconstructionEngine_CUDA_common<TVoxel, TIndex>::IntegrateIntoSceneRayCasting(
@@ -165,7 +206,7 @@ ITMSceneReconstructionEngine_CUDA_common<TVoxel, TIndex>::IntegrateIntoSceneRayC
 	TVoxel *localVBA = scene->localVBA.GetVoxelBlocks();
 	ITMHashEntry *hashTable = scene->index.GetEntries();
 
-	Vector2i imgSize = view->depth->noDims;
+	Vector2i depthImgSize = view->depth->noDims;
 
 	VoxelRayCastingSum *entriesRayCasting = nullptr;
 	entriesRayCasting = this->entriesRayCasting->GetData(MEMORYDEVICE_CUDA);
@@ -185,9 +226,9 @@ ITMSceneReconstructionEngine_CUDA_common<TVoxel, TIndex>::IntegrateIntoSceneRayC
 
 	/// 2. Ray cast update for every pixel
 	dim3 blockSizeUpdate(16, 16);
-	dim3 gridSizeUpdate((int)ceil((float)imgSize.x / (float)blockSizeUpdate.x), (int)ceil((float)imgSize.y / (float)blockSizeUpdate.y));
+	dim3 gridSizeUpdate((int)ceil((float)depthImgSize.x / (float)blockSizeUpdate.x), (int)ceil((float)depthImgSize.y / (float)blockSizeUpdate.y));
 	rayCastUpdate_device<TVoxel> << <gridSizeUpdate, blockSizeUpdate >> >(
-		imgSize, depth, depthNormals, invM_d, invProjParams_d, projParams_rgb, this->settings->fusionParams, this->settings->sceneParams,
+		depthImgSize, depth, depthNormals, invM_d, invProjParams_d, projParams_rgb, this->settings->fusionParams, this->settings->sceneParams,
 		hashTable, entriesRayCasting, localVBA);
 	ORcudaKernelCheck;
 	this->timeStats.fusion += timer.Tock();
@@ -196,10 +237,29 @@ ITMSceneReconstructionEngine_CUDA_common<TVoxel, TIndex>::IntegrateIntoSceneRayC
 	timer.Tick();
 	if (this->settings->fusionParams.useSpaceCarving)
 	{
-		rayCastCarveSpace_device<TVoxel> << <gridSizeUpdate, blockSizeUpdate >> >(
-			imgSize, depth, depthNormals, invM_d, invProjParams_d, projParams_rgb, this->settings->fusionParams, this->settings->sceneParams,
-				hashTable, entriesRayCasting, localVBA);
-		ORcudaKernelCheck;
+		if (this->settings->fusionParams.carvingMode == CarvingMode::CARVINGMODE_RAY_CASTING)
+		{
+			rayCastCarveSpace_device<TVoxel> << < gridSizeUpdate, blockSizeUpdate >> > (
+				depthImgSize, depth, depthNormals, invM_d, invProjParams_d, projParams_rgb, this->settings->fusionParams, this->settings->sceneParams,
+					hashTable, entriesRayCasting, localVBA);
+			ORcudaKernelCheck;
+		} else
+		{
+			Vector2i rgbImgSize = view->rgb->noDims;
+			int *visibleEntryIDs = renderState_vh->GetVisibleEntryIDs();
+			Matrix4f M_d = trackingState->pose_d->GetM();
+			Matrix4f M_rgb = view->calib.trafo_rgb_to_depth.calib_inv * M_d;
+
+			dim3 blockSizeVoxelProjection(SDF_BLOCK_SIZE, SDF_BLOCK_SIZE, SDF_BLOCK_SIZE);
+			dim3 gridSizeVoxelProjection(renderState_vh->noVisibleEntries);
+			voxelProjectionCarveSpace_device<TVoxel, false> << <gridSizeVoxelProjection, blockSizeVoxelProjection >> >(
+				localVBA, hashTable, visibleEntryIDs,
+				rgb, rgbImgSize, depth, depthNormals,
+				confidence, depthImgSize, M_d, M_rgb, projParams_d,
+				projParams_rgb, this->settings->fusionParams,
+				this->settings->sceneParams);
+			ORcudaKernelCheck;
+		}
 	}
 	this->timeStats.carving = timer.Tock();
 
@@ -410,7 +470,9 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::IntegrateInto
 	projParams_rgb = view->calib.intrinsics_rgb.projectionParamsSimple.all;
 
 	float *depth = view->depth->GetData(MEMORYDEVICE_CUDA);
-	Vector4f *depthNormals = view->depthNormal->GetData(MEMORYDEVICE_CUDA);
+	Vector4f *depthNormals = nullptr;
+	if (this->settings->fusionParams.useWeighting)
+		depthNormals = view->depthNormal->GetData(MEMORYDEVICE_CUDA);
 	float *confidence = view->depthConfidence->GetData(MEMORYDEVICE_CUDA);
 	Vector4u *rgb = view->rgb->GetData(MEMORYDEVICE_CUDA);
 	TVoxel *localVBA = scene->localVBA.GetVoxelBlocks();

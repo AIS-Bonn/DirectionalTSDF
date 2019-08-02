@@ -21,6 +21,12 @@ typedef enum
 
 typedef enum
 {
+	CARVINGMODE_VOXEL_PROJECTION,
+	CARVINGMODE_RAY_CASTING
+} CarvingMode;
+
+typedef enum
+{
 	FUSIONMETRIC_POINT_TO_POINT,
 	FUSIONMETRIC_POINT_TO_PLANE
 } FusionMetric;
@@ -30,6 +36,7 @@ class ITMFusionParams
 public:
 	TSDFMode tsdfMode;
 	FusionMode fusionMode;
+	CarvingMode carvingMode; // only relevant for ray casting fusion
 	FusionMetric fusionMetric;
 	bool useSpaceCarving;
 	bool useWeighting;

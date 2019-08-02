@@ -41,8 +41,7 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 	pt_camera = M_d * pt_world;
 	if (pt_camera.z <= 0) return -1;
 
-	pt_image.x = projParams_d.x * pt_camera.x / pt_camera.z + projParams_d.z;
-	pt_image.y = projParams_d.y * pt_camera.y / pt_camera.z + projParams_d.w;
+	pt_image = project(pt_camera.toVector3(), projParams_d);
 	if ((pt_image.x < 1) || (pt_image.x > imgSize.x - 2) || (pt_image.y < 1) || (pt_image.y > imgSize.y - 2)) return -1;
 
 	// get measured depth from image
@@ -113,8 +112,7 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 	pt_camera = M_d * pt_world;
 	if (pt_camera.z <= 0) return -1;
 
-	pt_image.x = projParams_d.x * pt_camera.x / pt_camera.z + projParams_d.z;
-	pt_image.y = projParams_d.y * pt_camera.y / pt_camera.z + projParams_d.w;
+	pt_image = project(pt_camera.toVector3(), projParams_d);
 	if ((pt_image.x < 1) || (pt_image.x > imgSize.x - 2) || (pt_image.y < 1) || (pt_image.y > imgSize.y - 2)) return -1;
 
 	idx = (int) (pt_image.x + 0.5f) + (int) (pt_image.y + 0.5f) * imgSize.x;
@@ -285,6 +283,76 @@ struct ComputeUpdatedVoxelInfo<true, true, TVoxel>
 		computeUpdatedVoxelColorInfo(voxel, direction, pt_world, M_rgb, projParams_rgb, sceneParams, eta, rgb, imgSize_rgb);
 	}
 };
+
+template<class TVoxel>
+_CPU_AND_GPU_CODE_ static void voxelProjectionCarveSpace(DEVICEPTR(TVoxel)& voxel,
+	                                                       const TSDFDirection direction,
+                                                         const Vector4f pt_world,
+                                                         const THREADPTR(Matrix4f)& M_d,
+                                                         const THREADPTR(Vector4f)& projParams_d,
+                                                         const THREADPTR(Matrix4f)& M_rgb,
+                                                         const THREADPTR(Vector4f)& projParams_rgb,
+                                                         const ITMFusionParams& fusionParams,
+                                                         const CONSTPTR(ITMSceneParams)& sceneParams,
+                                                         const CONSTPTR(float)* depth,
+                                                         const CONSTPTR(Vector4f)* depthNormals,
+                                                         const CONSTPTR(float)* confidence,
+                                                         const CONSTPTR(Vector2i)& imgSize_d,
+                                                         const CONSTPTR(Vector4u)* rgb,
+                                                         const THREADPTR(Vector2i)& imgSize_rgb)
+{
+	Vector2i imgSize = imgSize_d;
+
+	Vector4f pt_camera = M_d * pt_world;
+	if (pt_camera.z <= 0) return; // voxel behind camera
+
+	Vector2f voxelCenter_image = project(pt_camera.toVector3(), projParams_d);
+	if ((voxelCenter_image.x < 1) || (voxelCenter_image.x > imgSize.x - 2)
+	    || (voxelCenter_image.y < 1) || (voxelCenter_image.y > imgSize.y - 2))
+		return;
+
+	/// Find relevant image area
+	Vector2f voxelBR_image = project(pt_camera.toVector3() + Vector3f(1, 1, 0) * 0.5 * sceneParams.voxelSize,
+		projParams_d);
+	Vector2f voxelUL_image = project(pt_camera.toVector3() - Vector3f(1, 1, 0) * 0.5 * sceneParams.voxelSize,
+		projParams_d);
+
+	int x_min = MAX(static_cast<int>(voxelUL_image.x + 0.5f), 1);
+	int x_max = MIN(static_cast<int>(voxelBR_image.x + 0.5f), imgSize.x - 2);
+	int y_min = MAX(static_cast<int>(voxelUL_image.y + 0.5f), 1);
+	int y_max = MIN(static_cast<int>(voxelBR_image.y + 0.5f), imgSize.y - 2);
+
+	/// Check area and carve voxel, if necessary
+	float newF = 1;
+	float newW = 0;
+	for (int x = x_min; x <= x_max; x++) for (int y = y_min; y <= y_max; y++)
+	{
+		int idx = x + y * imgSize.x;
+		// get measured depth from image
+		float depthMeasure = depth[idx];
+		Vector4f normalCamera = depthNormals[idx];
+		if (depthMeasure <= 0.0 or normalCamera.w != 1) continue;
+		// check whether voxel needs updating
+		float eta = depthMeasure - pt_camera.z;
+		if (eta < sceneParams.mu) // Within truncation range -> don't carve
+			return;
+
+		newW += 1 * weightNormal(normalCamera); //rayStart_camera.toVector3().normalised().z;
+	}
+
+	/// Update SDF
+	float oldF = TVoxel::valueToFloat(voxel.sdf);
+	float oldW = TVoxel::weightToFloat(voxel.w_depth, sceneParams.maxW);
+
+	newF = oldW * oldF + newW * newF;
+	newW = oldW + newW;
+	newF /= newW;
+	newW = MIN(newW, sceneParams.maxW);
+
+	// write back^
+	voxel.sdf = TVoxel::floatToValue(newF);
+	voxel.w_depth = TVoxel::floatToWeight(newW, sceneParams.maxW);
+}
 
 _CPU_AND_GPU_CODE_
 inline void SetBlockVisibleType(const CONSTPTR(ITMHashEntry)* hashTable,
