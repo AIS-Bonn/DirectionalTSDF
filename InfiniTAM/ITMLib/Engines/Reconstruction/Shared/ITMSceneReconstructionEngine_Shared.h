@@ -339,6 +339,8 @@ _CPU_AND_GPU_CODE_ static void voxelProjectionCarveSpace(DEVICEPTR(TVoxel)& voxe
 
 		newW += 1 * weightNormal(normalCamera); //rayStart_camera.toVector3().normalised().z;
 	}
+	if (newW <= 0)
+		return;
 
 	/// Update SDF
 	float oldF = TVoxel::valueToFloat(voxel.sdf);
