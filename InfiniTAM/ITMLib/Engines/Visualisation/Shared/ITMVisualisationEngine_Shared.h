@@ -3,6 +3,7 @@
 #pragma once
 
 #include "ITMLib/Objects/Scene/ITMDirectional.h"
+#include "ITMLib/Objects/Scene/ITMMultiSceneAccess.h"
 #include "ITMLib/Objects/Scene/ITMRepresentationAccess.h"
 #include "ITMLib/Engines/Reconstruction/Interface/ITMSceneReconstructionEngine.h"
 #include "ITMLib/Utils/ITMProjectionUtils.h"
@@ -139,8 +140,10 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndAngle(THREADPTR(bool)& foundPoint
 		outNormal = Vector3f(0, 0, 0);
 		for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
 		{
-			outNormal = directionalContribution->v[direction] * computeSingleNormalFromSDF(voxelBlockData, indexData, point, TSDFDirection(direction)).normalised();
+			if (directionalContribution->v[direction] > 0)
+				outNormal += directionalContribution->v[direction] * computeSingleNormalFromSDF(voxelBlockData, indexData, point, TSDFDirection(direction)).normalised();
 		}
+		outNormal = outNormal.normalised();
 	}
 	else
 	{
@@ -282,25 +285,25 @@ _CPU_AND_GPU_CODE_ inline void drawPixelColourDirectional(
 	dest.y = 0;
 	dest.z = 0;
 
-//	// Debugging: color in contributing directions
-//	const Vector3f directionColors[6] = {
-//		Vector3f(1, 0, 0),
-//		Vector3f(0, 1, 0),
-//		Vector3f(1, 1, 0),
-//		Vector3f(0, 1, 1),
-//		Vector3f(1, 0, 1),
-//		Vector3f(1, 1, 0)
-//	};
-//
-//	for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
-//	{
-//		const Vector3f &clr = directionColors[direction];
-//		dest.x += (uchar) (clr.x * 255.0f * directionalContribution[direction]);
-//		dest.y += (uchar) (clr.y * 255.0f * directionalContribution[direction]);
-//		dest.z += (uchar) (clr.z * 255.0f * directionalContribution[direction]);
-//	}
+	const Vector3f directionColors[6] = {
+		Vector3f(1, 0, 0),
+		Vector3f(0, 1, 0),
+		Vector3f(1, 1, 0),
+		Vector3f(0, 1, 1),
+		Vector3f(1, 0, 1),
+		Vector3f(1, 1, 0)
+	};
 
-//	// Debugging: color in strongest contributing direction
+	// Debugging: color in contributing directions
+	for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
+	{
+		const Vector3f &clr = directionColors[direction];
+		dest.x += (uchar) (clr.x * 255.0f * directionalContribution[direction]);
+		dest.y += (uchar) (clr.y * 255.0f * directionalContribution[direction]);
+		dest.z += (uchar) (clr.z * 255.0f * directionalContribution[direction]);
+	}
+
+	// Debugging: color in strongest contributing direction
 //	int maxIdx = -1;
 //	float maxWeight = 0;
 //	for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
@@ -316,14 +319,14 @@ _CPU_AND_GPU_CODE_ inline void drawPixelColourDirectional(
 //	dest.y = (uchar) (clr.y * 255.0f);
 //	dest.z = (uchar) (clr.z * 255.0f);
 
-	for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
-	{
-		Vector4f clr = VoxelColorReader<TVoxel::hasColorInformation, TVoxel, TIndex>::interpolate(
-			voxelBlockData, indexData, point, TSDFDirection(direction));
-		dest.x += (uchar) (clr.x * 255.0f * directionalContribution[direction]);
-		dest.y += (uchar) (clr.y * 255.0f * directionalContribution[direction]);
-		dest.z += (uchar) (clr.z * 255.0f * directionalContribution[direction]);
-	}
+//	for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
+//	{
+//		Vector4f clr = VoxelColorReader<TVoxel::hasColorInformation, TVoxel, TIndex>::interpolate(
+//			voxelBlockData, indexData, point, TSDFDirection(direction));
+//		dest.x += (uchar) (clr.x * 255.0f * directionalContribution[direction]);
+//		dest.y += (uchar) (clr.y * 255.0f * directionalContribution[direction]);
+//		dest.z += (uchar) (clr.z * 255.0f * directionalContribution[direction]);
+//	}
 	dest.w = 255;
 }
 
@@ -349,12 +352,15 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
                                               const CONSTPTR(typename TIndex::IndexData)* voxelIndex,
                                               Matrix4f invM, Vector4f invProjParams, float oneOverVoxelSize, float mu,
                                               const CONSTPTR(Vector2f)& viewFrustum_minmax,
-                                              const TSDFDirection direction=TSDFDirection::NONE)
+                                              const TSDFDirection direction=TSDFDirection::NONE,
+                                              float maxDistance=-1)
 {
 	Vector4f pt_camera_f; Vector3f pt_block_s, pt_block_e, rayDirection, pt_result;
 	int vmIndex;
 	float sdfValue = 1.0f, confidence;
 	float totalLength, stepLength, totalLengthMax, stepScale;
+
+	pt_out = Vector4f(0, 0, 0, 0);
 
 	stepScale = mu * oneOverVoxelSize;
 
@@ -362,7 +368,9 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 	totalLength = length(TO_VECTOR3(pt_camera_f)) * oneOverVoxelSize;
 	pt_block_s = TO_VECTOR3(invM * pt_camera_f) * oneOverVoxelSize;
 
-	pt_camera_f = Vector4f(reprojectImagePoint(x, y, viewFrustum_minmax.y, invProjParams), 1.0f);
+	pt_camera_f = Vector4f(reprojectImagePoint(x, y,
+		maxDistance > 0 ? maxDistance : viewFrustum_minmax.y,
+		invProjParams), 1.0f);
 	totalLengthMax = length(TO_VECTOR3(pt_camera_f)) * oneOverVoxelSize;
 	pt_block_e = TO_VECTOR3(invM * pt_camera_f) * oneOverVoxelSize;
 
@@ -374,6 +382,7 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 
 	typename TIndex::IndexCache cache;
 
+	float lastSDFValue = sdfValue;
 	while (totalLength < totalLengthMax) {
 		sdfValue = readFromSDF_float_uninterpolated(voxelData, voxelIndex, pt_result, direction, vmIndex, cache);
 
@@ -388,31 +397,237 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 			if ((sdfValue <= 0.1f) && (sdfValue >= -0.5f)) {
 				sdfValue = readFromSDF_float_interpolated(voxelData, voxelIndex, pt_result, direction, vmIndex, cache);
 			}
-			if (sdfValue <= 0.0f) break;
+			if (lastSDFValue > 0 and sdfValue <= 0)// and lastSDFValue - sdfValue < 1.1)
+			{
+				break;
+			}
 			stepLength = MAX(sdfValue * stepScale, 1.0f);
 		}
 
+		lastSDFValue = sdfValue;
 		pt_result += stepLength * rayDirection; totalLength += stepLength;
 	}
 
-	if (sdfValue <= 0.0f)
+	lastSDFValue = sdfValue;
+	// Perform 2 additional steps to get more accurate zero crossing
+	if (sdfValue > 0.0f)
+		return false;
+
+	for (int i = 0; i < 5 and fabs(sdfValue) > 1e-6; i++)
 	{
 		stepLength = sdfValue * stepScale;
 		pt_result += stepLength * rayDirection;
+		totalLength += stepLength;
 
 		sdfValue = readWithConfidenceFromSDF_float_interpolated(confidence, voxelData, voxelIndex, pt_result, direction, vmIndex, cache);
+	}
+
+	if (fabs(lastSDFValue) < fabs(sdfValue) or fabs(sdfValue) > 0.1)
+		return false;
+
+	distance_out = totalLength / oneOverVoxelSize;
+	pt_out = Vector4f(pt_result, confidence + 1.0f);
+	return true;
+}
+
+template<class TVoxel, class TIndex>
+_CPU_AND_GPU_CODE_ inline bool castRayDirectional2(DEVICEPTR(Vector4f) &pt_out, Vector6f *directionalContribution,
+                                                  DEVICEPTR(HashEntryVisibilityType) *entriesVisibleType,
+                                                  int x, int y, const CONSTPTR(TVoxel) *voxelData,
+                                                  const CONSTPTR(typename TIndex::IndexData) *voxelIndex,
+                                                  Matrix4f invM, Vector4f invProjParams, float oneOverVoxelSize, float mu, const CONSTPTR(Vector2f) & viewFrustum_minmax)
+{
+	Vector4f pt_camera_f; Vector3f pt_block_s, pt_block_e, rayDirection, pt_result;
+	float totalLength, totalLengthMax, stepScale;
+
+	pt_out = Vector4f(0, 0, 0, 0);
+
+	stepScale = mu * oneOverVoxelSize;
+
+	pt_camera_f = Vector4f(reprojectImagePoint(x, y, viewFrustum_minmax.x, invProjParams), 1.0f);
+	totalLength = length(TO_VECTOR3(pt_camera_f)) * oneOverVoxelSize;
+	pt_block_s = TO_VECTOR3(invM * pt_camera_f) * oneOverVoxelSize;
+
+	pt_camera_f = Vector4f(reprojectImagePoint(x, y,
+	                                           viewFrustum_minmax.y,
+	                                           invProjParams), 1.0f);
+	totalLengthMax = length(TO_VECTOR3(pt_camera_f)) * oneOverVoxelSize;
+	pt_block_e = TO_VECTOR3(invM * pt_camera_f) * oneOverVoxelSize;
+
+	rayDirection = pt_block_e - pt_block_s;
+	float direction_norm = 1.0f / sqrt(rayDirection.x * rayDirection.x + rayDirection.y * rayDirection.y + rayDirection.z * rayDirection.z);
+	rayDirection *= direction_norm;
+
+	pt_result = pt_block_s;
+
+	/// Find first positive zero crossing
+	int vmIndex;
+	float sdfValues[N_DIRECTIONS] = {1, 1, 1, 1, 1, 1};
+	float lastSDFValues[N_DIRECTIONS] = {1, 1, 1, 1, 1, 1};
+	typename TIndex::IndexCache cache[N_DIRECTIONS];
+	float stepLength = SDF_BLOCK_SIZE;
+	TSDFDirection_type firstCrossingDirection = static_cast<TSDFDirection_type>(TSDFDirection::NONE);
+	while (totalLength < totalLengthMax) {
+		bool foundZeroCrossing = false;
+		int numReadableValues = 0;
+		for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
+		{
+			const auto direction = TSDFDirection(directionIdx);
+
+			sdfValues[directionIdx] = readFromSDF_float_uninterpolated(voxelData, voxelIndex, pt_result, direction, vmIndex, cache[directionIdx]);
+
+			if (vmIndex) {
+				numReadableValues++;
+				float confidence = 0;
+				if (sdfValues[directionIdx] <= 0.5 and sdfValues[directionIdx] >= -0.5) {
+					sdfValues[directionIdx] = readWithConfidenceFromSDF_float_interpolated(confidence, voxelData, voxelIndex, pt_result,
+					                                                           TSDFDirection(directionIdx), vmIndex, cache[directionIdx]);
+				}
+				if (lastSDFValues[directionIdx] > 0 and sdfValues[directionIdx] <= 0)
+				{
+					totalLengthMax = MIN(totalLengthMax, totalLength + SDF_BLOCK_SIZE);
+					if (confidence > 0)
+					{
+						firstCrossingDirection = directionIdx;
+						foundZeroCrossing = true;
+						break;
+					}
+				}
+				stepLength = MIN(stepLength, MAX(sdfValues[directionIdx] * stepScale, 1.0f));
+			}
+			lastSDFValues[directionIdx] = sdfValues[directionIdx];
+		}
+
+		pt_result += stepLength * rayDirection;
+		totalLength += stepLength;
+
+		if (numReadableValues == 0)
+			stepLength = SDF_BLOCK_SIZE;
+
+		if (foundZeroCrossing)
+			break;
+	}
+
+	if (firstCrossingDirection >= N_DIRECTIONS or sdfValues[firstCrossingDirection] > 0.0)
+		return false;
+
+	/// Check which directions have usable information
+	float weights[N_DIRECTIONS] = {1, 1, 1, 1, 1, 1};
+	Vector3f gradients[N_DIRECTIONS];
+	float maxConfidence = 0;
+	TSDFDirection_type maxConfidenceIdx = static_cast<TSDFDirection_type>(TSDFDirection::NONE);
+	for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
+	{
+		float confidence = 0;
+		sdfValues[directionIdx] = readWithConfidenceFromSDF_float_interpolated(confidence, voxelData, voxelIndex, pt_result,
+		                                                                       TSDFDirection(directionIdx), vmIndex, cache[directionIdx]);
+		if (confidence == 0)
+		{
+			weights[directionIdx] = 0;
+			continue;
+		}
+		gradients[directionIdx] = computeSingleNormalFromSDF(voxelData, voxelIndex, pt_result,
+			TSDFDirection(directionIdx)).normalised();
+		confidence *= DirectionWeight(gradients[directionIdx], TSDFDirection(directionIdx));
+		confidence *= SIGN(dot(gradients[directionIdx], -rayDirection));
+
+		if (confidence > maxConfidence)
+		{
+			maxConfidence = confidence;
+			maxConfidenceIdx = directionIdx;
+		}
+	}
+
+	firstCrossingDirection = maxConfidenceIdx;
+
+	if (firstCrossingDirection >= N_DIRECTIONS)
+		return false;
+
+	/// Perform steps to get closer to zero crossing
+	float sdfValue = sdfValues[firstCrossingDirection];
+
+	/// Determine directions and weights to use for final interpolation (surface gradient)
+	float weights_[N_DIRECTIONS];
+	ComputeDirectionWeights(gradients[firstCrossingDirection], weights_);
+
+	for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
+	{
+		if (weights[directionIdx] <= 0 or directionIdx == firstCrossingDirection)
+			continue;
+
+		if (weights_[directionIdx] < direction_weight_threshold)
+		{
+			weights[directionIdx] = 0;
+			continue;
+		}
+
+		weights[directionIdx] = weights_[directionIdx] * dot(gradients[directionIdx], gradients[firstCrossingDirection]);
+		if (weights[directionIdx] != weights[directionIdx])
+			weights[directionIdx] = 0; // check NaN
+	}
+
+	stepScale =  mu * oneOverVoxelSize / MAX(fabs(dot(gradients[firstCrossingDirection], rayDirection)), 0.5); // Adapt step scale to angle between surface and observation ray
+
+	float dbg_[10];
+	float dbg2_[10];
+
+	/// Perform additional steps to get more accurate zero crossing (interpolate directions)
+	float contributionWeights[N_DIRECTIONS] = {0, 0, 0, 0, 0, 0};
+	float lastSDFValue;
+	float weightSum = 0;
+	for (int i = 0; i < 5 and fabs(sdfValue) > 1e-6; i++)
+	{
+		lastSDFValue = sdfValue;
+		sdfValue = 0;
+    weightSum = 0;
+		for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
+		{
+			if (weights[directionIdx] < direction_weight_threshold) continue;
+
+			float confidence = 0;
+			float value = readWithConfidenceFromSDF_float_interpolated(confidence, voxelData, voxelIndex, pt_result,
+				TSDFDirection(directionIdx), vmIndex, cache[directionIdx]);
+
+			if (confidence == 0)
+			{
+				weights[directionIdx] = 0; // Direction not applicable for estimation
+				continue;
+			}
+
+			contributionWeights[directionIdx] = confidence * weights[directionIdx];
+
+			sdfValue += contributionWeights[directionIdx] * value;
+			weightSum += contributionWeights[directionIdx];
+		}
+		if (weightSum == 0)
+			return false;
+
+		sdfValue /= weightSum;
+		if (SIGN(sdfValue) != SIGN(lastSDFValue) and (fabs(sdfValue) - fabs(lastSDFValue)) / fabs(lastSDFValue) > -0.75)
+		{ // Sign hopping with little to no reduction in magnitude
+			stepScale *= 0.5;
+		}
+		dbg2_[i] = stepScale;
 
 		stepLength = sdfValue * stepScale;
 		pt_result += stepLength * rayDirection;
-		totalLength += 2 * stepLength;
+		totalLength += stepLength;
 
-		pt_out = Vector4f(pt_result, confidence + 1.0f);
-		distance_out = totalLength;
-		return true;
+		dbg_[i] = sdfValue;
+	}
+	if (fabs(sdfValue) > 0.1)
+		return false;
+
+	if (directionalContribution)
+	{
+		for (int i = 0; i < 6; i++)
+		{
+			directionalContribution->v[i] = MAX(contributionWeights[i] / weightSum, 0);
+		}
 	}
 
-	pt_out = Vector4f(0, 0, 0, 0);
-	return false;
+	pt_out = Vector4f(pt_result, weightSum + 1.0f);
+	return true;
 }
 
 /**
@@ -422,7 +637,8 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 template<class TVoxel, class TIndex>
 _CPU_AND_GPU_CODE_ inline bool castRayDirectional(DEVICEPTR(Vector4f) &pt_out, Vector6f *directionalContribution,
 	                                                DEVICEPTR(HashEntryVisibilityType) *entriesVisibleType,
-                                                  int x, int y, const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(typename TIndex::IndexData) *voxelIndex,
+                                                  int x, int y, const CONSTPTR(TVoxel) *voxelData,
+                                                  const CONSTPTR(typename TIndex::IndexData) *voxelIndex,
                                                   Matrix4f invM, Vector4f invProjParams, float oneOverVoxelSize, float mu, const CONSTPTR(Vector2f) & viewFrustum_minmax)
 {
 	Vector3f ptStart_camera = reprojectImagePoint(x, y, viewFrustum_minmax.x, invProjParams);
@@ -452,27 +668,44 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional(DEVICEPTR(Vector4f) &pt_out, V
 	int opositeIdx = 2 * (maxIdx / 2) + (1 - maxIdx % 2);
 
 	const float MAX_LENGTH = 1e9;
-	float directionIntersectionLength[6] = {MAX_LENGTH, MAX_LENGTH, MAX_LENGTH, MAX_LENGTH, MAX_LENGTH, MAX_LENGTH};
-	float directionIntersectionWeight[6] = {-1, -1, -1, -1, -1, -1};
-	Vector3f directionIntersectionPoint[6];
+	float directionIntersectionLength[N_DIRECTIONS] = {MAX_LENGTH, MAX_LENGTH, MAX_LENGTH, MAX_LENGTH, MAX_LENGTH, MAX_LENGTH};
+	float directionIntersectionWeight[N_DIRECTIONS] = {0, 0, 0, 0, 0, 0};
+	Vector3f directionIntersectionPoint[N_DIRECTIONS];
+	Vector3f directionIntersectionNormal[N_DIRECTIONS];
+	float maxIntersectionLength = -1;
 	for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
 	{
 		if (directionIdx == opositeIdx)
 			continue;
 		Vector4f point;
-		float distance;
+		float distance = -1;
 		if (castRayDefault<TVoxel, TIndex>(
 				point, distance,
 				entriesVisibleType, x, y, voxelData, voxelIndex,
-				invM, invProjParams, oneOverVoxelSize, mu, viewFrustum_minmax, TSDFDirection(directionIdx)))
+				invM, invProjParams, oneOverVoxelSize, mu, viewFrustum_minmax, TSDFDirection(directionIdx),
+				maxIntersectionLength > 0 ? maxIntersectionLength + SDF_BLOCK_SIZE / oneOverVoxelSize : -1))
 		{
+			maxIntersectionLength = MAX(maxIntersectionLength, distance);
+#if 1
+			const auto direction = TSDFDirection(directionIdx);
+			directionIntersectionNormal[directionIdx] = computeSingleNormalFromSDF(
+				voxelData, voxelIndex, point.toVector3(), direction).normalised();
+			float directionCompliance = DirectionWeight(directionIntersectionNormal[directionIdx], direction);
+			if (directionCompliance >= direction_weight_threshold)
+			{
+				directionIntersectionPoint[directionIdx] = point.toVector3();
+				directionIntersectionLength[directionIdx] = distance;
+				directionIntersectionWeight[directionIdx] = point.w - 1;
+			}
+#else
 			directionIntersectionPoint[directionIdx] = point.toVector3();
 			directionIntersectionLength[directionIdx] = distance;
 			directionIntersectionWeight[directionIdx] = point.w - 1;
+#endif
 		}
 	}
 
-	/// Find most suitable intersection (innermost one in vicinity of first intersection)
+	/// Find closest intersection
 	float currentIntersectionLength = MAX_LENGTH;
 	int currentIntersectionIdx = -1;
 	for (TSDFDirection_type idx = 0; idx < N_DIRECTIONS; idx++)
@@ -483,6 +716,21 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional(DEVICEPTR(Vector4f) &pt_out, V
 			currentIntersectionIdx = idx;
 		}
 	}
+
+	/// Find most suitable intersection (innermost one in vicinity of first intersection)
+	float shortestIntersectionLength = currentIntersectionLength;
+	int shortestIntersectionIdx = currentIntersectionIdx;
+	for (TSDFDirection_type idx = 0; idx < N_DIRECTIONS; idx++)
+	{
+		if (directionIntersectionLength[idx] - shortestIntersectionLength > 0 and
+		directionIntersectionLength[idx] - currentIntersectionLength < SDF_BLOCK_SIZE)
+		{
+			shortestIntersectionLength = directionIntersectionLength[idx];
+			shortestIntersectionIdx = idx;
+		}
+	}
+	currentIntersectionIdx = shortestIntersectionIdx;
+	currentIntersectionLength = shortestIntersectionLength;
 
 	float weightSum = 0;
 	pt_out = Vector4f(0, 0, 0, 0);
@@ -497,8 +745,9 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional(DEVICEPTR(Vector4f) &pt_out, V
 			directionIntersectionWeight[idx] = 0; // Set 0 to exclude from coloring
 		}
 	}
+	float oneOverWeightSum = 1 / weightSum;
 
-	pt_out *= 1 / weightSum;
+	pt_out *= oneOverWeightSum;
 	pt_out.w = weightSum + 1.0f;
 
 	if (currentIntersectionIdx < 0 or weightSum <= 0)
@@ -511,7 +760,7 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional(DEVICEPTR(Vector4f) &pt_out, V
 	{
 		for (int i = 0; i < 6; i++)
 		{
-			directionalContribution->v[i] = directionIntersectionWeight[i] / weightSum;
+			directionalContribution->v[i] = directionIntersectionWeight[i] * oneOverWeightSum;
 		}
 	}
 
@@ -526,7 +775,10 @@ _CPU_AND_GPU_CODE_ inline bool castRay(DEVICEPTR(Vector4f) &pt_out, Vector6f *di
 {
 	float distance;
 	if (directionalTSDF)
-		return castRayDirectional<TVoxel, TIndex>(pt_out, directionalContribution, entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams, oneOverVoxelSize, mu, viewFrustum_minmax);
+//		return castRayDirectional<TVoxel, TIndex>(pt_out, directionalContribution, entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams, oneOverVoxelSize, mu, viewFrustum_minmax);
+		return castRayDirectional2<TVoxel, TIndex>(pt_out, directionalContribution, entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams, oneOverVoxelSize, mu, viewFrustum_minmax);
+//		return castRayDefault<TVoxel, TIndex>(pt_out, distance, entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams,
+//																					oneOverVoxelSize, mu, viewFrustum_minmax, TSDFDirection::Z_NEG);
 	else
 		return castRayDefault<TVoxel, TIndex>(pt_out, distance, entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams,
 	                                      oneOverVoxelSize, mu, viewFrustum_minmax);

@@ -57,10 +57,10 @@ struct ITMVoxel_s_rgb
 	_CPU_AND_GPU_CODE_ static short floatToValue(float x) { return (short)((x) * 32767.0f); }
 
 	_CPU_AND_GPU_CODE_ static float weightToFloat(WeightType w, int maxW) {
-		return static_cast<float>(w) * maxW / 65536.0f;
+		return static_cast<float>(w) * maxW / 65535.0f;
 	}
 	_CPU_AND_GPU_CODE_ static WeightType floatToWeight(float w, int maxW) {
-		return static_cast<WeightType>(w / maxW * 65536.0f);
+		return static_cast<WeightType>(round(w / maxW * 65535.0f));
 	}
 
 	static const CONSTPTR(bool) hasColorInformation = true;
@@ -96,10 +96,10 @@ struct ITMVoxel_s
 	_CPU_AND_GPU_CODE_ static short floatToValue(float x) { return (short)((x) * 32767.0f); }
 
 	_CPU_AND_GPU_CODE_ static float weightToFloat(WeightType w, int maxW) {
-		return static_cast<float>(w) * maxW / 65536.0f;
+		return static_cast<float>(w) * maxW / 65535.0f;
 	}
 	_CPU_AND_GPU_CODE_ static WeightType floatToWeight(float w, int maxW) {
-		return static_cast<WeightType>(w / maxW * 65536.0f);
+		return static_cast<WeightType>(round(w / maxW * 65535.0f));
 	}
 
 	static const CONSTPTR(bool) hasColorInformation = false;

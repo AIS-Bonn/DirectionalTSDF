@@ -58,8 +58,11 @@ ITMLibSettings::ITMLibSettings(void)
 //	fusionParams.fusionMode = FUSIONMODE_VOXEL_PROJECTION;
 	fusionParams.fusionMode = FUSIONMODE_RAY_CASTING;
 
-	fusionParams.fusionMetric = FUSIONMETRIC_POINT_TO_POINT;
-//	fusionParams.fusionMetric = FUSIONMETRIC_POINT_TO_PLANE;
+	fusionParams.carvingMode = CARVINGMODE_VOXEL_PROJECTION;
+//	fusionParams.carvingMode = CARVINGMODE_RAY_CASTING;
+
+//	fusionParams.fusionMetric = FUSIONMETRIC_POINT_TO_POINT;
+	fusionParams.fusionMetric = FUSIONMETRIC_POINT_TO_PLANE;
 
 	fusionParams.useWeighting = true;
 
