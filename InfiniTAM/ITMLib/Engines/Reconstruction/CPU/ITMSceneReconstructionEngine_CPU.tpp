@@ -23,7 +23,7 @@ ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHash>::ITMSceneReconstructi
 	blockCoords = new ORUtils::MemoryBlock<Vector4s>(noTotalEntries, MEMORYDEVICE_CPU);
 	blockDirections = new ORUtils::MemoryBlock<TSDFDirection>(noTotalEntries, MEMORYDEVICE_CPU);
 
-	if (settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING)
+	if (settings->fusionParams.fusionMode != FusionMode::FUSIONMODE_VOXEL_PROJECTION)
 	{
 		this->entriesRayCasting = new ORUtils::MemoryBlock<VoxelRayCastingSum>(
 			ITMVoxelBlockHash::noLocalEntries * SDF_BLOCK_SIZE3, MEMORYDEVICE_CPU);
@@ -36,7 +36,7 @@ ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHash>::~ITMSceneReconstruct
 	delete entriesAllocType;
 	delete blockCoords;
 	delete blockDirections;
-	if (this->settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING)
+	if (this->settings->fusionParams.fusionMode != FusionMode::FUSIONMODE_VOXEL_PROJECTION)
 	{
 		delete this->entriesRayCasting;
 	}
@@ -391,7 +391,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 	float *depth = view->depth->GetData(MEMORYDEVICE_CPU);
 	Vector4f *depthNormal = nullptr;
 	if (this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL or
-		this->settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING or
+		this->settings->fusionParams.fusionMode != FusionMode::FUSIONMODE_VOXEL_PROJECTION or
 		this->settings->fusionParams.fusionMetric == FusionMetric::FUSIONMETRIC_POINT_TO_PLANE)
 		depthNormal = view->depthNormal->GetData(MEMORYDEVICE_CPU);
 	int *voxelAllocationList = scene->localVBA.GetAllocationList();
@@ -405,7 +405,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 	Vector4s *blockCoords = this->blockCoords->GetData(MEMORYDEVICE_CPU);
 	TSDFDirection *blockDirections = this->blockDirections->GetData(MEMORYDEVICE_CPU);
 	int noTotalEntries = scene->index.noTotalEntries;
-	if (this->settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING)
+	if (this->settings->fusionParams.fusionMode != FusionMode::FUSIONMODE_VOXEL_PROJECTION)
 		entriesRayCasting = this->entriesRayCasting->GetData(MEMORYDEVICE_CPU);
 
 	bool useSwapping = scene->globalCache != NULL;
@@ -420,7 +420,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 	for (int i = 0; i < renderState_vh->noVisibleEntries; i++)
 	{
 		entriesVisibleType[visibleEntryIDs[i]] = PREVIOUSLY_VISIBLE;
-		if (this->settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING)
+		if (this->settings->fusionParams.fusionMode != FusionMode::FUSIONMODE_VOXEL_PROJECTION)
 			entriesRayCasting[visibleEntryIDs[i]].reset();
 	}
 

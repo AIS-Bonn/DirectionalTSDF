@@ -149,7 +149,7 @@ ITMTrackingState::TrackingResult ITMMultiEngine<TVoxel, TIndex>::ProcessFrame(IT
 	bool modelSensorNoise = (
 		settings->fusionParams.useWeighting or
 		settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL or
-		settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING or
+		settings->fusionParams.fusionMode != FusionMode::FUSIONMODE_VOXEL_PROJECTION or
 		settings->fusionParams.fusionMetric == FusionMetric::FUSIONMETRIC_POINT_TO_PLANE);
 	if (imuMeasurement == NULL) viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, modelSensorNoise);
 	else viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, imuMeasurement, modelSensorNoise);

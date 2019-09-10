@@ -73,13 +73,13 @@ namespace ITMLib
 		void IntegrateIntoScene(ITMScene<TVoxel, TIndex>* scene, const ITMView* view,
 			const ITMTrackingState* trackingState, const ITMRenderState* renderState)
 		{
-			if (this->settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING)
+			if (this->settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_VOXEL_PROJECTION)
 			{
-				IntegrateIntoSceneRayCasting(scene, view, trackingState, renderState);
+				IntegrateIntoSceneVoxelProjection(scene, view, trackingState, renderState);
 			}
 			else
 			{
-				IntegrateIntoSceneVoxelProjection(scene, view, trackingState, renderState);
+				IntegrateIntoSceneRayCasting(scene, view, trackingState, renderState);
 			}
 		}
 

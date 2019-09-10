@@ -8,8 +8,8 @@ using namespace ITMLib;
 
 ITMLibSettings::ITMLibSettings(void)
 //:	sceneParams(0.04f, 5000, 0.005f, 0.2f, 3.0f, false),
-:	sceneParams(0.02f, 5000, 0.01f, 0.2f, 3.0f, false),
-//:	sceneParams(0.08f, 10000, 0.02f, 0.2f, 3.0f, false),
+:	sceneParams(0.04f, 50000, 0.01f, 0.2f, 3.0f, false),
+//:	sceneParams(0.08f, 10000, 0.02f, 0.2f, 6.0f, false),
 	surfelSceneParams(0.5f, 0.6f, static_cast<float>(20 * M_PI / 180), 0.01f, 0.004f, 3.5f, 25.0f, 4, 1.0f, 5.0f, 20, 10000000, true, true)
 {
 	// skips every other point when using the colour renderer for creating a point cloud
@@ -52,11 +52,13 @@ ITMLibSettings::ITMLibSettings(void)
 	/// Fusion Params
 	//////////////////////////////////////////////////////////////////////////
 
-	fusionParams.tsdfMode = TSDFMODE_DEFAULT;
-//	fusionParams.tsdfMode = TSDFMODE_DIRECTIONAL;
+//	fusionParams.tsdfMode = TSDFMODE_DEFAULT;
+	fusionParams.tsdfMode = TSDFMODE_DIRECTIONAL;
 
 //	fusionParams.fusionMode = FUSIONMODE_VOXEL_PROJECTION;
-	fusionParams.fusionMode = FUSIONMODE_RAY_CASTING;
+//	fusionParams.fusionMode = FUSIONMODE_RAY_CASTING_NORMAL;
+	fusionParams.fusionMode = FUSIONMODE_RAY_CASTING_VIEW_DIR_AND_NORMAL;
+//	fusionParams.fusionMode = FUSIONMODE_RAY_CASTING_VIEW_DIR;
 
 	fusionParams.carvingMode = CARVINGMODE_VOXEL_PROJECTION;
 //	fusionParams.carvingMode = CARVINGMODE_RAY_CASTING;

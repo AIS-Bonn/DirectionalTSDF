@@ -288,7 +288,7 @@ ITMSceneReconstructionEngine_CUDA<TVoxel,ITMVoxelBlockHash>::ITMSceneReconstruct
 	ORcudaSafeCall(cudaMalloc((void**)&entriesAllocType_device, noTotalEntries * sizeof(HashEntryAllocType)));
 	ORcudaSafeCall(cudaMalloc((void**)&blockCoords_device, noTotalEntries * sizeof(Vector4s)));
 	ORcudaSafeCall(cudaMalloc((void**)&blockDirections_device, noTotalEntries * sizeof(TSDFDirection)));
-	if (settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING)
+	if (settings->fusionParams.fusionMode != FusionMode::FUSIONMODE_VOXEL_PROJECTION)
 	{
 		this->entriesRayCasting = new ORUtils::MemoryBlock<VoxelRayCastingSum>(
 			ITMVoxelBlockHash::noLocalEntries * SDF_BLOCK_SIZE3, MEMORYDEVICE_CUDA);
@@ -303,7 +303,7 @@ ITMSceneReconstructionEngine_CUDA<TVoxel,ITMVoxelBlockHash>::~ITMSceneReconstruc
 	ORcudaSafeCall(cudaFree(entriesAllocType_device));
 	ORcudaSafeCall(cudaFree(blockCoords_device));
 	ORcudaSafeCall(cudaFree(blockDirections_device));
-	if (this->settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING)
+	if (this->settings->fusionParams.fusionMode != FusionMode::FUSIONMODE_VOXEL_PROJECTION)
 	{
 		delete this->entriesRayCasting;
 	}
@@ -358,7 +358,7 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 	float *depth = view->depth->GetData(MEMORYDEVICE_CUDA);
 	Vector4f *depthNormal = nullptr;
 	if (this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL or
-		this->settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING or
+		this->settings->fusionParams.fusionMode != FusionMode::FUSIONMODE_VOXEL_PROJECTION or
 		this->settings->fusionParams.fusionMetric == FusionMetric::FUSIONMETRIC_POINT_TO_PLANE)
 		depthNormal = view->depthNormal->GetData(MEMORYDEVICE_CUDA);
 	int *voxelAllocationList = scene->localVBA.GetAllocationList();

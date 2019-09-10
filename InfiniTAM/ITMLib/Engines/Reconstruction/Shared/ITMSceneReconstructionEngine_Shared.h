@@ -595,16 +595,41 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 		ComputeDirectionWeights(normal_world, weights);
 	}
 
-//	Vector3f rayDirection = (invM_d * Vector4f(pt_camera.toVector3().normalised(), 0)).toVector3(); // camera ray
-	Vector3f rayDirection = -normal_world;
-	Vector3f rayStart = pt_world - mu * rayDirection;
+	Vector3f rayDirectionBefore, rayDirectionBehind;
 
-	BlockTraversal blockTraversal(rayStart, rayDirection, 2 * mu, voxelSize);
-	ITMVoxelBlockHash::IndexCache cache[N_DIRECTIONS];
-	while(blockTraversal.HasNextBlock())
+	if (fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING_VIEW_DIR_AND_NORMAL)
 	{
-		Vector3i voxelIdx = blockTraversal.GetNextBlock();
-		Vector3f voxelPos = blockTraversal.BlockToWorld(voxelIdx);
+		rayDirectionBefore = (invM_d * Vector4f(pt_camera.toVector3().normalised(), 0)).toVector3();
+		rayDirectionBehind = -normal_world;
+	}
+	else if (fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING_VIEW_DIR)
+	{
+		rayDirectionBefore = (invM_d * Vector4f(pt_camera.toVector3().normalised(), 0)).toVector3();
+		rayDirectionBehind = (invM_d * Vector4f(pt_camera.toVector3().normalised(), 0)).toVector3();
+	}
+	else
+	{
+		rayDirectionBefore = -normal_world;
+		rayDirectionBehind = -normal_world;
+	}
+
+	Vector3f rayStartBefore = pt_world - mu * rayDirectionBefore;
+	Vector3f rayStartBehind = pt_world;
+
+	BlockTraversal blockTraversalBefore(rayStartBefore, rayDirectionBefore, mu, voxelSize);
+	BlockTraversal blockTraversalBehind(rayStartBehind, rayDirectionBehind, mu, voxelSize);
+	if (blockTraversalBehind.HasNextBlock()) blockTraversalBehind.GetNextBlock(); // Skip first voxel to prevent duplicate fusion
+
+	ITMVoxelBlockHash::IndexCache cache[N_DIRECTIONS];
+	while(blockTraversalBefore.HasNextBlock() or blockTraversalBehind.HasNextBlock())
+	{
+		Vector3i voxelIdx;
+		if (blockTraversalBefore.HasNextBlock())
+			voxelIdx = blockTraversalBefore.GetNextBlock();
+		else
+			voxelIdx = blockTraversalBehind.GetNextBlock();
+
+		Vector3f voxelPos = blockTraversalBefore.BlockToWorld(voxelIdx);
 
 		/// compute distance
 		float distance;
@@ -804,31 +829,47 @@ buildHashAllocAndVisibleType(DEVICEPTR(HashEntryAllocType)* entriesAllocType,
 
 	Vector4f pt_camera = Vector4f(reprojectImagePoint(x, y, depth_measure, projParams_d), 1);
 
-	Vector4f pt_world = invM_d * pt_camera;
+	Vector3f pt_world = (invM_d * pt_camera).toVector3();
 
-	Vector3f ray_start, ray_direction;
-	if (fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING)
+	Vector3f rayDirectionBefore, rayDirectionBehind;
+	if (fusionParams.fusionMode == FusionMode::FUSIONMODE_VOXEL_PROJECTION
+	    or fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING_VIEW_DIR)
+	{
+		Vector4f camera_ray_world = invM_d * Vector4f(pt_camera.toVector3().normalised(), 0);
+		rayDirectionBefore = camera_ray_world.toVector3();
+		rayDirectionBehind = camera_ray_world.toVector3();
+	} else
 	{
 		Vector4f normal_camera = depthNormal[x + y * imgSize.x];
 		if (normal_camera.w != 1)
 			return;
 
 		normal_camera.w = 0; // rotation-only transformation
-		Vector3f normal_world = (invM_d * normal_camera).toVector3();
-		ray_direction = -normal_world;
-//	  ray_direction = (invM_d * Vector4f(pt_camera.toVector3().normalised(), 0)).toVector3(); // camera ray
-	} else
-	{
-		Vector4f camera_ray_world = invM_d * Vector4f(pt_camera.toVector3().normalised(), 0);
-		ray_direction = camera_ray_world.toVector3();
-	}
-	ray_start = pt_world.toVector3() - mu * ray_direction;
+		Vector3f normalWorld = (invM_d * normal_camera).toVector3();
+		rayDirectionBehind = -normalWorld;
 
-	BlockTraversal blockTraversal(ray_start, ray_direction, 2 * mu, voxelSize);
+		if (fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING_VIEW_DIR_AND_NORMAL)
+			rayDirectionBefore = (invM_d * Vector4f(pt_camera.toVector3().normalised(), 0)).toVector3();
+		else
+			rayDirectionBefore = -normalWorld;
+	}
+
+	Vector3f rayStartBefore = pt_world - mu * rayDirectionBefore;
+	Vector3f rayStartBehind = pt_world;
+
+	BlockTraversal blockTraversalBefore(rayStartBefore, rayDirectionBefore, mu, voxelSize);
+	BlockTraversal blockTraversalBehind(rayStartBehind, rayDirectionBehind, mu, voxelSize);
+	if (blockTraversalBehind.HasNextBlock()) blockTraversalBehind.GetNextBlock(); // Skip first voxel to prevent duplicate fusion
+
 	Vector3i lastBlockPos(MAX_INT, MAX_INT, MAX_INT);
-	while(blockTraversal.HasNextBlock())
+	while(blockTraversalBefore.HasNextBlock() or blockTraversalBehind.HasNextBlock())
 	{
-		Vector3i voxelPos = blockTraversal.GetNextBlock();
+		Vector3i voxelPos;
+		if (blockTraversalBefore.HasNextBlock())
+			voxelPos = blockTraversalBefore.GetNextBlock();
+		else
+			voxelPos = blockTraversalBehind.GetNextBlock();
+
 		Vector3i blockPos = voxelToBlockPos(voxelPos);
 		if (blockPos == lastBlockPos)
 			continue;
