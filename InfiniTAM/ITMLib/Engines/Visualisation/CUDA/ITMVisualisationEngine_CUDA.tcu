@@ -198,21 +198,63 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::GenericRaycast(const IT
 
 	dim3 cudaBlockSize(16, 12);
 	dim3 gridSize((int)ceil((float)imgSize.x / (float)cudaBlockSize.x), (int)ceil((float)imgSize.y / (float)cudaBlockSize.y));
-	genericRaycast_device<TVoxel, ITMVoxelBlockHash> << <gridSize, cudaBlockSize >> >(
-		renderState->raycastResult->GetData(MEMORYDEVICE_CUDA),
-			renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA),
-			entriesVisibleType,
-			scene->localVBA.GetVoxelBlocks(),
-			scene->index.getIndexData(),
-			imgSize,
-			invM,
-			invertProjectionParams(projParams),
-			oneOverVoxelSize,
-			renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA),
-			scene->sceneParams->mu,
-			this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL
-	);
-	ORcudaKernelCheck;
+	if (this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL and DIRECTIONAL_RENDERING_MODE == 1)
+	{
+		InputPointClouds pointClouds;
+		for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
+		{
+			genericRaycast_device<TVoxel, ITMVoxelBlockHash> << <gridSize, cudaBlockSize >> >(
+				renderState->raycastResultDirectional[directionIdx]->GetData(MEMORYDEVICE_CUDA),
+					renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA),
+					entriesVisibleType,
+					scene->localVBA.GetVoxelBlocks(),
+					scene->index.getIndexData(),
+					imgSize,
+					invM,
+					invertProjectionParams(projParams),
+					oneOverVoxelSize,
+					renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA),
+					scene->sceneParams->mu,
+					TSDFDirection(directionIdx)
+			);
+			ORcudaKernelCheck;
+			pointClouds.pointCloud[directionIdx] = renderState->raycastResultDirectional[directionIdx]->GetData(MEMORYDEVICE_CUDA);
+		}
+
+		combineDirectionalPointClouds_device<TVoxel, ITMVoxelBlockHash> << <gridSize, cudaBlockSize >> >(
+			renderState->raycastResult->GetData(MEMORYDEVICE_CUDA),
+				pointClouds,
+				renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA),
+				entriesVisibleType,
+				scene->localVBA.GetVoxelBlocks(),
+				scene->index.getIndexData(),
+				imgSize,
+				invM,
+				invertProjectionParams(projParams),
+				oneOverVoxelSize,
+				renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA),
+				scene->sceneParams->mu
+		);
+		ORcudaKernelCheck;
+	}
+	else
+	{
+		genericRaycast_device<TVoxel, ITMVoxelBlockHash> << <gridSize, cudaBlockSize >> >(
+			renderState->raycastResult->GetData(MEMORYDEVICE_CUDA),
+				renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA),
+				entriesVisibleType,
+				scene->localVBA.GetVoxelBlocks(),
+				scene->index.getIndexData(),
+				imgSize,
+				invM,
+				invertProjectionParams(projParams),
+				oneOverVoxelSize,
+				renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA),
+				scene->sceneParams->mu,
+				this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL
+		);
+		ORcudaKernelCheck;
+	}
 }
 
 

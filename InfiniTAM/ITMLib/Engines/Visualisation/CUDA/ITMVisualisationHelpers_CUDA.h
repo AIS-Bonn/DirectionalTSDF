@@ -50,6 +50,50 @@ namespace ITMLib
 		castRay<TVoxel, TIndex>(out_ptsRay[locId], &raycastDirectionalContribution[locId], entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams, oneOverVoxelSize, mu, minmaximg[locId2], directionalTSDF);
 	}
 
+template<class TVoxel, class TIndex>
+__global__ void genericRaycast_device(Vector4f* out_ptsRay, Vector6f* raycastDirectionalContribution,
+                                      HashEntryVisibilityType* entriesVisibleType, const TVoxel* voxelData,
+                                      const typename TIndex::IndexData* voxelIndex, Vector2i imgSize,
+                                      Matrix4f invM, Vector4f invProjParams,
+                                      float oneOverVoxelSize, const Vector2f* minmaximg, float mu,
+                                      TSDFDirection direction)
+{
+	int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
+
+	if (x >= imgSize.x || y >= imgSize.y) return;
+
+	int locId = x + y * imgSize.x;
+	int locId2 = (int)floor((float)x / minmaximg_subsample) + (int)floor((float)y / minmaximg_subsample) * imgSize.x;
+
+	float distance;
+	castRayDefault<TVoxel, TIndex>(out_ptsRay[locId], distance, entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams,
+																					oneOverVoxelSize, mu, minmaximg[locId2], direction);
+}
+
+
+template<class TVoxel, class TIndex>
+__global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, const InputPointClouds in_ptsRay,
+                                                     Vector6f* raycastDirectionalContribution,
+                                                     HashEntryVisibilityType* entriesVisibleType,
+                                                     const TVoxel* voxelData,
+                                                     const typename TIndex::IndexData* voxelIndex, Vector2i imgSize,
+                                                     Matrix4f invM, Vector4f invProjParams,
+                                                     float oneOverVoxelSize, const Vector2f* minmaximg, float mu)
+{
+	int x = (threadIdx.x + blockIdx.x * blockDim.x);
+	int y = (threadIdx.y + blockIdx.y * blockDim.y);
+
+	if (x >= imgSize.x || y >= imgSize.y) return;
+
+	int locId = x + y * imgSize.x;
+	int locId2 = (int)floor((float)x / minmaximg_subsample) + (int)floor((float)y / minmaximg_subsample) * imgSize.x;
+
+	float distance;
+
+	combineDirectionalPointClouds<true, false>(out_ptsRay, in_ptsRay, raycastDirectionalContribution, imgSize,
+		invM, invProjParams, x, y, 1 / oneOverVoxelSize);
+}
+
 	template<class TVoxel, class TIndex>
 	__global__ void genericRaycastMissingPoints_device(Vector4f *forwardProjection, Vector6f *raycastDirectionalContribution, HashEntryVisibilityType *entriesVisibleType, const TVoxel *voxelData,
 		const typename TIndex::IndexData *voxelIndex, Vector2i imgSize, Matrix4f invM, Vector4f invProjParams, float oneOverVoxelSize,

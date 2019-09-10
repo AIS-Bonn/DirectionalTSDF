@@ -4,6 +4,7 @@
 
 #ifndef __METALC__
 
+#include "ITMLib/Objects/Scene/ITMDirectional.h"
 #include "../../Utils/ITMMath.h"
 #include "../../../ORUtils/Image.h"
 
@@ -37,6 +38,7 @@ namespace ITMLib
 		raycasting operations.
 		*/
 		ORUtils::Image<Vector4f> *raycastResult;
+		ORUtils::Image<Vector4f> *raycastResultDirectional[N_DIRECTIONS];
 
 		ORUtils::Image<Vector4f> *forwardProjection;
 		ORUtils::Image<int> *fwdProjMissingPoints;
@@ -53,6 +55,8 @@ namespace ITMLib
 		{
 			renderingRangeImage = new ORUtils::Image<Vector2f>(imgSize, memoryType);
 			raycastResult = new ORUtils::Image<Vector4f>(imgSize, memoryType);
+			for (size_t directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
+				raycastResultDirectional[directionIdx] = new ORUtils::Image<Vector4f>(imgSize, memoryType);
 			forwardProjection = new ORUtils::Image<Vector4f>(imgSize, memoryType);
 			fwdProjMissingPoints = new ORUtils::Image<int>(imgSize, memoryType);
 			raycastImage = new ORUtils::Image<Vector4u>(imgSize, memoryType);
@@ -80,6 +84,8 @@ namespace ITMLib
 		{
 			delete renderingRangeImage;
 			delete raycastResult;
+			for (size_t directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
+				delete raycastResultDirectional[directionIdx];
 			delete forwardProjection;
 			delete fwdProjMissingPoints;
 			delete raycastImage;

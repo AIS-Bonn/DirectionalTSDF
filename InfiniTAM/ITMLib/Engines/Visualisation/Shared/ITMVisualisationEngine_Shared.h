@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <math_constants.h>
 #include "ITMLib/Objects/Scene/ITMDirectional.h"
 #include "ITMLib/Objects/Scene/ITMMultiSceneAccess.h"
 #include "ITMLib/Objects/Scene/ITMRepresentationAccess.h"
@@ -226,8 +227,7 @@ computeNormalAndAngle(THREADPTR(bool)& foundPoint, const THREADPTR(int)& x, cons
 
 	if (flipNormals) outNormal = -outNormal;
 
-	float normScale = 1.0f / sqrt(outNormal.x * outNormal.x + outNormal.y * outNormal.y + outNormal.z * outNormal.z);
-	outNormal *= normScale;
+	outNormal = outNormal.normalised();
 
 	angle = outNormal.x * lightSource.x + outNormal.y * lightSource.y + outNormal.z * lightSource.z;
 	if (!(angle > 0.0)) foundPoint = false;
@@ -357,7 +357,7 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 {
 	Vector4f pt_camera_f; Vector3f pt_block_s, pt_block_e, rayDirection, pt_result;
 	int vmIndex;
-	float sdfValue = 1.0f, confidence;
+	float sdfValue = 1.0f, confidence = 0;
 	float totalLength, stepLength, totalLengthMax, stepScale;
 
 	pt_out = Vector4f(0, 0, 0, 0);
@@ -427,6 +427,7 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 
 	distance_out = totalLength / oneOverVoxelSize;
 	pt_out = Vector4f(pt_result, confidence + 1.0f);
+
 	return true;
 }
 
@@ -811,6 +812,206 @@ _CPU_AND_GPU_CODE_ inline void processPixelICP(DEVICEPTR(Vector4f) &pointsMap, D
 		out4.x = 0.0f; out4.y = 0.0f; out4.z = 0.0f; out4.w = -1.0f;
 
 		pointsMap = out4; normalsMap = out4;
+	}
+}
+
+template<typename T>
+_CPU_AND_GPU_CODE_
+inline void insertionSort(const T *in, T *out, size_t *outIds, size_t length)
+{
+	for (size_t idx = 0; idx < length; idx++)
+	{
+		T pivot = in[idx];
+		int j = idx - 1;
+		for (; j >= 0 and (out[j] > pivot or out[j] < 0); j--)
+		{
+			out[j + 1] = out[j];
+			outIds[j + 1] = outIds[j];
+		}
+		out[j + 1] = pivot;
+		outIds[j + 1] = idx;
+	}
+
+}
+
+_CPU_AND_GPU_CODE_
+inline void findBestCluster(const float* distances, const float* confidences, const Vector3f* normals,
+	int *clusterOutput, Vector3f &clusterNormalOutput)
+{
+	float distancesSorted[N_DIRECTIONS];
+	size_t distancesSortedIds[N_DIRECTIONS];
+	insertionSort(distances, distancesSorted, distancesSortedIds, N_DIRECTIONS);
+
+	/// Cluster the distances. Number indicates starting index of a cluster (end indicated by next cluster or -1)
+	int clusters[N_DIRECTIONS] = {-1, -1, -1, -1, -1, -1};
+	float clusterConfidences[N_DIRECTIONS] = {0, 0, 0, 0, 0, 0};
+	Vector3f clusterNormals[N_DIRECTIONS];
+	uchar numClusters = 0;
+	float lastDistance = -1;
+	float interClusterMaxConfidence = -1;
+	float sumConfidences = 0;
+	for (uchar idx = 0; idx < N_DIRECTIONS and distancesSorted[idx] >= 0; idx++)
+	{
+		if (fabs(distancesSorted[idx] - lastDistance) > 2) // maximum distance in voxels
+		{
+			clusters[numClusters] = idx;
+			numClusters++;
+			interClusterMaxConfidence = -1;
+		}
+		lastDistance = distancesSorted[idx];
+
+		float confidence = confidences[distancesSortedIds[idx]];
+		clusterConfidences[numClusters - 1] += confidence;
+
+		if (confidence > interClusterMaxConfidence)
+		{
+			clusterNormals[numClusters -1] = normals[distancesSortedIds[idx]];
+			interClusterMaxConfidence = confidence;
+		}
+
+		sumConfidences += confidence;
+	}
+
+	int bestCluster = -1;
+	for (uchar idx = 0; idx < N_DIRECTIONS and clusters[idx] >= 0; idx++)
+	{
+		if (clusterConfidences[idx] >= 0.1 * sumConfidences)
+		{
+			bestCluster = idx;
+			break;
+		}
+	}
+
+	for (int i = 0; i < N_DIRECTIONS; i++)
+		clusterOutput[i] = -1;
+
+	if (bestCluster < 0 or clusterConfidences[bestCluster] <= 0)
+	{
+		clusterNormalOutput = Vector3f(0, 0, 0);
+		return;
+	}
+	char startIdx = clusters[bestCluster];
+	char endIdx = clusters[bestCluster + 1] > 0 ? clusters[bestCluster + 1] : N_DIRECTIONS;
+	for (uchar idx = startIdx; idx < endIdx and distancesSorted[idx] >= 0; idx++)
+	{
+		clusterOutput[idx - startIdx] = distancesSortedIds[idx];
+	}
+	clusterNormalOutput = clusterNormals[bestCluster];
+}
+
+struct InputPointClouds{
+	Vector4f *pointCloud[N_DIRECTIONS];
+};
+
+template<bool useSmoothing, bool flipNormals>
+_CPU_AND_GPU_CODE_ inline void combineDirectionalPointClouds(
+	DEVICEPTR(Vector4f) *outputPointCloud,
+  const InputPointClouds &inputPointClouds,
+	DEVICEPTR(Vector6f) *directionalContribution,
+  const THREADPTR(Vector2i) &imgSize,
+  const Matrix4f &invM, const Vector4f &invProjParams,
+  const THREADPTR(int) &x, const THREADPTR(int) &y, float voxelSize)
+{
+	int locId = x + y * imgSize.x;
+
+	Vector4f points[N_DIRECTIONS];
+	Vector3f normals[N_DIRECTIONS];
+	float confidences[N_DIRECTIONS] = {0, 0, 0, 0, 0, 0};
+
+	float distances[N_DIRECTIONS] = {INF_FLOAT, INF_FLOAT, INF_FLOAT, INF_FLOAT, INF_FLOAT, INF_FLOAT};
+
+	Vector3f viewRay = (invM * Vector4f(reprojectImagePoint(x, y, 1, invProjParams), 0)).toVector3().normalised();
+	Vector3f cameraPos_world = (invM * Vector4f(0, 0, 0, 1)).toVector3();
+
+	/// Determine normals and confidences, find best candidate
+	float sumConfidences = 0;
+	for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
+	{
+		Vector4f& point = points[directionIdx];
+		Vector3f& normal = normals[directionIdx];
+		float& confidence = confidences[directionIdx];
+		float& distance = distances[directionIdx];
+
+		directionalContribution[locId].v[directionIdx] = 0;
+
+		point = inputPointClouds.pointCloud[directionIdx][locId];
+		confidence = point.w;
+
+		bool foundPoint = confidence > 0.0f;
+		if (not foundPoint)
+			continue;
+
+		distance = length(cameraPos_world - point.toVector3());
+
+		const Vector3f TSDFDirectionVectors[N_DIRECTIONS] = {
+			Vector3f(1,  0,  0),
+			Vector3f(-1, 0,  0),
+			Vector3f(0,  1,  0),
+			Vector3f(0,  -1, 0),
+			Vector3f(0,  0,  1),
+			Vector3f(0,  0,  -1)
+		};
+		float angle;
+		computeNormalAndAngle<useSmoothing, flipNormals>(foundPoint, x, y, inputPointClouds.pointCloud[directionIdx],
+		                                                 TSDFDirectionVectors[directionIdx], voxelSize, imgSize, normal, angle);
+
+		if (not foundPoint)// or angle < direction_weight_threshold)
+		{
+			confidence = 0;
+			continue;
+		}
+
+		// Compliance of surface gradient wrt direction
+		confidence *= angle; //DirectionWeight(normal, TSDFDirection(directionIdx));
+		// Exclude points on opposite side
+		confidence *= SIGN(dot(normal, -viewRay));
+
+		sumConfidences += confidence > 0 ? confidence : 0;
+	}
+
+	int cluster[N_DIRECTIONS];
+	Vector3f clusterNormal;
+	findBestCluster(distances, confidences, normals, cluster, clusterNormal);
+
+	if (cluster[0] < 0)
+	{
+		outputPointCloud[locId] = Vector4f(0, 0, 0, 0);
+		return;
+	}
+
+	float sumWeights = 0;
+	Vector4f sumPoints(0, 0, 0, 0);
+	for (uchar idx = 0; idx < N_DIRECTIONS and cluster[idx] >= 0; idx++)
+	{
+		TSDFDirection_type directionIdx = cluster[idx];
+
+		Vector4f &point = points[directionIdx];
+		Vector3f &normal = normals[directionIdx];
+		float &confidence = confidences[directionIdx];
+
+		if (confidence <= 0)
+			continue;
+
+		// Filter directions, that don't apply to gradient
+		if (DirectionWeight(clusterNormal, TSDFDirection(directionIdx)) < direction_weight_threshold)
+			continue;
+
+		// Filter gradients, that are too different
+		if (dot(normal, clusterNormal) < direction_weight_threshold)
+			continue;
+
+		float weight = confidence * dot(normal, clusterNormal);
+
+		directionalContribution[locId].v[directionIdx] = weight;
+		sumWeights += weight;
+		sumPoints += weight * point;
+	}
+	float oneOverWeight = 1 / sumWeights;
+
+	outputPointCloud[locId] = sumPoints * oneOverWeight;
+	for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
+	{
+		directionalContribution[locId].v[directionIdx] *= oneOverWeight;
 	}
 }
 

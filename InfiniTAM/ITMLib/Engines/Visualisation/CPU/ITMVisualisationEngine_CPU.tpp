@@ -483,9 +483,49 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::GenericRaycast(const ITM
 		entriesVisibleType = ((ITMRenderState_VH*)renderState)->GetEntriesVisibleType();
 	}
 
+	Vector4f invProjParams  = invertProjectionParams(projParams);
 #ifdef WITH_OPENMP
 #pragma omp parallel for
 #endif
+	if (this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL and DIRECTIONAL_RENDERING_MODE == 1)
+	{
+		InputPointClouds pointClouds;
+		for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
+		{
+			for (int locId = 0; locId < imgSize.x * imgSize.y; ++locId)
+			{
+				int y = locId / imgSize.x;
+				int x = locId - y * imgSize.x;
+				int locId2 =
+					(int) floor((float) x / minmaximg_subsample) + (int) floor((float) y / minmaximg_subsample) * imgSize.x;
+
+				castRay<TVoxel, TIndex>(
+					pointsRay[locId],
+					&directionalContribution[locId],
+					entriesVisibleType,
+					x, y,
+					voxelData,
+					voxelIndex,
+					invM,
+					invProjParams,
+					oneOverVoxelSize,
+					mu,
+					minmaximg[locId2],
+					this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL
+				);
+			}
+			pointClouds.pointCloud[directionIdx] = renderState->raycastResultDirectional[directionIdx]->GetData(MEMORYDEVICE_CPU);
+		}
+
+		for (int locId = 0; locId < imgSize.x * imgSize.y; ++locId)
+		{
+			int y = locId / imgSize.x;
+			int x = locId - y * imgSize.x;
+
+			combineDirectionalPointClouds<true, false>(pointsRay, pointClouds, directionalContribution, imgSize,
+			                                           invM, invProjParams, x, y, 1 / oneOverVoxelSize);
+		}
+	}
 	for (int locId = 0; locId < imgSize.x*imgSize.y; ++locId)
 	{
 		int y = locId/imgSize.x;
@@ -500,7 +540,7 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::GenericRaycast(const ITM
 			voxelData,
 			voxelIndex,
 			invM,
-			invertProjectionParams(projParams),
+			invProjParams,
 			oneOverVoxelSize,
 			mu,
 			minmaximg[locId2],

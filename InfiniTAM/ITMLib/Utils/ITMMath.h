@@ -80,6 +80,10 @@ typedef class ORUtils::Vector6<float> Vector6f;
 #define MAX_INT 2147483647
 #endif
 
+#ifndef INF_FLOAT
+#define INF_FLOAT INFINITY
+#endif
+
 _CPU_AND_GPU_CODE_
 inline Vector3f cross(Vector3f a, Vector3f b)
 {

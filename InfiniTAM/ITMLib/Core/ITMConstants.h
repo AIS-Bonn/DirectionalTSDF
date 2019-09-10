@@ -23,3 +23,6 @@
 
 #define SDF_HASH_MASK (SDF_BUCKET_NUM - 1)  // Used for get hashing value of the bucket index
 #define SDF_TRANSFER_BLOCK_NUM 0x1000       // Maximum number of blocks transfered in one swap operation
+
+// Set to 1 for combination between 6 independent renderings and 0 for combined raytracing (slower)
+#define DIRECTIONAL_RENDERING_MODE 1
