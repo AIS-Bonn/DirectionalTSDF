@@ -298,9 +298,9 @@ _CPU_AND_GPU_CODE_ inline void drawPixelColourDirectional(
 	for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
 	{
 		const Vector3f &clr = directionColors[direction];
-		dest.x += (uchar) (clr.x * 255.0f * directionalContribution[direction]);
-		dest.y += (uchar) (clr.y * 255.0f * directionalContribution[direction]);
-		dest.z += (uchar) (clr.z * 255.0f * directionalContribution[direction]);
+		dest.x += (uchar) MIN(clr.x * 255.0f * directionalContribution[direction], 255.0f);
+		dest.y += (uchar) MIN(clr.y * 255.0f * directionalContribution[direction], 255.0f);
+		dest.z += (uchar) MIN(clr.z * 255.0f * directionalContribution[direction], 255.0f);
 	}
 
 	// Debugging: color in strongest contributing direction
@@ -413,7 +413,7 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 	if (sdfValue > 0.0f)
 		return false;
 
-	for (int i = 0; i < 5 and fabs(sdfValue) > 1e-6; i++)
+	for (int i = 0; i < 2 or (i < 5 and fabs(sdfValue) > 1e-6); i++)
 	{
 		stepLength = sdfValue * stepScale;
 		pt_result += stepLength * rayDirection;
@@ -576,7 +576,7 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional2(DEVICEPTR(Vector4f) &pt_out, 
 	float contributionWeights[N_DIRECTIONS] = {0, 0, 0, 0, 0, 0};
 	float lastSDFValue;
 	float weightSum = 0;
-	for (int i = 0; i < 5 and fabs(sdfValue) > 1e-6; i++)
+	for (int i = 0; i < 2 or (i < 5 and fabs(sdfValue) > 1e-6); i++)
 	{
 		lastSDFValue = sdfValue;
 		sdfValue = 0;
@@ -921,7 +921,7 @@ _CPU_AND_GPU_CODE_ inline void combineDirectionalPointClouds(
 	float distances[N_DIRECTIONS] = {INF_FLOAT, INF_FLOAT, INF_FLOAT, INF_FLOAT, INF_FLOAT, INF_FLOAT};
 
 	Vector3f viewRay = (invM * Vector4f(reprojectImagePoint(x, y, 1, invProjParams), 0)).toVector3().normalised();
-	Vector3f cameraPos_world = (invM * Vector4f(0, 0, 0, 1)).toVector3();
+	Vector3f cameraPos_world = (invM * Vector4f(0, 0, 0, 1)).toVector3() / voxelSize; // camera pos in voxel coordinates
 
 	/// Determine normals and confidences, find best candidate
 	float sumConfidences = 0;
@@ -955,7 +955,7 @@ _CPU_AND_GPU_CODE_ inline void combineDirectionalPointClouds(
 		computeNormalAndAngle<useSmoothing, flipNormals>(foundPoint, x, y, inputPointClouds.pointCloud[directionIdx],
 		                                                 TSDFDirectionVectors[directionIdx], voxelSize, imgSize, normal, angle);
 
-		if (not foundPoint)// or angle < direction_weight_threshold)
+		if (not foundPoint or angle < direction_weight_threshold)
 		{
 			confidence = 0;
 			continue;
@@ -967,6 +967,12 @@ _CPU_AND_GPU_CODE_ inline void combineDirectionalPointClouds(
 		confidence *= SIGN(dot(normal, -viewRay));
 
 		sumConfidences += confidence > 0 ? confidence : 0;
+	}
+
+	if (sumConfidences <= 0)
+	{
+		outputPointCloud[locId] = Vector4f(0, 0, 0, 0);
+		return;
 	}
 
 	int cluster[N_DIRECTIONS];
@@ -1009,10 +1015,7 @@ _CPU_AND_GPU_CODE_ inline void combineDirectionalPointClouds(
 	float oneOverWeight = 1 / sumWeights;
 
 	outputPointCloud[locId] = sumPoints * oneOverWeight;
-	for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
-	{
-		directionalContribution[locId].v[directionIdx] *= oneOverWeight;
-	}
+	directionalContribution[locId] *= oneOverWeight;
 }
 
 template<bool useSmoothing, bool flipNormals>

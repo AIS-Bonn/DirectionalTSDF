@@ -203,8 +203,9 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::GenericRaycast(const IT
 		InputPointClouds pointClouds;
 		for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
 		{
+			pointClouds.pointCloud[directionIdx] = renderState->raycastResultDirectional[directionIdx]->GetData(MEMORYDEVICE_CUDA);
 			genericRaycast_device<TVoxel, ITMVoxelBlockHash> << <gridSize, cudaBlockSize >> >(
-				renderState->raycastResultDirectional[directionIdx]->GetData(MEMORYDEVICE_CUDA),
+				pointClouds.pointCloud[directionIdx],
 					renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA),
 					entriesVisibleType,
 					scene->localVBA.GetVoxelBlocks(),
@@ -218,7 +219,6 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::GenericRaycast(const IT
 					TSDFDirection(directionIdx)
 			);
 			ORcudaKernelCheck;
-			pointClouds.pointCloud[directionIdx] = renderState->raycastResultDirectional[directionIdx]->GetData(MEMORYDEVICE_CUDA);
 		}
 
 		combineDirectionalPointClouds_device<TVoxel, ITMVoxelBlockHash> << <gridSize, cudaBlockSize >> >(
