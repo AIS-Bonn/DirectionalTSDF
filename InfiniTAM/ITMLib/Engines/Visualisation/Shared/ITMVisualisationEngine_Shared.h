@@ -151,7 +151,8 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndAngle(THREADPTR(bool)& foundPoint
 		outNormal = computeSingleNormalFromSDF(voxelBlockData, indexData, point, TSDFDirection::NONE).normalised();
 	}
 
-	angle = outNormal.x * lightSource.x + outNormal.y * lightSource.y + outNormal.z * lightSource.z;
+	Vector3f lightDirection = (lightSource - point).normalised();
+	angle = dot(outNormal, lightDirection);
 	if (!(angle > 0.0)) foundPoint = false;
 }
 
@@ -229,7 +230,8 @@ computeNormalAndAngle(THREADPTR(bool)& foundPoint, const THREADPTR(int)& x, cons
 
 	outNormal = outNormal.normalised();
 
-	angle = outNormal.x * lightSource.x + outNormal.y * lightSource.y + outNormal.z * lightSource.z;
+	Vector3f lightDirection = (lightSource - pointsRay[x + y * imgSize.x].toVector3()).normalised();
+	angle = dot(outNormal, lightDirection);
 	if (!(angle > 0.0)) foundPoint = false;
 }
 
@@ -953,9 +955,9 @@ _CPU_AND_GPU_CODE_ inline void combineDirectionalPointClouds(
 		};
 		float angle;
 		computeNormalAndAngle<useSmoothing, flipNormals>(foundPoint, x, y, inputPointClouds.pointCloud[directionIdx],
-		                                                 TSDFDirectionVectors[directionIdx], voxelSize, imgSize, normal, angle);
+		                                                 cameraPos_world, voxelSize, imgSize, normal, angle);
 
-		if (not foundPoint or angle < direction_weight_threshold)
+		if (not foundPoint or DirectionWeight(normal, TSDFDirection(directionIdx)) < direction_weight_threshold)
 		{
 			confidence = 0;
 			continue;

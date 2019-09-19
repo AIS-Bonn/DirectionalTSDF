@@ -124,7 +124,7 @@ void ITMMultiVisualisationEngine_CUDA<TVoxel, TIndex>::RenderImage(const ORUtils
 		ORcudaKernelCheck;
 	}
 
-	Vector3f lightSource = -Vector3f(invM.getColumn(2));
+	Vector3f lightSource = Vector3f(invM.getColumn(3)) / this->settings->sceneParams.voxelSize;
 	Vector4u *outRendering = outputImage->GetData(MEMORYDEVICE_CUDA);
 	Vector4f *pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CUDA);
 	Vector6f *directionalContribution = renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA);

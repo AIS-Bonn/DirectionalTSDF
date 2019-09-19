@@ -248,7 +248,7 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::RenderImage(const ITMSce
         }
     }
 
-	Vector3f lightSource = -Vector3f(invM.getColumn(2));
+	Vector3f lightSource = Vector3f(invM.getColumn(3)) / scene->sceneParams->voxelSize;
 	Vector4u *outRendering = outputImage->GetData(MEMORYDEVICE_CPU);
 	Vector6f *directionalContribution = renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CPU);
 	const TVoxel *voxelData = scene->localVBA.GetVoxelBlocks();
@@ -375,7 +375,7 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::CreateICPMaps(const ITMS
 	GenericRaycast(scene, imgSize, invM, view->calib.intrinsics_d.projectionParamsSimple.all, renderState, true);
 	trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
 
-	Vector3f lightSource = -Vector3f(invM.getColumn(2));
+	Vector3f lightSource = Vector3f(invM.getColumn(3)) / scene->sceneParams->voxelSize;
 	Vector4f *normalsMap = trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CPU);
 	Vector4f *pointsMap = trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CPU);
 	Vector4f *pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CPU);

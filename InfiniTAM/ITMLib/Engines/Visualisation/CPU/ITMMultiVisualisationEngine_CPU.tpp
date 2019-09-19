@@ -129,7 +129,7 @@ void ITMMultiVisualisationEngine_CPU<TVoxel, TIndex>::RenderImage(const ORUtils:
 		}
 	}
 
-	Vector3f lightSource = -Vector3f(invM.getColumn(2));
+	Vector3f lightSource = Vector3f(invM.getColumn(3)) / this->settings->sceneParams.voxelSize;
 	Vector4u *outRendering = outputImage->GetData(MEMORYDEVICE_CPU);
 
 	if ((type == IITMVisualisationEngine::RENDER_COLOUR_FROM_VOLUME) &&

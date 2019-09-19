@@ -282,7 +282,7 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::RenderImage(const ITMSc
 		pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CUDA);
 	}
 
-	Vector3f lightSource = -Vector3f(invM.getColumn(2));
+	Vector3f lightSource = Vector3f(invM.getColumn(3)) / scene->sceneParams->voxelSize;
 
 	Vector4u *outRendering = outputImage->GetData(MEMORYDEVICE_CUDA);
 	Vector6f *directionalContribution = renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA);
@@ -428,7 +428,7 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::CreatePointCloud(const 
 
 	ORcudaSafeCall(cudaMemsetAsync(noTotalPoints_device, 0, sizeof(uint)));
 
-	Vector3f lightSource = -Vector3f(invM.getColumn(2));
+	Vector3f lightSource = Vector3f(invM.getColumn(3)) / scene->sceneParams->voxelSize;
 	Vector4f *locations = trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CUDA);
 	Vector4f *colours = trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CUDA);
 	Vector4f *pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CUDA);
@@ -468,7 +468,7 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::CreateICPMaps(const ITM
 	Vector4f *pointsMap = trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CUDA);
 	Vector4f *normalsMap = trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CUDA);
 	Vector4f *pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CUDA);
-	Vector3f lightSource = -Vector3f(invM.getColumn(2));
+	Vector3f lightSource = Vector3f(invM.getColumn(3)) / scene->sceneParams->voxelSize;
 
 	dim3 cudaBlockSize(16, 12);
 	dim3 gridSize((int)ceil((float)imgSize.x / (float)cudaBlockSize.x), (int)ceil((float)imgSize.y / (float)cudaBlockSize.y));
