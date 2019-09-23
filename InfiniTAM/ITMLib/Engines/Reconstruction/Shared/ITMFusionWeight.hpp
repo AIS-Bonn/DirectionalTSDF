@@ -16,23 +16,23 @@ inline float weightDepth(float depth, const ITMSceneParams& sceneParams)
 }
 
 _CPU_AND_GPU_CODE_
-inline float weightNormal(Vector4f normalCamera)
+inline float weightNormal(const Vector3f &normalCamera, const Vector3f &viewRay)
 {
-	return -normalCamera.z;
+	return dot(normalCamera, -viewRay);
 }
 
 _CPU_AND_GPU_CODE_
-inline float depthWeight(float depth, const Vector4f& normalCamera, float directionWeight,
-                         const ITMSceneParams& sceneParams)
+inline float depthWeight(float depth, const Vector3f& normalCamera, const Vector3f &viewRay,
+	float directionWeight, const ITMSceneParams& sceneParams)
 {
-	return weightDepth(depth, sceneParams) * weightNormal(normalCamera) * directionWeight;
+	return weightDepth(depth, sceneParams) * weightNormal(normalCamera, viewRay) * directionWeight;
 }
 
 _CPU_AND_GPU_CODE_
-inline float colorWeight(float normalizedDepth, const Vector4f& normalCamera, float directionWeight,
-                         const ITMSceneParams& sceneParams)
+inline float colorWeight(float depth, const Vector3f& normalCamera, const Vector3f &viewRay,
+                         float directionWeight, const ITMSceneParams& sceneParams)
 {
-	return depthWeight(normalizedDepth, normalCamera, directionWeight, sceneParams);
+	return depthWeight(depth, normalCamera, viewRay, directionWeight, sceneParams);
 }
 
 } // namespace ITMLib

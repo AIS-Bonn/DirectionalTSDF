@@ -64,6 +64,7 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 		Vector4f normalCamera = depthNormals[idx];
 		if (normalCamera.w != 1)
 			return -1;
+		Vector3f viewRay_camera = reprojectImagePoint(pt_image.x, pt_image.y, 1, invertProjectionParams(projParams_d)).normalised();
 		float directionWeight = 1;
 		if (direction != TSDFDirection::NONE)
 		{
@@ -73,7 +74,7 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 			if (directionWeight < direction_weight_threshold)
 				return -1;
 		}
-		newW = depthWeight(depth_measure, normalCamera, directionWeight, sceneParams);
+		newW = depthWeight(depth_measure, normalCamera.toVector3(), viewRay_camera, directionWeight, sceneParams);
 	}
 	if (newW < 1e-1)
 		return -1;
@@ -134,6 +135,7 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 		Vector4f normalCamera = depthNormals[idx];
 		if (normalCamera.w != 1)
 			return -1;
+		Vector3f viewRay_camera = reprojectImagePoint(pt_image.x, pt_image.y, 1, invertProjectionParams(projParams_d)).normalised();
 		float directionWeight = 1;
 		if (direction != TSDFDirection::NONE)
 		{
@@ -143,7 +145,7 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 			if (directionWeight < direction_weight_threshold)
 				return -1;
 		}
-		newW = depthWeight(depth_measure, normalCamera, directionWeight, sceneParams);
+		newW = depthWeight(depth_measure, normalCamera.toVector3(), viewRay_camera, directionWeight, sceneParams);
 	}
 
 	newF = oldW * oldF + newW * newF;
@@ -337,7 +339,7 @@ _CPU_AND_GPU_CODE_ static void voxelProjectionCarveSpace(DEVICEPTR(TVoxel)& voxe
 		if (eta < sceneParams.mu) // Within truncation range -> don't carve
 			return;
 
-		newW += 1 * weightNormal(normalCamera); //rayStart_camera.toVector3().normalised().z;
+		newW += 1;
 	}
 	if (newW <= 0)
 		return;
@@ -506,6 +508,7 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* d
 		ComputeDirectionWeights(-rayDirection_world, weights);
 	}
 
+
 	Matrix4f M_d; invM_d.inv(M_d);
 
 //	float carveDistance = ORUtils::length(pt_world - rayStart_world) - 1 * mu;
@@ -528,7 +531,8 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* d
 		/// Fixed values for distance and weight
 		float distance = 1;
 		// TODO: down weight, if close to surface
-		float weight = 1 * weightNormal(normal_camera); //rayStart_camera.toVector3().normalised().z;
+
+		float weight = 1;
 
 		/// find and update voxels
 		if (fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL)
@@ -588,6 +592,8 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 	Vector4f pt_camera = Vector4f(reprojectImagePoint(x, y, depthValue, invProjParams_d), 1);
 	Vector3f pt_world = (invM_d * pt_camera).toVector3();
 	Vector3f normal_world = (invM_d * normal_camera).toVector3();
+
+	Vector3f viewRay_camera = reprojectImagePoint(x, y, 1, invProjParams_d).normalised();
 
 	float weights[N_DIRECTIONS];
 	if (fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL)
@@ -667,7 +673,7 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 				if (fusionParams.useWeighting)
 				{
 					float directionWeight = DirectionWeight(normal_world, TSDFDirection(direction));
-					weight = depthWeight(depthValue, normal_camera, directionWeight, sceneParams)
+					weight = depthWeight(depthValue, normal_camera.toVector3(), viewRay_camera, directionWeight, sceneParams)
 					         / powf(voxelSize * 100, 3);
 				}
 				if (weight < 1e-2)
@@ -689,7 +695,7 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 			if (fusionParams.useWeighting)
 			{
 				Vector4f normalCamera = depthNormals[idx];
-				weight = depthWeight(depthValue, normalCamera, 1, sceneParams)
+				weight = depthWeight(depthValue, normal_camera.toVector3(), viewRay_camera, 1, sceneParams)
 					/ powf(voxelSize * 100, 3);
 			}
 			if (weight < 1e-1)
