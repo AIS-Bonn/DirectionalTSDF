@@ -54,6 +54,15 @@ _CPU_AND_GPU_CODE_ inline void voxelToBlockPosAndOffset(
 					 - blockPos.z * SDF_BLOCK_SIZE3;
 }
 
+_CPU_AND_GPU_CODE_ inline Vector3i voxelOffsetToCoordinate(int &offset)
+{
+	Vector3i coordinate;
+	coordinate.z = offset / (SDF_BLOCK_SIZE * SDF_BLOCK_SIZE);
+	coordinate.y = offset / SDF_BLOCK_SIZE - coordinate.z * SDF_BLOCK_SIZE;
+	coordinate.x = offset - coordinate.y * SDF_BLOCK_SIZE - coordinate.z * SDF_BLOCK_SIZE * SDF_BLOCK_SIZE;
+	return coordinate;
+}
+
 _CPU_AND_GPU_CODE_ inline Vector3f voxelIdxToWorldPos(const Vector3i &voxelIdx, const float voxelSize)
 {
 	return voxelIdx.toFloat() * voxelSize;

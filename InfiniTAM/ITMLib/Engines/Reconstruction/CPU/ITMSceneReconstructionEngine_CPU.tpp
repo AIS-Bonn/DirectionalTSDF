@@ -389,11 +389,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 	float mu = scene->sceneParams->mu;
 
 	float *depth = view->depth->GetData(MEMORYDEVICE_CPU);
-	Vector4f *depthNormal = nullptr;
-	if (this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL or
-		this->settings->fusionParams.fusionMode != FusionMode::FUSIONMODE_VOXEL_PROJECTION or
-		this->settings->fusionParams.fusionMetric == FusionMetric::FUSIONMETRIC_POINT_TO_PLANE)
-		depthNormal = view->depthNormal->GetData(MEMORYDEVICE_CPU);
+	Vector4f *depthNormal = view->depthNormal->GetData(MEMORYDEVICE_CPU);
 	int *voxelAllocationList = scene->localVBA.GetAllocationList();
 	int *excessAllocationList = scene->index.GetExcessAllocationList();
 	ITMHashEntry *hashTable = scene->index.GetEntries();

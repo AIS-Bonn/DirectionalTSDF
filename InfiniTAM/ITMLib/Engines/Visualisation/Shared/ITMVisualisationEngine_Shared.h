@@ -410,21 +410,29 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 		pt_result += stepLength * rayDirection; totalLength += stepLength;
 	}
 
-	lastSDFValue = sdfValue;
 	// Perform 2 additional steps to get more accurate zero crossing
 	if (sdfValue > 0.0f)
 		return false;
 
 	for (int i = 0; i < 2 or (i < 5 and fabs(sdfValue) > 1e-6); i++)
 	{
+		lastSDFValue = sdfValue;
 		stepLength = sdfValue * stepScale;
 		pt_result += stepLength * rayDirection;
 		totalLength += stepLength;
 
 		sdfValue = readWithConfidenceFromSDF_float_interpolated(confidence, voxelData, voxelIndex, pt_result, direction, vmIndex, cache);
+
+		// Compensate sign hopping with little to no reduction in magnitude (steep angles)
+		float reductionFactor = (fabs(sdfValue) - fabs(lastSDFValue)) / fabs(lastSDFValue);
+		// rF < 0: magnitude reduction, rF > 0: magnitude increase
+		if (SIGN(sdfValue) != SIGN(lastSDFValue) and reductionFactor > -0.75)
+		{
+			stepScale *= 0.5;
+		}
 	}
 
-	if (fabs(lastSDFValue) < fabs(sdfValue) or fabs(sdfValue) > 0.1)
+	if (fabs(sdfValue) > 0.1)
 		return false;
 
 	distance_out = totalLength / oneOverVoxelSize;

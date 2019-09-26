@@ -248,11 +248,12 @@ ITMTrackingState::TrackingResult ITMBasicEngine<TVoxel,TIndex>::ProcessFrame(ITM
 	this->timeStats.Reset();
 	ITMTimer timer;
 
-	bool modelSensorNoise = (
-		settings->fusionParams.useWeighting or
-		settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL or
-		settings->fusionParams.fusionMode != FusionMode::FUSIONMODE_VOXEL_PROJECTION or
-		settings->fusionParams.fusionMetric == FusionMetric::FUSIONMETRIC_POINT_TO_PLANE);
+	bool modelSensorNoise = true;
+//	(
+//		settings->fusionParams.useWeighting or
+//		settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL or
+//		settings->fusionParams.fusionMode != FusionMode::FUSIONMODE_VOXEL_PROJECTION or
+//		settings->fusionParams.fusionMetric == FusionMetric::FUSIONMETRIC_POINT_TO_PLANE);
 	// prepare image and turn it into a depth image
 	if (imuMeasurement == NULL) viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, modelSensorNoise);
 	else viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, imuMeasurement, modelSensorNoise);
