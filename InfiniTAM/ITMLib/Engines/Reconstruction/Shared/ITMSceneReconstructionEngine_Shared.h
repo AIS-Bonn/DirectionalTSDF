@@ -605,25 +605,22 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 
 	if (fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING_VIEW_DIR_AND_NORMAL)
 	{
-		rayDirectionBefore = (invM_d * Vector4f(pt_camera.toVector3().normalised(), 0)).toVector3();
+		rayDirectionBefore = -(invM_d * Vector4f(pt_camera.toVector3().normalised(), 0)).toVector3();
 		rayDirectionBehind = -normal_world;
 	}
 	else if (fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING_VIEW_DIR)
 	{
-		rayDirectionBefore = (invM_d * Vector4f(pt_camera.toVector3().normalised(), 0)).toVector3();
+		rayDirectionBefore = -(invM_d * Vector4f(pt_camera.toVector3().normalised(), 0)).toVector3();
 		rayDirectionBehind = (invM_d * Vector4f(pt_camera.toVector3().normalised(), 0)).toVector3();
 	}
 	else
 	{
-		rayDirectionBefore = -normal_world;
+		rayDirectionBefore = normal_world;
 		rayDirectionBehind = -normal_world;
 	}
 
-	Vector3f rayStartBefore = pt_world - mu * rayDirectionBefore;
-	Vector3f rayStartBehind = pt_world;
-
-	BlockTraversal blockTraversalBefore(rayStartBefore, rayDirectionBefore, mu, voxelSize);
-	BlockTraversal blockTraversalBehind(rayStartBehind, rayDirectionBehind, mu, voxelSize);
+	BlockTraversal blockTraversalBefore(pt_world, rayDirectionBefore, mu, voxelSize);
+	BlockTraversal blockTraversalBehind(pt_world, rayDirectionBehind, mu, voxelSize);
 	if (blockTraversalBehind.HasNextBlock()) blockTraversalBehind.GetNextBlock(); // Skip first voxel to prevent duplicate fusion
 
 	ITMVoxelBlockHash::IndexCache cache[N_DIRECTIONS];
@@ -676,8 +673,8 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 					weight = depthWeight(depthValue, normal_camera.toVector3(), viewRay_camera, directionWeight, sceneParams)
 					         / powf(voxelSize * 100, 3);
 				}
-				if (weight < 1e-2)
-					return;
+//				if (weight < 1e-2)
+//					return;
 
 				VoxelRayCastingSum &voxelRayCastingSum = entriesRayCasting[index];
 				voxelRayCastingSum.update(distance, weight);
@@ -698,8 +695,8 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 				weight = depthWeight(depthValue, normal_camera.toVector3(), viewRay_camera, 1, sceneParams)
 					/ powf(voxelSize * 100, 3);
 			}
-			if (weight < 1e-1)
-				return;
+//			if (weight < 1e-1)
+//				return;
 
 			VoxelRayCastingSum &voxelRayCastingSum = entriesRayCasting[index];
 			voxelRayCastingSum.update(distance, weight);
@@ -829,9 +826,13 @@ buildHashAllocAndVisibleType(DEVICEPTR(HashEntryAllocType)* entriesAllocType,
                              )
 {
 	float depth_measure = depth[x + y * imgSize.x];
+	Vector4f normal_camera = depthNormal[x + y * imgSize.x];
 	if (depth_measure <= 0 or (depth_measure - mu) < 0 or (depth_measure - mu) < viewFrustum_min or
-	    (depth_measure + mu) > viewFrustum_max)
+	    (depth_measure + mu) > viewFrustum_max or normal_camera.w != 1)
 		return;
+
+	normal_camera.w = 0; // rotation-only transformation
+	Vector3f normalWorld = (invM_d * normal_camera).toVector3();
 
 	Vector4f pt_camera = Vector4f(reprojectImagePoint(x, y, depth_measure, projParams_d), 1);
 
@@ -842,30 +843,25 @@ buildHashAllocAndVisibleType(DEVICEPTR(HashEntryAllocType)* entriesAllocType,
 	    or fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING_VIEW_DIR)
 	{
 		Vector4f camera_ray_world = invM_d * Vector4f(pt_camera.toVector3().normalised(), 0);
-		rayDirectionBefore = camera_ray_world.toVector3();
+		rayDirectionBefore = -camera_ray_world.toVector3();
 		rayDirectionBehind = camera_ray_world.toVector3();
 	} else
 	{
-		Vector4f normal_camera = depthNormal[x + y * imgSize.x];
-		if (normal_camera.w != 1)
-			return;
 
-		normal_camera.w = 0; // rotation-only transformation
-		Vector3f normalWorld = (invM_d * normal_camera).toVector3();
 		rayDirectionBehind = -normalWorld;
 
 		if (fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING_VIEW_DIR_AND_NORMAL)
-			rayDirectionBefore = (invM_d * Vector4f(pt_camera.toVector3().normalised(), 0)).toVector3();
+			rayDirectionBefore = -(invM_d * Vector4f(pt_camera.toVector3().normalised(), 0)).toVector3();
 		else
-			rayDirectionBefore = -normalWorld;
+			rayDirectionBefore = normalWorld;
 	}
 
-	Vector3f rayStartBefore = pt_world - mu * rayDirectionBefore;
-	Vector3f rayStartBehind = pt_world;
-
-	BlockTraversal blockTraversalBefore(rayStartBefore, rayDirectionBefore, mu, voxelSize);
-	BlockTraversal blockTraversalBehind(rayStartBehind, rayDirectionBehind, mu, voxelSize);
+	BlockTraversal blockTraversalBefore(pt_world, rayDirectionBefore, mu, voxelSize);
+	BlockTraversal blockTraversalBehind(pt_world, rayDirectionBehind, mu, voxelSize);
 	if (blockTraversalBehind.HasNextBlock()) blockTraversalBehind.GetNextBlock(); // Skip first voxel to prevent duplicate fusion
+
+	float weights[N_DIRECTIONS];
+	ComputeDirectionWeights(normalWorld, weights);
 
 	Vector3i lastBlockPos(MAX_INT, MAX_INT, MAX_INT);
 	while(blockTraversalBefore.HasNextBlock() or blockTraversalBehind.HasNextBlock())
@@ -882,9 +878,6 @@ buildHashAllocAndVisibleType(DEVICEPTR(HashEntryAllocType)* entriesAllocType,
 
 		if (fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL)
 		{
-			float weights[N_DIRECTIONS];
-			Vector3f normal_world = (invM_d * depthNormal[x + y * imgSize.x]).toVector3();
-			ComputeDirectionWeights(normal_world, weights);
 			for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
 			{
 				if (weights[direction] < direction_weight_threshold)
