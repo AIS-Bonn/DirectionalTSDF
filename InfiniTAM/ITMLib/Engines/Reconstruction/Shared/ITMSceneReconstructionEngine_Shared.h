@@ -670,8 +670,10 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 				if (fusionParams.useWeighting)
 				{
 					float directionWeight = DirectionWeight(normal_world, TSDFDirection(direction));
+					float voxelDistanceWeight = 1 - MIN(length(voxelSurfaceOffset) / mu, 1);
+
 					weight = depthWeight(depthValue, normal_camera.toVector3(), viewRay_camera, directionWeight, sceneParams)
-					         / powf(voxelSize * 100, 3);
+					         / powf(voxelSize * 100, 3) * voxelDistanceWeight;
 				}
 //				if (weight < 1e-2)
 //					return;
@@ -691,9 +693,9 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 
 			if (fusionParams.useWeighting)
 			{
-				Vector4f normalCamera = depthNormals[idx];
+				float voxelDistanceWeight = 1 - MIN(length(voxelSurfaceOffset) / mu, 1);
 				weight = depthWeight(depthValue, normal_camera.toVector3(), viewRay_camera, 1, sceneParams)
-					/ powf(voxelSize * 100, 3);
+					/ powf(voxelSize * 100, 3) * voxelDistanceWeight;
 			}
 //			if (weight < 1e-1)
 //				return;

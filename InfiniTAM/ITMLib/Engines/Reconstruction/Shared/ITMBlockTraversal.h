@@ -132,6 +132,7 @@ struct BlockTraversal
 			}
 		}
 		return current_block;
+//		return WorldToBlocki(origin + direction * distance); // Closest point only
 	}
 
 	const Vector3f origin;
