@@ -490,7 +490,7 @@ void UIEngine::glutMouseWheelFunction(int button, int dir, int x, int y)
 }
 
 void UIEngine::Initialise(int & argc, char** argv, ImageSourceEngine *imageSource, IMUSourceEngine *imuSource, ITMMainEngine *mainEngine,
-	const char *outFolder, ITMLibSettings::DeviceType deviceType)
+	const std::string &outFolder, ITMLibSettings::DeviceType deviceType)
 {
 	this->freeviewActive = false;
 	this->integrationActive = true;
@@ -508,9 +508,9 @@ void UIEngine::Initialise(int & argc, char** argv, ImageSourceEngine *imageSourc
 	this->imuSource = imuSource;
 	this->mainEngine = mainEngine;
 	{
-		size_t len = strlen(outFolder);
+		size_t len = outFolder.size();
 		this->outFolder = new char[len + 1];
-		strcpy(this->outFolder, outFolder);
+		strcpy(this->outFolder, outFolder.c_str());
 	}
 
 	this->statisticsEngine.Initialize(std::string(outFolder));

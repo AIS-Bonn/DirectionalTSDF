@@ -267,8 +267,6 @@ Matrix3<float> SE3Pose::GetR(void) const
 
 Vector4<float> SE3Pose::GetQ(void) const
 {
-	const float mu = 1e-6;
-
 	Matrix3<float> R = GetR();
 	float values[4]; // x, y, z, w
 

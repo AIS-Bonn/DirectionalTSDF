@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <experimental/filesystem>
 
 #include "CLIEngine.h"
 
@@ -14,6 +15,7 @@
 using namespace InfiniTAM::Engine;
 using namespace InputSource;
 using namespace ITMLib;
+namespace fs = std::experimental::filesystem;
 
 int main(int argc, char** argv)
 try

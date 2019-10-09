@@ -138,7 +138,7 @@ namespace ITMLib
 	ITMTracker *Make(const Vector2i & imgSize_rgb, const Vector2i & imgSize_d, const std::shared_ptr<const ITMLibSettings>& settings, const ITMLowLevelEngine *lowLevelEngine,
 		ITMIMUCalibrator *imuCalibrator, const ITMSceneParams *sceneParams) const
 	{
-		return Make(settings->deviceType, settings->trackerConfig, imgSize_rgb, imgSize_d, lowLevelEngine, imuCalibrator, sceneParams);
+		return Make(settings->deviceType, settings->trackerConfig.c_str(), imgSize_rgb, imgSize_d, lowLevelEngine, imuCalibrator, sceneParams);
 	}
 
 	//#################### PUBLIC STATIC MEMBER FUNCTIONS ####################

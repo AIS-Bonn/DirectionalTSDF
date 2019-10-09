@@ -466,6 +466,7 @@ Utils/ITMLibSettings.cpp
 
 SET(ITMLIB_UTILS_HEADERS
 Utils/ITMCUDAUtils.h
+Utils/ITMFusionParams.h
 Utils/ITMImageTypes.h
 Utils/ITMLibSettings.h
 Utils/ITMMath.h
@@ -473,7 +474,9 @@ Utils/ITMMemoryBlockTypes.h
 Utils/ITMPixelUtils.h
 Utils/ITMProjectionUtils.h
 Utils/ITMSceneParams.h
+Utils/ITMStringUtils.h
 Utils/ITMSurfelSceneParams.h
+Utils/ITMTimer.h
 )
 
 #################################################################
@@ -620,3 +623,5 @@ SOURCE_GROUP(Utils FILES ${ITMLIB_UTILS_SOURCES} ${ITMLIB_UTILS_HEADERS})
 ##########################################
 
 INCLUDE(${PROJECT_SOURCE_DIR}/cmake/SetCUDALibTarget.cmake)
+ADD_DEPENDENCIES(${targetname} yaml-cpp-project)
+TARGET_LINK_LIBRARIES(${targetname} yaml-cpp)

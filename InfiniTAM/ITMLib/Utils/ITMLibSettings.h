@@ -2,6 +2,9 @@
 
 #pragma once
 
+#include <string>
+#include <cmath>
+
 #include "ITMFusionParams.h"
 #include "ITMSceneParams.h"
 #include "ITMSurfelSceneParams.h"
@@ -9,6 +12,7 @@
 
 namespace ITMLib
 {
+
 	class ITMLibSettings
 	{
 	public:
@@ -56,7 +60,7 @@ namespace ITMLib
 		SwappingMode swappingMode;
 		LibMode libMode;
 
-		const char *trackerConfig;
+		std::string trackerConfig;
 
 		ITMFusionParams fusionParams;
 
@@ -64,8 +68,9 @@ namespace ITMLib
 		ITMSceneParams sceneParams;
 		ITMSurfelSceneParams surfelSceneParams;
 
-		ITMLibSettings(void);
-		virtual ~ITMLibSettings(void) {}
+		ITMLibSettings();
+		virtual ~ITMLibSettings() = default;
+		explicit ITMLibSettings(const std::string &settingsFile);
 
 		// Suppress the default copy constructor and assignment operator
 		ITMLibSettings(const ITMLibSettings&);
