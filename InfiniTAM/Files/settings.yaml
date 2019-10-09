@@ -26,7 +26,7 @@ skipPoints: false
 useApproximateRaycast: false
 
 voxelSceneParams:
-  voxelSize: 0.01
+  voxelSize: 0.005
   truncationDistance: 0.04
   maxWeight: 5000
   minDistance: 0.2

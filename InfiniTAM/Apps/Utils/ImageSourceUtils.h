@@ -5,7 +5,16 @@
 #pragma once
 
 #include "ITMLib/Utils/ITMLibSettings.h"
-#include "InputSource/ImageSourceEngine.h"
+#include "InputSource/IMUSourceEngine.h"
+#include "InputSource/OpenNIEngine.h"
+#include "InputSource/Kinect2Engine.h"
+#include "InputSource/LibUVCEngine.h"
+#include "InputSource/PicoFlexxEngine.h"
+#include "InputSource/RealSenseEngine.h"
+#include "InputSource/LibUVCEngine.h"
+#include "InputSource/RealSense2Engine.h"
+#include "InputSource/FFMPEGReader.h"
+
 
 using namespace InputSource;
 using namespace ITMLib;

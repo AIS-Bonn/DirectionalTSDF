@@ -6,20 +6,11 @@
 
 #include "UIEngine.h"
 
-#include "InputSource/OpenNIEngine.h"
-#include "InputSource/Kinect2Engine.h"
-#include "InputSource/LibUVCEngine.h"
-#include "InputSource/PicoFlexxEngine.h"
-#include "InputSource/RealSenseEngine.h"
-#include "InputSource/LibUVCEngine.h"
-#include "InputSource/RealSense2Engine.h"
-#include "InputSource/FFMPEGReader.h"
 #include "ITMLib/ITMLibDefines.h"
 #include "ITMLib/Core/ITMBasicEngine.h"
 #include "ITMLib/Core/ITMBasicSurfelEngine.h"
 #include "ITMLib/Core/ITMMultiEngine.h"
 #include "ITMLib/Utils/ITMStringUtils.h"
-#include "CLI/CLI11.hpp"
 
 #include "Apps/Utils/CLIUtils.h"
 

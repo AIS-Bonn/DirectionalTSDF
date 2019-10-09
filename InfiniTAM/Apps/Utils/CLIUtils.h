@@ -7,10 +7,11 @@
 #include <memory>
 #include <string>
 
-#include "ImageSourceUtils.h"
+#include <CLI/CLI11.hpp>
 
 #include "ITMLib/Utils/ITMLibSettings.h"
 #include "InputSource/ImageSourceEngine.h"
+#include "ImageSourceUtils.h"
 
 using namespace InputSource;
 using namespace ITMLib;
