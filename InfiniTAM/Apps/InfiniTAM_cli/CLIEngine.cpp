@@ -79,7 +79,9 @@ bool CLIEngine::ProcessFrame()
 	float processedTime_inst = sdkGetTimerValue(&timer_instant);
 	float processedTime_avg = sdkGetAverageTimerValue(&timer_average);
 
-	printf("frame %i: time %.2f, avg %.2f\n", currentFrameNo, processedTime_inst, processedTime_avg);
+	printf("frame %04i: time %.2f, avg %.2f, tracking: %s\n",
+	       currentFrameNo, processedTime_inst, processedTime_avg,
+	       ITMTrackingState::TrackingResultToString(mainEngine->GetTrackingState()->trackerResult).c_str());
 
 	currentFrameNo++;
 

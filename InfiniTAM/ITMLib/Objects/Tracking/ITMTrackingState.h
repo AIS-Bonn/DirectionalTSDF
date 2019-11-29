@@ -27,7 +27,7 @@ namespace ITMLib
 		ORUtils::SE3Pose *pose_pointCloud;
 
 		/// Frames processed from start of tracking
-		/// Used as weight in the extended tracker 
+		/// Used as weight in the extended tracker
 		int framesProcessed;
 
 		int age_pointCloud;
@@ -42,6 +42,19 @@ namespace ITMLib
 			TRACKING_POOR = 1,
 			TRACKING_FAILED = 0
 		} trackerResult;
+
+		static std::string TrackingResultToString(TrackingResult trackingResult)
+		{
+			switch (trackingResult)
+			{
+				case TRACKING_GOOD:
+					return "GOOD";
+				case TRACKING_POOR:
+					return "POOR";
+				default:
+					return "FAILED";
+			}
+		}
 
 		/// Score associated to the tracking result.
 		float trackerScore;

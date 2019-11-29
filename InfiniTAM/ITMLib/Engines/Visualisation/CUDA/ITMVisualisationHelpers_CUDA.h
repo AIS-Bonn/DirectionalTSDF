@@ -85,11 +85,6 @@ __global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, const
 
 	if (x >= imgSize.x || y >= imgSize.y) return;
 
-	int locId = x + y * imgSize.x;
-	int locId2 = (int)floor((float)x / minmaximg_subsample) + (int)floor((float)y / minmaximg_subsample) * imgSize.x;
-
-	float distance;
-
 	combineDirectionalPointClouds<true, false>(out_ptsRay, in_ptsRay, raycastDirectionalContribution, imgSize,
 		invM, invProjParams, x, y, 1 / oneOverVoxelSize);
 }

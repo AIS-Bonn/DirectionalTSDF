@@ -522,7 +522,6 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* d
 	while(blockTraversal.HasNextBlock())
 	{
 		Vector3i voxelIdx = blockTraversal.GetNextBlock();
-		Vector3f voxelPos = blockTraversal.BlockToWorld(voxelIdx);
 
 		Vector3i blockPos;
 		ushort linearIdx;

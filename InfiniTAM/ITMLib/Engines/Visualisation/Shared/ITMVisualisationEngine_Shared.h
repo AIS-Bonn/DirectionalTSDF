@@ -953,14 +953,6 @@ _CPU_AND_GPU_CODE_ inline void combineDirectionalPointClouds(
 
 		distance = length(cameraPos_world - point.toVector3());
 
-		const Vector3f TSDFDirectionVectors[N_DIRECTIONS] = {
-			Vector3f(1,  0,  0),
-			Vector3f(-1, 0,  0),
-			Vector3f(0,  1,  0),
-			Vector3f(0,  -1, 0),
-			Vector3f(0,  0,  1),
-			Vector3f(0,  0,  -1)
-		};
 		float angle;
 		computeNormalAndAngle<useSmoothing, flipNormals>(foundPoint, x, y, inputPointClouds.pointCloud[directionIdx],
 		                                                 cameraPos_world, voxelSize, imgSize, normal, angle);
