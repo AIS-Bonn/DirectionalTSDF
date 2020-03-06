@@ -206,7 +206,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateIntoS
 
 	float *depth = view->depth->GetData(MEMORYDEVICE_CPU);
 	Vector4f *depthNormals = nullptr;
-	if (this->settings->fusionParams.useWeighting)
+	if (this->settings->fusionParams.useWeighting or this->settings->fusionParams.fusionMetric == FUSIONMETRIC_POINT_TO_PLANE)
 		depthNormals = view->depthNormal->GetData(MEMORYDEVICE_CPU);
 	float *confidence = view->depthConfidence->GetData(MEMORYDEVICE_CPU);
 	Vector4u *rgb = view->rgb->GetData(MEMORYDEVICE_CPU);

@@ -22,7 +22,7 @@ struct AllocationTempData {
 template<class TVoxel>
 _CPU_AND_GPU_CODE_ inline float
 computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direction,
-	                           const THREADPTR(Vector4f)& pt_world,
+	                           const THREADPTR(Vector4f)& voxel_world,
                              const CONSTPTR(Matrix4f)& M_d,
                              const CONSTPTR(Vector4f)& projParams_d,
                              const CONSTPTR(ITMFusionParams) &fusionParams,
@@ -32,39 +32,52 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
                              const CONSTPTR(Vector2i)& imgSize
                              )
 {
-	Vector4f pt_camera;
-	Vector2f pt_image;
+	Vector4f voxel_camera;
+	Vector2f voxel_image;
 	float depth_measure, eta, oldF, newF;
 	float oldW, newW;
 
 	// project point into image
-	pt_camera = M_d * pt_world;
-	if (pt_camera.z <= 0) return -1;
+	voxel_camera = M_d * voxel_world;
+	if (voxel_camera.z <= 0) return -1;
 
-	pt_image = project(pt_camera.toVector3(), projParams_d);
-	if ((pt_image.x < 1) || (pt_image.x > imgSize.x - 2) || (pt_image.y < 1) || (pt_image.y > imgSize.y - 2)) return -1;
+	voxel_image = project(voxel_camera.toVector3(), projParams_d);
+	if ((voxel_image.x < 1) || (voxel_image.x > imgSize.x - 2) || (voxel_image.y < 1) || (voxel_image.y > imgSize.y - 2)) return -1;
 
 	// get measured depth from image
-	int idx = (int) (pt_image.x + 0.5f) + (int) (pt_image.y + 0.5f) * imgSize.x;
+	int idx = (int) (voxel_image.x + 0.5f) + (int) (voxel_image.y + 0.5f) * imgSize.x;
 	depth_measure = depth[idx];
 	if (depth_measure <= 0.0f) return -1;
 
 	// check whether voxel needs updating
-	eta = depth_measure - pt_camera.z;
+	eta = depth_measure - voxel_camera.z;
 	if (eta < -sceneParams.mu) return eta;
 
 	// compute updated SDF value and reliability
 	oldF = TVoxel::valueToFloat(voxel.sdf);
 	oldW = TVoxel::weightToFloat(voxel.w_depth, sceneParams.maxW);
 
-	newF = MIN(1.0f, eta / sceneParams.mu);
+	float distance = eta;
+	if (fusionParams.fusionMetric == FusionMetric::FUSIONMETRIC_POINT_TO_PLANE)
+	{
+		Matrix4f invM_d; M_d.inv(invM_d);
+		Vector3f pt_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, depth_measure, invertProjectionParams(projParams_d));
+		Vector3f pt_world = (invM_d * Vector4f(pt_camera, 1)).toVector3();
+		Vector4f normal_camera = depthNormals[idx];
+		if (normal_camera.w != 1)
+			return -1;
+		Vector3f normal_world = (invM_d * normal_camera).toVector3();
+		distance = ORUtils::dot(voxel_world.toVector3() - pt_world, normal_world);
+	}
+
+	newF = MIN(1.0f, distance / sceneParams.mu);
 	newW = 1;
 	if (fusionParams.useWeighting)
 	{
 		Vector4f normalCamera = depthNormals[idx];
 		if (normalCamera.w != 1)
 			return -1;
-		Vector3f viewRay_camera = reprojectImagePoint(pt_image.x, pt_image.y, 1, invertProjectionParams(projParams_d)).normalised();
+		Vector3f viewRay_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, 1, invertProjectionParams(projParams_d)).normalised();
 		float directionWeight = 1;
 		if (direction != TSDFDirection::NONE)
 		{
@@ -88,13 +101,13 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 	voxel.sdf = TVoxel::floatToValue(newF);
 	voxel.w_depth = TVoxel::floatToWeight(newW, sceneParams.maxW);
 
-	return eta;
+	return distance;
 }
 
 template<class TVoxel>
 _CPU_AND_GPU_CODE_ inline float
 computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direction,
-	                           const THREADPTR(Vector4f)& pt_world,
+	                           const THREADPTR(Vector4f)& voxel_world,
                              const CONSTPTR(Matrix4f)& M_d,
                              const CONSTPTR(Vector4f)& projParams_d,
                              const CONSTPTR(ITMFusionParams) &fusionParams,
@@ -103,39 +116,53 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
                              const CONSTPTR(Vector4f)* depthNormals,
                              const CONSTPTR(float)* confidence, const CONSTPTR(Vector2i)& imgSize)
 {
-	Vector4f pt_camera;
-	Vector2f pt_image;
+	Vector4f voxel_camera;
+	Vector2f voxel_image;
 	float depth_measure, eta, oldF, newF;
 	int idx;
 	float oldW, newW;
 
 	// project point into image
-	pt_camera = M_d * pt_world;
-	if (pt_camera.z <= 0) return -1;
+	voxel_camera = M_d * voxel_world;
+	if (voxel_camera.z <= 0) return -1;
 
-	pt_image = project(pt_camera.toVector3(), projParams_d);
-	if ((pt_image.x < 1) || (pt_image.x > imgSize.x - 2) || (pt_image.y < 1) || (pt_image.y > imgSize.y - 2)) return -1;
+	voxel_image = project(voxel_camera.toVector3(), projParams_d);
+	if ((voxel_image.x < 1) || (voxel_image.x > imgSize.x - 2) || (voxel_image.y < 1) || (voxel_image.y > imgSize.y - 2)) return -1;
 
-	idx = (int) (pt_image.x + 0.5f) + (int) (pt_image.y + 0.5f) * imgSize.x;
+	idx = (int) (voxel_image.x + 0.5f) + (int) (voxel_image.y + 0.5f) * imgSize.x;
 	// get measured depth from image
 	depth_measure = depth[idx];
 	if (depth_measure <= 0.0) return -1;
 
 	// check whether voxel needs updating
-	eta = depth_measure - pt_camera.z;
+	eta = depth_measure - voxel_camera.z;
 	if (eta < -sceneParams.mu) return eta;
 
 	// compute updated SDF value and reliability
 	oldF = TVoxel::valueToFloat(voxel.sdf);
 	oldW = TVoxel::weightToFloat(voxel.w_depth, sceneParams.maxW);
-	newF = MIN(1.0f, eta / sceneParams.mu);
+
+	float distance = eta;
+	if (fusionParams.fusionMetric == FusionMetric::FUSIONMETRIC_POINT_TO_PLANE)
+	{
+		Matrix4f invM_d; M_d.inv(invM_d);
+		Vector3f pt_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, depth_measure, invertProjectionParams(projParams_d));
+		Vector3f pt_world = (invM_d * Vector4f(pt_camera, 1)).toVector3();
+		Vector4f normal_camera = depthNormals[idx];
+		if (normal_camera.w != 1)
+			return -1;
+		Vector3f normal_world = (invM_d * normal_camera).toVector3();
+		distance = ORUtils::dot(voxel_world.toVector3() - pt_world, normal_world);
+	}
+
+	newF = MIN(1.0f, distance / sceneParams.mu);
 	newW = 1;
 	if (fusionParams.useWeighting)
 	{
 		Vector4f normalCamera = depthNormals[idx];
 		if (normalCamera.w != 1)
 			return -1;
-		Vector3f viewRay_camera = reprojectImagePoint(pt_image.x, pt_image.y, 1, invertProjectionParams(projParams_d)).normalised();
+		Vector3f viewRay_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, 1, invertProjectionParams(projParams_d)).normalised();
 		float directionWeight = 1;
 		if (direction != TSDFDirection::NONE)
 		{
@@ -158,7 +185,7 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 	voxel.w_depth = TVoxel::floatToWeight(newW, sceneParams.maxW);
 	voxel.confidence += TVoxel::floatToValue(confidence[idx]);
 
-	return eta;
+	return distance;
 }
 
 template<class TVoxel>

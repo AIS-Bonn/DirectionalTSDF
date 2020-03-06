@@ -14,7 +14,6 @@ using namespace ITMLib;
 
 namespace
 {
-
 template<class TVoxel, bool stopMaxW>
 __global__ void integrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry *hashTable, int *noVisibleEntryIDs,
 	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, const Vector4f *depthNormals, const float *confidence,
@@ -467,7 +466,7 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::IntegrateInto
 
 	float *depth = view->depth->GetData(MEMORYDEVICE_CUDA);
 	Vector4f *depthNormals = nullptr;
-	if (this->settings->fusionParams.useWeighting)
+	if (this->settings->fusionParams.useWeighting or this->settings->fusionParams.fusionMetric == FUSIONMETRIC_POINT_TO_PLANE)
 		depthNormals = view->depthNormal->GetData(MEMORYDEVICE_CUDA);
 	float *confidence = view->depthConfidence->GetData(MEMORYDEVICE_CUDA);
 	Vector4u *rgb = view->rgb->GetData(MEMORYDEVICE_CUDA);
