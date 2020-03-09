@@ -13,7 +13,8 @@
 namespace ITMLib
 {
 
-struct AllocationTempData {
+struct AllocationTempData
+{
 	int noAllocatedVoxelEntries;
 	int noAllocatedExcessEntries;
 	int noVisibleEntries;
@@ -22,15 +23,15 @@ struct AllocationTempData {
 template<class TVoxel>
 _CPU_AND_GPU_CODE_ inline float
 computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direction,
-	                           const THREADPTR(Vector4f)& voxel_world,
+                             const THREADPTR(Vector4f)& voxel_world,
                              const CONSTPTR(Matrix4f)& M_d,
                              const CONSTPTR(Vector4f)& projParams_d,
-                             const CONSTPTR(ITMFusionParams) &fusionParams,
-                             const CONSTPTR(ITMSceneParams) &sceneParams,
+                             const CONSTPTR(ITMFusionParams)& fusionParams,
+                             const CONSTPTR(ITMSceneParams)& sceneParams,
                              const CONSTPTR(float)* depth,
                              const CONSTPTR(Vector4f)* depthNormals,
                              const CONSTPTR(Vector2i)& imgSize
-                             )
+)
 {
 	Vector4f voxel_camera;
 	Vector2f voxel_image;
@@ -42,7 +43,9 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 	if (voxel_camera.z <= 0) return -1;
 
 	voxel_image = project(voxel_camera.toVector3(), projParams_d);
-	if ((voxel_image.x < 1) || (voxel_image.x > imgSize.x - 2) || (voxel_image.y < 1) || (voxel_image.y > imgSize.y - 2)) return -1;
+	if ((voxel_image.x < 1) || (voxel_image.x > imgSize.x - 2) || (voxel_image.y < 1) ||
+	    (voxel_image.y > imgSize.y - 2))
+		return -1;
 
 	// get measured depth from image
 	int idx = (int) (voxel_image.x + 0.5f) + (int) (voxel_image.y + 0.5f) * imgSize.x;
@@ -60,8 +63,10 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 	float distance = eta;
 	if (fusionParams.fusionMetric == FusionMetric::FUSIONMETRIC_POINT_TO_PLANE)
 	{
-		Matrix4f invM_d; M_d.inv(invM_d);
-		Vector3f pt_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, depth_measure, invertProjectionParams(projParams_d));
+		Matrix4f invM_d;
+		M_d.inv(invM_d);
+		Vector3f pt_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, depth_measure,
+		                                         invertProjectionParams(projParams_d));
 		Vector3f pt_world = (invM_d * Vector4f(pt_camera, 1)).toVector3();
 		Vector4f normal_camera = depthNormals[idx];
 		if (normal_camera.w != 1)
@@ -77,11 +82,13 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 		Vector4f normalCamera = depthNormals[idx];
 		if (normalCamera.w != 1)
 			return -1;
-		Vector3f viewRay_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, 1, invertProjectionParams(projParams_d)).normalised();
+		Vector3f viewRay_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, 1,
+		                                              invertProjectionParams(projParams_d)).normalised();
 		float directionWeight = 1;
 		if (direction != TSDFDirection::NONE)
 		{
-			Matrix4f invM_d; M_d.inv(invM_d);
+			Matrix4f invM_d;
+			M_d.inv(invM_d);
 			Vector4f normalWorld = invM_d * normalCamera;
 			directionWeight = DirectionWeight(TO_VECTOR3(normalWorld), direction);
 			if (directionWeight < direction_weight_threshold)
@@ -89,8 +96,6 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 		}
 		newW = depthWeight(depth_measure, normalCamera.toVector3(), viewRay_camera, directionWeight, sceneParams);
 	}
-	if (newW < 1e-1)
-		return -1;
 
 	newF = oldW * oldF + newW * newF;
 	newW = oldW + newW;
@@ -107,11 +112,11 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 template<class TVoxel>
 _CPU_AND_GPU_CODE_ inline float
 computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direction,
-	                           const THREADPTR(Vector4f)& voxel_world,
+                             const THREADPTR(Vector4f)& voxel_world,
                              const CONSTPTR(Matrix4f)& M_d,
                              const CONSTPTR(Vector4f)& projParams_d,
-                             const CONSTPTR(ITMFusionParams) &fusionParams,
-                             const CONSTPTR(ITMSceneParams) &sceneParams,
+                             const CONSTPTR(ITMFusionParams)& fusionParams,
+                             const CONSTPTR(ITMSceneParams)& sceneParams,
                              const CONSTPTR(float)* depth,
                              const CONSTPTR(Vector4f)* depthNormals,
                              const CONSTPTR(float)* confidence, const CONSTPTR(Vector2i)& imgSize)
@@ -127,7 +132,9 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 	if (voxel_camera.z <= 0) return -1;
 
 	voxel_image = project(voxel_camera.toVector3(), projParams_d);
-	if ((voxel_image.x < 1) || (voxel_image.x > imgSize.x - 2) || (voxel_image.y < 1) || (voxel_image.y > imgSize.y - 2)) return -1;
+	if ((voxel_image.x < 1) || (voxel_image.x > imgSize.x - 2) || (voxel_image.y < 1) ||
+	    (voxel_image.y > imgSize.y - 2))
+		return -1;
 
 	idx = (int) (voxel_image.x + 0.5f) + (int) (voxel_image.y + 0.5f) * imgSize.x;
 	// get measured depth from image
@@ -145,8 +152,10 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 	float distance = eta;
 	if (fusionParams.fusionMetric == FusionMetric::FUSIONMETRIC_POINT_TO_PLANE)
 	{
-		Matrix4f invM_d; M_d.inv(invM_d);
-		Vector3f pt_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, depth_measure, invertProjectionParams(projParams_d));
+		Matrix4f invM_d;
+		M_d.inv(invM_d);
+		Vector3f pt_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, depth_measure,
+		                                         invertProjectionParams(projParams_d));
 		Vector3f pt_world = (invM_d * Vector4f(pt_camera, 1)).toVector3();
 		Vector4f normal_camera = depthNormals[idx];
 		if (normal_camera.w != 1)
@@ -162,11 +171,13 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 		Vector4f normalCamera = depthNormals[idx];
 		if (normalCamera.w != 1)
 			return -1;
-		Vector3f viewRay_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, 1, invertProjectionParams(projParams_d)).normalised();
+		Vector3f viewRay_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, 1,
+		                                              invertProjectionParams(projParams_d)).normalised();
 		float directionWeight = 1;
 		if (direction != TSDFDirection::NONE)
 		{
-			Matrix4f invM_d; M_d.inv(invM_d);
+			Matrix4f invM_d;
+			M_d.inv(invM_d);
 			Vector4f normalWorld = invM_d * normalCamera;
 			directionWeight = DirectionWeight(TO_VECTOR3(normalWorld), direction);
 			if (directionWeight < direction_weight_threshold)
@@ -191,10 +202,10 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 template<class TVoxel>
 _CPU_AND_GPU_CODE_ inline void
 computeUpdatedVoxelColorInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direction,
-	                           const THREADPTR(Vector4f)& pt_world,
+                             const THREADPTR(Vector4f)& pt_world,
                              const CONSTPTR(Matrix4f)& M_rgb,
                              const CONSTPTR(Vector4f)& projParams_rgb,
-                             const CONSTPTR(ITMSceneParams) &sceneParams, float eta,
+                             const CONSTPTR(ITMSceneParams)& sceneParams, float eta,
                              const CONSTPTR(Vector4u)* rgb, const CONSTPTR(Vector2i)& imgSize)
 {
 	Vector4f pt_camera;
@@ -240,14 +251,15 @@ struct ComputeUpdatedVoxelInfo<false, false, TVoxel>
 	                                       const CONSTPTR(Matrix4f)& M_d, const CONSTPTR(Vector4f)& projParams_d,
 	                                       const CONSTPTR(Matrix4f)& M_rgb, const CONSTPTR(Vector4f)& projParams_rgb,
 	                                       const ITMFusionParams& fusionParams,
-	                                       const CONSTPTR(ITMSceneParams) &sceneParams,
+	                                       const CONSTPTR(ITMSceneParams)& sceneParams,
 	                                       const CONSTPTR(float)* depth,
 	                                       const CONSTPTR(Vector4f)* depthNormals,
 	                                       const CONSTPTR(float)* confidence,
 	                                       const CONSTPTR(Vector2i)& imgSize_d,
 	                                       const CONSTPTR(Vector4u)* rgb, const CONSTPTR(Vector2i)& imgSize_rgb)
 	{
-		computeUpdatedVoxelDepthInfo(voxel, direction, pt_world, M_d, projParams_d, fusionParams, sceneParams, depth, depthNormals, imgSize_d);
+		computeUpdatedVoxelDepthInfo(voxel, direction, pt_world, M_d, projParams_d, fusionParams, sceneParams, depth,
+		                             depthNormals, imgSize_d);
 	}
 };
 
@@ -255,19 +267,20 @@ template<class TVoxel>
 struct ComputeUpdatedVoxelInfo<true, false, TVoxel>
 {
 	_CPU_AND_GPU_CODE_ static void compute(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direction,
-		                                     const THREADPTR(Vector4f)& pt_world,
+	                                       const THREADPTR(Vector4f)& pt_world,
 	                                       const THREADPTR(Matrix4f)& M_d, const THREADPTR(Vector4f)& projParams_d,
 	                                       const THREADPTR(Matrix4f)& M_rgb, const THREADPTR(Vector4f)& projParams_rgb,
 	                                       const ITMFusionParams& fusionParams,
-	                                       const CONSTPTR(ITMSceneParams) &sceneParams,
+	                                       const CONSTPTR(ITMSceneParams)& sceneParams,
 	                                       const CONSTPTR(float)* depth,
 	                                       const CONSTPTR(Vector4f)* depthNormals,
 	                                       const CONSTPTR(float)* confidence,
 	                                       const CONSTPTR(Vector2i)& imgSize_d,
 	                                       const CONSTPTR(Vector4u)* rgb, const THREADPTR(Vector2i)& imgSize_rgb)
 	{
-		float eta = computeUpdatedVoxelDepthInfo(voxel, direction, pt_world, M_d, projParams_d, fusionParams, sceneParams, depth, depthNormals, imgSize_d);
-		if ((eta > sceneParams.mu) || (fabs(eta /sceneParams.mu) > 0.25f)) return;
+		float eta = computeUpdatedVoxelDepthInfo(voxel, direction, pt_world, M_d, projParams_d, fusionParams, sceneParams,
+		                                         depth, depthNormals, imgSize_d);
+		if ((eta > sceneParams.mu) || (fabs(eta / sceneParams.mu) > 0.25f)) return;
 		computeUpdatedVoxelColorInfo(voxel, direction, pt_world, M_rgb, projParams_rgb, sceneParams, eta, rgb, imgSize_rgb);
 	}
 };
@@ -280,14 +293,15 @@ struct ComputeUpdatedVoxelInfo<false, true, TVoxel>
 	                                       const CONSTPTR(Matrix4f)& M_d, const CONSTPTR(Vector4f)& projParams_d,
 	                                       const CONSTPTR(Matrix4f)& M_rgb, const CONSTPTR(Vector4f)& projParams_rgb,
 	                                       const ITMFusionParams& fusionParams,
-	                                       const CONSTPTR(ITMSceneParams) &sceneParams,
+	                                       const CONSTPTR(ITMSceneParams)& sceneParams,
 	                                       const CONSTPTR(float)* depth,
 	                                       const CONSTPTR(Vector4f)* depthNormals,
 	                                       const CONSTPTR(float)* confidence,
 	                                       const CONSTPTR(Vector2i)& imgSize_d,
 	                                       const CONSTPTR(Vector4u)* rgb, const CONSTPTR(Vector2i)& imgSize_rgb)
 	{
-		computeUpdatedVoxelDepthInfo(voxel, direction, pt_world, M_d, projParams_d, fusionParams, sceneParams, depth, depthNormals, confidence, imgSize_d);
+		computeUpdatedVoxelDepthInfo(voxel, direction, pt_world, M_d, projParams_d, fusionParams, sceneParams, depth,
+		                             depthNormals, confidence, imgSize_d);
 	}
 };
 
@@ -299,14 +313,15 @@ struct ComputeUpdatedVoxelInfo<true, true, TVoxel>
 	                                       const THREADPTR(Matrix4f)& M_d, const THREADPTR(Vector4f)& projParams_d,
 	                                       const THREADPTR(Matrix4f)& M_rgb, const THREADPTR(Vector4f)& projParams_rgb,
 	                                       const ITMFusionParams& fusionParams,
-	                                       const CONSTPTR(ITMSceneParams) &sceneParams,
+	                                       const CONSTPTR(ITMSceneParams)& sceneParams,
 	                                       const CONSTPTR(float)* depth,
 	                                       const CONSTPTR(Vector4f)* depthNormals,
 	                                       const CONSTPTR(float)* confidence,
 	                                       const CONSTPTR(Vector2i)& imgSize_d,
 	                                       const CONSTPTR(Vector4u)* rgb, const THREADPTR(Vector2i)& imgSize_rgb)
 	{
-		float eta = computeUpdatedVoxelDepthInfo(voxel, direction, pt_world, M_d, projParams_d, fusionParams, sceneParams, depth, depthNormals, confidence,
+		float eta = computeUpdatedVoxelDepthInfo(voxel, direction, pt_world, M_d, projParams_d, fusionParams, sceneParams,
+		                                         depth, depthNormals, confidence,
 		                                         imgSize_d);
 		if ((eta > sceneParams.mu) || (fabs(eta / sceneParams.mu) > 0.25f)) return;
 		computeUpdatedVoxelColorInfo(voxel, direction, pt_world, M_rgb, projParams_rgb, sceneParams, eta, rgb, imgSize_rgb);
@@ -315,7 +330,7 @@ struct ComputeUpdatedVoxelInfo<true, true, TVoxel>
 
 template<class TVoxel>
 _CPU_AND_GPU_CODE_ static void voxelProjectionCarveSpace(DEVICEPTR(TVoxel)& voxel,
-	                                                       const TSDFDirection direction,
+                                                         const TSDFDirection direction,
                                                          const Vector4f pt_world,
                                                          const THREADPTR(Matrix4f)& M_d,
                                                          const THREADPTR(Vector4f)& projParams_d,
@@ -342,9 +357,9 @@ _CPU_AND_GPU_CODE_ static void voxelProjectionCarveSpace(DEVICEPTR(TVoxel)& voxe
 
 	/// Find relevant image area
 	Vector2f voxelBR_image = project(pt_camera.toVector3() + Vector3f(1, 1, 0) * 0.5 * sceneParams.voxelSize,
-		projParams_d);
+	                                 projParams_d);
 	Vector2f voxelUL_image = project(pt_camera.toVector3() - Vector3f(1, 1, 0) * 0.5 * sceneParams.voxelSize,
-		projParams_d);
+	                                 projParams_d);
 
 	int x_min = MAX(static_cast<int>(voxelUL_image.x + 0.5f), 1);
 	int x_max = MIN(static_cast<int>(voxelBR_image.x + 0.5f), imgSize.x - 2);
@@ -354,20 +369,21 @@ _CPU_AND_GPU_CODE_ static void voxelProjectionCarveSpace(DEVICEPTR(TVoxel)& voxe
 	/// Check area and carve voxel, if necessary
 	float newF = 1;
 	float newW = 0;
-	for (int x = x_min; x <= x_max; x++) for (int y = y_min; y <= y_max; y++)
-	{
-		int idx = x + y * imgSize.x;
-		// get measured depth from image
-		float depthMeasure = depth[idx];
-		Vector4f normalCamera = depthNormals[idx];
-		if (depthMeasure <= 0.0 or normalCamera.w != 1) continue;
-		// check whether voxel needs updating
-		float eta = depthMeasure - pt_camera.z;
-		if (eta < sceneParams.mu) // Within truncation range -> don't carve
-			return;
+	for (int x = x_min; x <= x_max; x++)
+		for (int y = y_min; y <= y_max; y++)
+		{
+			int idx = x + y * imgSize.x;
+			// get measured depth from image
+			float depthMeasure = depth[idx];
+			Vector4f normalCamera = depthNormals[idx];
+			if (depthMeasure <= 0.0 or normalCamera.w != 1) continue;
+			// check whether voxel needs updating
+			float eta = depthMeasure - pt_camera.z;
+			if (eta < sceneParams.mu) // Within truncation range -> don't carve
+				return;
 
-		newW += 1;
-	}
+			newW += 1;
+		}
 	if (newW <= 0)
 		return;
 
@@ -387,10 +403,10 @@ _CPU_AND_GPU_CODE_ static void voxelProjectionCarveSpace(DEVICEPTR(TVoxel)& voxe
 
 _CPU_AND_GPU_CODE_
 inline void SetBlockVisibleType(const CONSTPTR(ITMHashEntry)* hashTable,
-                                        DEVICEPTR(Vector4s)* blockCoords,
-                                        DEVICEPTR(TSDFDirection)* blockDirections,
-                                        HashEntryVisibilityType* entriesVisibleType,
-                                        Vector3i blockPos, TSDFDirection direction = TSDFDirection::NONE)
+                                DEVICEPTR(Vector4s)* blockCoords,
+                                DEVICEPTR(TSDFDirection)* blockDirections,
+                                HashEntryVisibilityType* entriesVisibleType,
+                                Vector3i blockPos, TSDFDirection direction = TSDFDirection::NONE)
 {
 	bool useDirectional = (direction != TSDFDirection::NONE);
 	//compute index in hash table
@@ -506,7 +522,7 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* d
                        const ITMSceneParams& sceneParams,
                        const ITMHashEntry* hashTable,
                        VoxelRayCastingSum* entriesRayCasting,
-                       TVoxel *voxelArray
+                       TVoxel* voxelArray
 )
 {
 	const float mu = sceneParams.mu;
@@ -536,17 +552,18 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* d
 	}
 
 
-	Matrix4f M_d; invM_d.inv(M_d);
+	Matrix4f M_d;
+	invM_d.inv(M_d);
 
 //	float carveDistance = ORUtils::length(pt_world - rayStart_world) - 1 * mu;
 	normal_camera.w = 0; // rotation-only transformation
 	Vector3f normal_world = (invM_d * normal_camera).toVector3();
 	float carveDistance = ORUtils::length(pt_world - rayStart_world)
-		- fabs(1.0 / dot(normal_world, rayDirection_world)) * mu;
+	                      - fabs(1.0 / dot(normal_world, rayDirection_world)) * mu;
 
 	BlockTraversal blockTraversal(rayStart_world, rayDirection_world, carveDistance, voxelSize);
 	ITMVoxelBlockHash::IndexCache cache[N_DIRECTIONS];
-	while(blockTraversal.HasNextBlock())
+	while (blockTraversal.HasNextBlock())
 	{
 		Vector3i voxelIdx = blockTraversal.GetNextBlock();
 
@@ -571,11 +588,10 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* d
 				if (not foundEntry)
 					continue;
 
-				VoxelRayCastingSum &voxelRayCastingSum = entriesRayCasting[index];
+				VoxelRayCastingSum& voxelRayCastingSum = entriesRayCasting[index];
 				voxelRayCastingSum.update(distance, weight);
 			}
-		}
-		else
+		} else
 		{
 			int foundEntry = false;
 			int index = findVoxel(hashTable, voxelIdx, foundEntry, cache[0]);
@@ -583,7 +599,7 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* d
 			if (not foundEntry)
 				continue;
 
-			VoxelRayCastingSum &voxelRayCastingSum = entriesRayCasting[index];
+			VoxelRayCastingSum& voxelRayCastingSum = entriesRayCasting[index];
 			voxelRayCastingSum.update(distance, weight);
 		}
 	}
@@ -594,7 +610,7 @@ _CPU_AND_GPU_CODE_
 void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depthNormals,
                    const Matrix4f& invM_d,
                    const Vector4f& invProjParams_d, const Vector4f& invProjParams_rgb,
-                   const ITMFusionParams &fusionParams,
+                   const ITMFusionParams& fusionParams,
                    const ITMSceneParams& sceneParams,
                    const ITMHashEntry* hashTable,
                    VoxelRayCastingSum* entriesRayCasting
@@ -633,13 +649,11 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 	{
 		rayDirectionBefore = -(invM_d * Vector4f(pt_camera.toVector3().normalised(), 0)).toVector3();
 		rayDirectionBehind = -normal_world;
-	}
-	else if (fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING_VIEW_DIR)
+	} else if (fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING_VIEW_DIR)
 	{
 		rayDirectionBefore = -(invM_d * Vector4f(pt_camera.toVector3().normalised(), 0)).toVector3();
 		rayDirectionBehind = (invM_d * Vector4f(pt_camera.toVector3().normalised(), 0)).toVector3();
-	}
-	else
+	} else
 	{
 		rayDirectionBefore = normal_world;
 		rayDirectionBehind = -normal_world;
@@ -650,7 +664,7 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 	if (blockTraversalBehind.HasNextBlock()) blockTraversalBehind.GetNextBlock(); // Skip first voxel to prevent duplicate fusion
 
 	ITMVoxelBlockHash::IndexCache cache[N_DIRECTIONS];
-	while(blockTraversalBefore.HasNextBlock() or blockTraversalBehind.HasNextBlock())
+	while (blockTraversalBefore.HasNextBlock() or blockTraversalBehind.HasNextBlock())
 	{
 		Vector3i voxelIdx;
 		if (blockTraversalBefore.HasNextBlock())
@@ -666,14 +680,14 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 		if (fusionParams.fusionMetric == FusionMetric::FUSIONMETRIC_POINT_TO_PLANE)
 		{
 			distance = ORUtils::dot(voxelSurfaceOffset, normal_world);
-		}
-		else
+		} else
 		{
 			distance = SIGN(ORUtils::dot(voxelSurfaceOffset, normal_world)) * ORUtils::length(voxelSurfaceOffset);
 		}
 		distance = MAX(-1.0, MIN(1.0f, distance / mu));
 
 		float weight = 1;
+		float voxelSideLengthCamera = voxelSize / (invProjParams_d.x * depthValue); // in pixels
 
 		/// find and update voxels
 		Vector3i blockPos;
@@ -700,15 +714,15 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 
 					weight = depthWeight(depthValue, normal_camera.toVector3(), viewRay_camera, directionWeight, sceneParams)
 					         / powf(voxelSize * 100, 3) * voxelDistanceWeight;
-				}
-//				if (weight < 1e-2)
-//					return;
 
-				VoxelRayCastingSum &voxelRayCastingSum = entriesRayCasting[index];
+					// Normalize by voxel size in camera image (max num rays to hit), so comparable to voxelProjection fusion
+					weight *= 1 / (voxelSideLengthCamera * voxelSideLengthCamera);
+				}
+
+				VoxelRayCastingSum& voxelRayCastingSum = entriesRayCasting[index];
 				voxelRayCastingSum.update(distance, weight);
 			}
-		}
-		else
+		} else
 		{
 			int foundEntry = false;
 			int index = findVoxel(hashTable, voxelIdx, foundEntry, cache[0]);
@@ -721,12 +735,13 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 			{
 				float voxelDistanceWeight = 1 - MIN(length(voxelSurfaceOffset) / mu, 1);
 				weight = depthWeight(depthValue, normal_camera.toVector3(), viewRay_camera, 1, sceneParams)
-					/ powf(voxelSize * 100, 3) * voxelDistanceWeight;
-			}
-//			if (weight < 1e-1)
-//				return;
+				         / powf(voxelSize * 100, 3) * voxelDistanceWeight;
 
-			VoxelRayCastingSum &voxelRayCastingSum = entriesRayCasting[index];
+				// Normalize by voxel size in camera image (max num rays to hit), so comparable to voxelProjection fusion
+				weight *= 1 / (voxelSideLengthCamera * voxelSideLengthCamera);
+			}
+
+			VoxelRayCastingSum& voxelRayCastingSum = entriesRayCasting[index];
 			voxelRayCastingSum.update(distance, weight);
 		}
 	}
@@ -756,7 +771,7 @@ void rayCastCombine(TVoxel& voxel, const VoxelRayCastingSum& rayCastingSum, cons
 	newWeight = MIN(newWeight, sceneParams.maxW);
 
 	voxel.sdf = TVoxel::floatToValue(newSDF);
-	voxel.w_depth = TVoxel::floatToWeight(newWeight,sceneParams.maxW);
+	voxel.w_depth = TVoxel::floatToWeight(newWeight, sceneParams.maxW);
 }
 
 /**
@@ -803,8 +818,8 @@ buildSpaceCarvingVisibleType(DEVICEPTR(HashEntryVisibilityType)* entriesVisibleT
 //	                      - fabs(1.0 / dot(normal_world, rayDirection_world)) * mu;
 	float carveDistance = ORUtils::length(pt_world - rayStart_world) - 1 * mu;
 	BlockTraversal blockTraversal_carving(rayStart_world, rayDirection_world, carveDistance,
-		voxelSize * SDF_BLOCK_SIZE, false);
-	while(blockTraversal_carving.HasNextBlock())
+	                                      voxelSize * SDF_BLOCK_SIZE, false);
+	while (blockTraversal_carving.HasNextBlock())
 	{
 		Vector3i blockPos = blockTraversal_carving.GetNextBlock();
 
@@ -815,8 +830,7 @@ buildSpaceCarvingVisibleType(DEVICEPTR(HashEntryVisibilityType)* entriesVisibleT
 				SetBlockVisibleType(hashTable, blockCoords, blockDirections, entriesVisibleType,
 				                    blockPos, TSDFDirection(direction));
 			}
-		}
-		else
+		} else
 		{
 			SetBlockVisibleType(hashTable, blockCoords, blockDirections, entriesVisibleType, blockPos);
 		}
@@ -851,7 +865,7 @@ buildHashAllocAndVisibleType(DEVICEPTR(HashEntryAllocType)* entriesAllocType,
                              Vector4f projParams_d, float mu, Vector2i imgSize, float voxelSize,
                              const CONSTPTR(ITMHashEntry)* hashTable, float viewFrustum_min, float viewFrustum_max,
                              const ITMFusionParams& fusionParams
-                             )
+)
 {
 	float depth_measure = depth[x + y * imgSize.x];
 	Vector4f normal_camera = depthNormal[x + y * imgSize.x];
@@ -892,7 +906,7 @@ buildHashAllocAndVisibleType(DEVICEPTR(HashEntryAllocType)* entriesAllocType,
 	ComputeDirectionWeights(normalWorld, weights);
 
 	Vector3i lastBlockPos(MAX_INT, MAX_INT, MAX_INT);
-	while(blockTraversalBefore.HasNextBlock() or blockTraversalBehind.HasNextBlock())
+	while (blockTraversalBefore.HasNextBlock() or blockTraversalBehind.HasNextBlock())
 	{
 		Vector3i voxelPos;
 		if (blockTraversalBefore.HasNextBlock())
@@ -911,13 +925,12 @@ buildHashAllocAndVisibleType(DEVICEPTR(HashEntryAllocType)* entriesAllocType,
 				if (weights[direction] < direction_weight_threshold)
 					continue;
 				SetBlockAllocAndVisibleType(hashTable, blockCoords, blockDirections, entriesAllocType, entriesVisibleType,
-					blockPos, TSDFDirection(direction));
+				                            blockPos, TSDFDirection(direction));
 			}
-		}
-		else
+		} else
 		{
 			SetBlockAllocAndVisibleType(hashTable, blockCoords, blockDirections, entriesAllocType, entriesVisibleType,
-				blockPos);
+			                            blockPos);
 		}
 		lastBlockPos = blockPos;
 	}
@@ -943,8 +956,7 @@ _CPU_AND_GPU_CODE_ inline void checkPointVisibility(THREADPTR(bool)& isVisible, 
 	{
 		isVisible = true;
 		isVisibleEnlarged = true;
-	}
-	else if (useSwapping)
+	} else if (useSwapping)
 	{
 		Vector4i lims;
 		lims.x = -imgSize.x / 8;
@@ -1018,13 +1030,13 @@ _CPU_AND_GPU_CODE_ inline void checkBlockVisibility(THREADPTR(bool)& isVisible, 
 
 template<bool useSwapping>
 _CPU_AND_GPU_CODE_
-void buildVisibleList(ITMHashEntry *hashTable, ITMHashSwapState *swapStates, int noTotalEntries,
-                      int *visibleEntryIDs, AllocationTempData *allocData, HashEntryVisibilityType *entriesVisibleType,
+void buildVisibleList(ITMHashEntry* hashTable, ITMHashSwapState* swapStates, int noTotalEntries,
+                      int* visibleEntryIDs, AllocationTempData* allocData, HashEntryVisibilityType* entriesVisibleType,
                       Matrix4f M_d, Vector4f projParams_d, Vector2i depthImgSize, float voxelSize,
                       int targetIdx)
 {
 	HashEntryVisibilityType hashVisibleType = entriesVisibleType[targetIdx];
-	const ITMHashEntry & hashEntry = hashTable[targetIdx];
+	const ITMHashEntry& hashEntry = hashTable[targetIdx];
 
 	if (hashVisibleType == PREVIOUSLY_VISIBLE)
 	{
@@ -1032,10 +1044,13 @@ void buildVisibleList(ITMHashEntry *hashTable, ITMHashSwapState *swapStates, int
 
 		if (useSwapping)
 		{
-			checkBlockVisibility<true>(isVisible, isVisibleEnlarged, hashEntry.pos, M_d, projParams_d, voxelSize, depthImgSize);
+			checkBlockVisibility<true>(isVisible, isVisibleEnlarged, hashEntry.pos, M_d, projParams_d, voxelSize,
+			                           depthImgSize);
 			if (!isVisibleEnlarged) hashVisibleType = INVISIBLE;
-		} else {
-			checkBlockVisibility<false>(isVisible, isVisibleEnlarged, hashEntry.pos, M_d, projParams_d, voxelSize, depthImgSize);
+		} else
+		{
+			checkBlockVisibility<false>(isVisible, isVisibleEnlarged, hashEntry.pos, M_d, projParams_d, voxelSize,
+			                            depthImgSize);
 			if (!isVisible) hashVisibleType = INVISIBLE;
 		}
 		entriesVisibleType[targetIdx] = hashVisibleType;
