@@ -109,8 +109,6 @@ void ITMMultiVisualisationEngine_CPU<TVoxel, TIndex>::RenderImage(const ORUtils:
 		Vector4f invProjParams = invertProjectionParams(projParams);
 
 		const Vector2f *minmaximg = renderState->renderingRangeImage->GetData(MEMORYDEVICE_CPU);
-		float mu = renderState->sceneParams.mu;
-		float oneOverVoxelSize = 1.0f / voxelSize;
 
 		typedef ITMMultiVoxel<TVoxel> VD;
 		typedef ITMMultiIndex<TIndex> ID;
@@ -124,7 +122,8 @@ void ITMMultiVisualisationEngine_CPU<TVoxel, TIndex>::RenderImage(const ORUtils:
 			int x = locId - y*imgSize.x;
 			int locId2 = (int)floor((float)x / minmaximg_subsample) + (int)floor((float)y / minmaximg_subsample) * imgSize.x;
 
-			castRay<VD, ID>(pointsRay[locId], &directionalContribution[locId], NULL, x, y, &renderState->voxelData_host, &renderState->indexData_host, invM, invProjParams, oneOverVoxelSize, mu, minmaximg[locId2],
+			castRay<VD, ID>(pointsRay[locId], &directionalContribution[locId], NULL, x, y, &renderState->voxelData_host,
+				&renderState->indexData_host, invM, invProjParams, renderState->sceneParams, minmaximg[locId2],
 				useDirectioal);
 		}
 	}

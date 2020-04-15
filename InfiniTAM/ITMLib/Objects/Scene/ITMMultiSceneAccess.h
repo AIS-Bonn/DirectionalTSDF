@@ -116,7 +116,7 @@ _CPU_AND_GPU_CODE_ inline Vector4f readFromSDF_color4u_interpolated(const TMulti
 
 template<class TMultiVoxel, class TMultiIndex>
 _CPU_AND_GPU_CODE_ inline float readWithConfidenceFromSDF_float_interpolated(THREADPTR(float) &confidence, const CONSTPTR(TMultiVoxel) *voxelData,
-	const CONSTPTR(TMultiIndex) *voxelIndex, Vector3f point, const TSDFDirection direction, THREADPTR(int) &vmIndex, ITMMultiCache & _cache)
+	const CONSTPTR(TMultiIndex) *voxelIndex, Vector3f point, const TSDFDirection direction, const int maxW, THREADPTR(int) &vmIndex, ITMMultiCache & _cache)
 {
 	typedef typename TMultiIndex::IndexType TIndex;
 
@@ -132,7 +132,7 @@ _CPU_AND_GPU_CODE_ inline float readWithConfidenceFromSDF_float_interpolated(THR
 		typename TIndex::IndexCache cache;
 
 		float conf;
-		float sdf = readWithConfidenceFromSDF_float_interpolated(conf, voxelData->voxels[localMapId], voxelIndex->index[localMapId], point_local, direction, vmIndex_tmp, cache);
+		float sdf = readWithConfidenceFromSDF_float_interpolated(conf, voxelData->voxels[localMapId], voxelIndex->index[localMapId], point_local, direction, maxW, vmIndex_tmp, cache);
 		
 		if (!vmIndex_tmp) continue;
 		vmIndex = true;

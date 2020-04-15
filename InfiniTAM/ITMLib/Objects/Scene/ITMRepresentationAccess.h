@@ -175,7 +175,7 @@ _CPU_AND_GPU_CODE_ inline float readFromSDF_float_interpolated(const CONSTPTR(TV
 
 template<class TVoxel, class TIndex, class TCache>
 _CPU_AND_GPU_CODE_ inline float readWithConfidenceFromSDF_float_interpolated(THREADPTR(float) &confidence, const CONSTPTR(TVoxel) *voxelData,
-	const CONSTPTR(TIndex) *voxelIndex, Vector3f point, const TSDFDirection direction, THREADPTR(int) &vmIndex, THREADPTR(TCache) & cache)
+	const CONSTPTR(TIndex) *voxelIndex, Vector3f point, const TSDFDirection direction, const int maxW, THREADPTR(int) &vmIndex, THREADPTR(TCache) & cache)
 {
 	float res1, res2, v1, v2;
 	float res1_c, res2_c, v1_c, v2_c;
@@ -205,8 +205,7 @@ _CPU_AND_GPU_CODE_ inline float readWithConfidenceFromSDF_float_interpolated(THR
 
 	vmIndex = true;
 
-	// FIXME: apply TVoxel::weightToFloat
-	confidence = (1.0f - coeff.z) * res1_c + coeff.z * res2_c;
+	confidence = TVoxel::weightToFloat((1.0f - coeff.z) * res1_c + coeff.z * res2_c, maxW);
 
 	return TVoxel::valueToFloat((1.0f - coeff.z) * res1 + coeff.z * res2);
 }

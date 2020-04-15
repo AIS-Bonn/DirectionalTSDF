@@ -200,7 +200,10 @@ ITMLibSettings::ITMLibSettings(const std::string& settingsFile)
 
 	const YAML::Node& voxelParamsNode = root["voxelSceneParams"];
 	if (voxelParamsNode["voxelSize"].IsDefined())
+	{
 		sceneParams.voxelSize = voxelParamsNode["voxelSize"].as<float>();
+		sceneParams.oneOverVoxelSize = 1 / sceneParams.voxelSize;
+	}
 	if (voxelParamsNode["truncationDistance"].IsDefined())
 		sceneParams.mu = voxelParamsNode["truncationDistance"].as<float>();
 	if (voxelParamsNode["maxWeight"].IsDefined())

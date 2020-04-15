@@ -38,7 +38,7 @@ namespace ITMLib
 	template<class TVoxel, class TIndex>
 	__global__ void genericRaycast_device(Vector4f *out_ptsRay, Vector6f *raycastDirectionalContribution, HashEntryVisibilityType *entriesVisibleType, const TVoxel *voxelData,
 		const typename TIndex::IndexData *voxelIndex, Vector2i imgSize, Matrix4f invM, Vector4f invProjParams,
-		float oneOverVoxelSize, const Vector2f *minmaximg, float mu, bool directionalTSDF)
+		const ITMSceneParams sceneParams, const Vector2f *minmaximg, bool directionalTSDF)
 	{
 		int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
 
@@ -47,7 +47,8 @@ namespace ITMLib
 		int locId = x + y * imgSize.x;
 		int locId2 = (int)floor((float)x / minmaximg_subsample) + (int)floor((float)y / minmaximg_subsample) * imgSize.x;
 
-		castRay<TVoxel, TIndex>(out_ptsRay[locId], &raycastDirectionalContribution[locId], entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams, oneOverVoxelSize, mu, minmaximg[locId2], directionalTSDF);
+		castRay<TVoxel, TIndex>(out_ptsRay[locId], &raycastDirectionalContribution[locId], entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams,
+			sceneParams, minmaximg[locId2], directionalTSDF);
 	}
 
 template<class TVoxel, class TIndex>
@@ -55,7 +56,7 @@ __global__ void genericRaycast_device(Vector4f* out_ptsRay, Vector6f* raycastDir
                                       HashEntryVisibilityType* entriesVisibleType, const TVoxel* voxelData,
                                       const typename TIndex::IndexData* voxelIndex, Vector2i imgSize,
                                       Matrix4f invM, Vector4f invProjParams,
-                                      float oneOverVoxelSize, const Vector2f* minmaximg, float mu,
+                                      const ITMSceneParams sceneParams, const Vector2f* minmaximg,
                                       TSDFDirection direction)
 {
 	int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
@@ -67,7 +68,7 @@ __global__ void genericRaycast_device(Vector4f* out_ptsRay, Vector6f* raycastDir
 
 	float distance;
 	castRayDefault<TVoxel, TIndex>(out_ptsRay[locId], distance, entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams,
-																					oneOverVoxelSize, mu, minmaximg[locId2], direction);
+																					sceneParams, minmaximg[locId2], direction);
 }
 
 
@@ -78,7 +79,7 @@ __global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, const
                                                      const TVoxel* voxelData,
                                                      const typename TIndex::IndexData* voxelIndex, Vector2i imgSize,
                                                      Matrix4f invM, Vector4f invProjParams,
-                                                     float oneOverVoxelSize, const Vector2f* minmaximg, float mu)
+                                                     const ITMSceneParams sceneParams, const Vector2f* minmaximg)
 {
 	int x = (threadIdx.x + blockIdx.x * blockDim.x);
 	int y = (threadIdx.y + blockIdx.y * blockDim.y);
@@ -86,13 +87,13 @@ __global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, const
 	if (x >= imgSize.x || y >= imgSize.y) return;
 
 	combineDirectionalPointClouds<true, false>(out_ptsRay, in_ptsRay, raycastDirectionalContribution, imgSize,
-		invM, invProjParams, x, y, 1 / oneOverVoxelSize);
+		invM, invProjParams, x, y, sceneParams.voxelSize);
 }
 
 	template<class TVoxel, class TIndex>
 	__global__ void genericRaycastMissingPoints_device(Vector4f *forwardProjection, Vector6f *raycastDirectionalContribution, HashEntryVisibilityType *entriesVisibleType, const TVoxel *voxelData,
-		const typename TIndex::IndexData *voxelIndex, Vector2i imgSize, Matrix4f invM, Vector4f invProjParams, float oneOverVoxelSize,
-		int *fwdProjMissingPoints, int noMissingPoints, const Vector2f *minmaximg, float mu, bool directionalTSDF)
+		const typename TIndex::IndexData *voxelIndex, Vector2i imgSize, Matrix4f invM, Vector4f invProjParams,
+		int *fwdProjMissingPoints, int noMissingPoints, const ITMSceneParams sceneParams, const Vector2f *minmaximg, bool directionalTSDF)
 	{
 		int pointId = threadIdx.x + blockIdx.x * blockDim.x;
 
@@ -102,7 +103,7 @@ __global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, const
 		int y = locId / imgSize.x, x = locId - y*imgSize.x;
 		int locId2 = (int)floor((float)x / minmaximg_subsample) + (int)floor((float)y / minmaximg_subsample) * imgSize.x;
 
-		castRay<TVoxel, TIndex>(forwardProjection[locId], &raycastDirectionalContribution[locId], entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams, oneOverVoxelSize, mu, minmaximg[locId2], directionalTSDF);
+		castRay<TVoxel, TIndex>(forwardProjection[locId], &raycastDirectionalContribution[locId], entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams, sceneParams, minmaximg[locId2], directionalTSDF);
 	}
 
 	template<bool flipNormals>

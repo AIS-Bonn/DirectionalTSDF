@@ -77,7 +77,12 @@ namespace ITMLib
 		float minColourGradient;
 		float viewFrustum_min, viewFrustum_max;
 		float tukeyCutOff;
-		int framesToSkip, framesToWeight;
+
+		/** minimum weight of pixel to be used for tracking */
+		int framesToSkip;
+
+		/** factor by which to divide pixel weight */
+		int framesToWeight;
 		int framesProcessed;
 
 		virtual int ComputeGandH_Depth(float &f, float *nabla, float *hessian, Matrix4f approxInvPose) = 0;

@@ -457,7 +457,7 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::ForwardRender(const ITMS
 		int locId2 = (int)floor((float)x / minmaximg_subsample) + (int)floor((float)y / minmaximg_subsample) * imgSize.x;
 
 		castRay<TVoxel, TIndex>(forwardProjection[locId], nullptr, nullptr, x, y, voxelData, voxelIndex, invM, invProjParams,
-			1.0f / scene->sceneParams->voxelSize, scene->sceneParams->mu, minmaximg[locId2],
+			*(scene->sceneParams), minmaximg[locId2],
 			this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL
 			);
 	}
@@ -471,8 +471,6 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::GenericRaycast(const ITM
                                                                        bool updateVisibleList) const
 {
 	const Vector2f *minmaximg = renderState->renderingRangeImage->GetData(MEMORYDEVICE_CPU);
-	float mu = scene->sceneParams->mu;
-	float oneOverVoxelSize = 1.0f / scene->sceneParams->voxelSize;
 	Vector4f *pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CPU);
 	Vector6f *directionalContribution = renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CPU);
 	const TVoxel *voxelData = scene->localVBA.GetVoxelBlocks();
@@ -510,8 +508,7 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::GenericRaycast(const ITM
 					voxelIndex,
 					invM,
 					invProjParams,
-					oneOverVoxelSize,
-					mu,
+					*(scene->sceneParams),
 					minmaximg[locId2],
 					TSDFDirection(directionIdx)
 				);
@@ -525,7 +522,7 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::GenericRaycast(const ITM
 			int x = locId - y * imgSize.x;
 
 			combineDirectionalPointClouds<true, false>(pointsRay, pointClouds, directionalContribution, imgSize,
-			                                           invM, invProjParams, x, y, 1 / oneOverVoxelSize);
+			                                           invM, invProjParams, x, y, scene->sceneParams->voxelSize);
 		}
 	} else{
 		for (int locId = 0; locId < imgSize.x*imgSize.y; ++locId)
@@ -543,8 +540,7 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::GenericRaycast(const ITM
 				voxelIndex,
 				invM,
 				invProjParams,
-				oneOverVoxelSize,
-				mu,
+				*(scene->sceneParams),
 				minmaximg[locId2],
 				this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL
 			);

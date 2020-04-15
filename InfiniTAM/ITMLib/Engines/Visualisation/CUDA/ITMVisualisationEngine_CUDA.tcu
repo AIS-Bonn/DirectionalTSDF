@@ -187,9 +187,6 @@ void ITMVisualisationEngine_CUDA<TVoxel, ITMVoxelBlockHash>::CreateExpectedDepth
 template <class TVoxel, class TIndex>
 void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::GenericRaycast(const ITMScene<TVoxel, TIndex> *scene, const Vector2i& imgSize, const Matrix4f& invM, const Vector4f& projParams, const ITMRenderState *renderState, bool updateVisibleList) const
 {
-	float voxelSize = scene->sceneParams->voxelSize;
-	float oneOverVoxelSize = 1.0f / voxelSize;
-
 	HashEntryVisibilityType *entriesVisibleType = NULL;
 	if (updateVisibleList&&(dynamic_cast<const ITMRenderState_VH*>(renderState)!=NULL))
 	{
@@ -213,9 +210,8 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::GenericRaycast(const IT
 					imgSize,
 					invM,
 					invertProjectionParams(projParams),
-					oneOverVoxelSize,
+					*(scene->sceneParams),
 					renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA),
-					scene->sceneParams->mu,
 					TSDFDirection(directionIdx)
 			);
 			ORcudaKernelCheck;
@@ -231,9 +227,8 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::GenericRaycast(const IT
 				imgSize,
 				invM,
 				invertProjectionParams(projParams),
-				oneOverVoxelSize,
-				renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA),
-				scene->sceneParams->mu
+				*(scene->sceneParams),
+				renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA)
 		);
 		ORcudaKernelCheck;
 	}
@@ -248,9 +243,8 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::GenericRaycast(const IT
 				imgSize,
 				invM,
 				invertProjectionParams(projParams),
-				oneOverVoxelSize,
+				*(scene->sceneParams),
 				renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA),
-				scene->sceneParams->mu,
 				this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL
 		);
 		ORcudaKernelCheck;
@@ -355,7 +349,6 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::ForwardRender(const ITM
 	Vector4f *forwardProjection = renderState->forwardProjection->GetData(MEMORYDEVICE_CUDA);
 	int *fwdProjMissingPoints = renderState->fwdProjMissingPoints->GetData(MEMORYDEVICE_CUDA);
 	const Vector2f *minmaximg = renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA);
-	float oneOverVoxelSize = 1.0f / scene->sceneParams->voxelSize;
 	float voxelSize = scene->sceneParams->voxelSize;
 	const TVoxel *voxelData = scene->localVBA.GetVoxelBlocks();
 	const typename TIndex::IndexData *voxelIndex = scene->index.getIndexData();
@@ -397,7 +390,9 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::ForwardRender(const ITM
 			voxelIndex,
 			imgSize,
 			invM,
-			invertProjectionParams(projParams), oneOverVoxelSize, fwdProjMissingPoints, renderState->noFwdProjMissingPoints, minmaximg, scene->sceneParams->mu,
+			invertProjectionParams(projParams),
+			fwdProjMissingPoints, renderState->noFwdProjMissingPoints,
+			*(scene->sceneParams), minmaximg,
 			this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL
 			);
 		ORcudaKernelCheck;

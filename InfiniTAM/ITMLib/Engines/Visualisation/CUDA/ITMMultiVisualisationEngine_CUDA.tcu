@@ -99,9 +99,6 @@ void ITMMultiVisualisationEngine_CUDA<TVoxel, TIndex>::RenderImage(const ORUtils
 	// Generic Raycast
 	{
 		Vector4f projParams = intrinsics->projectionParamsSimple.all;
-		float voxelSize = renderState->sceneParams.voxelSize;
-		float oneOverVoxelSize = 1.0f / voxelSize;
-		float mu = renderState->sceneParams.mu;
 
 		dim3 cudaBlockSize(16, 12);
 		dim3 gridSize((int)ceil((float)imgSize.x / (float)cudaBlockSize.x), (int)ceil((float)imgSize.y / (float)cudaBlockSize.y));
@@ -116,9 +113,8 @@ void ITMMultiVisualisationEngine_CUDA<TVoxel, TIndex>::RenderImage(const ORUtils
 			imgSize,
 			invM,
 			invertProjectionParams(projParams),
-			oneOverVoxelSize,
+			renderState->sceneParams,
 			renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA),
-			mu,
 			useDirectional
 			);
 		ORcudaKernelCheck;

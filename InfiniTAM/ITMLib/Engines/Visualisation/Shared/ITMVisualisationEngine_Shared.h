@@ -128,7 +128,7 @@ forwardProjectPixel(Vector4f pixel, const CONSTPTR(Matrix4f)& M, const CONSTPTR(
 
 template<class TVoxel, class TIndex>
 _CPU_AND_GPU_CODE_ inline void computeNormalAndAngle(THREADPTR(bool)& foundPoint, const THREADPTR(Vector3f)& point,
-                                                     const Vector6f *directionalContribution,
+                                                     const Vector6f* directionalContribution,
                                                      const CONSTPTR(TVoxel)* voxelBlockData,
                                                      const CONSTPTR(typename TIndex::IndexData)* indexData,
                                                      const THREADPTR(Vector3f)& lightSource,
@@ -142,11 +142,12 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndAngle(THREADPTR(bool)& foundPoint
 		for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
 		{
 			if (directionalContribution->v[direction] > 0)
-				outNormal += directionalContribution->v[direction] * computeSingleNormalFromSDF(voxelBlockData, indexData, point, TSDFDirection(direction)).normalised();
+				outNormal += directionalContribution->v[direction] *
+				             computeSingleNormalFromSDF(voxelBlockData, indexData, point,
+				                                        TSDFDirection(direction)).normalised();
 		}
 		outNormal = outNormal.normalised();
-	}
-	else
+	} else
 	{
 		outNormal = computeSingleNormalFromSDF(voxelBlockData, indexData, point, TSDFDirection::NONE).normalised();
 	}
@@ -280,7 +281,7 @@ _CPU_AND_GPU_CODE_ inline void drawPixelNormal(DEVICEPTR(Vector4u)& dest, const 
 
 template<class TVoxel, class TIndex>
 _CPU_AND_GPU_CODE_ inline void drawPixelColourDirectional(
-	DEVICEPTR(Vector4u)& dest, const CONSTPTR(Vector3f)& point, const Vector6f &directionalContribution,
+	DEVICEPTR(Vector4u)& dest, const CONSTPTR(Vector3f)& point, const Vector6f& directionalContribution,
 	const CONSTPTR(TVoxel)* voxelBlockData, const CONSTPTR(typename TIndex::IndexData)* indexData)
 {
 	dest.x = 0;
@@ -299,7 +300,7 @@ _CPU_AND_GPU_CODE_ inline void drawPixelColourDirectional(
 	// Debugging: color in contributing directions
 	for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
 	{
-		const Vector3f &clr = directionColors[direction];
+		const Vector3f& clr = directionColors[direction];
 		dest.x += (uchar) MIN(clr.x * 255.0f * directionalContribution[direction], 255.0f);
 		dest.y += (uchar) MIN(clr.y * 255.0f * directionalContribution[direction], 255.0f);
 		dest.z += (uchar) MIN(clr.z * 255.0f * directionalContribution[direction], 255.0f);
@@ -352,32 +353,35 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
                                               DEVICEPTR(HashEntryVisibilityType)* entriesVisibleType,
                                               int x, int y, const CONSTPTR(TVoxel)* voxelData,
                                               const CONSTPTR(typename TIndex::IndexData)* voxelIndex,
-                                              Matrix4f invM, Vector4f invProjParams, float oneOverVoxelSize, float mu,
-                                              const CONSTPTR(Vector2f)& viewFrustum_minmax,
-                                              const TSDFDirection direction=TSDFDirection::NONE,
-                                              float maxDistance=-1)
+                                              Matrix4f invM, Vector4f invProjParams,
+                                              const ITMSceneParams& sceneParams,
+                                              const CONSTPTR(Vector2f)& minMaxImg,
+                                              const TSDFDirection direction = TSDFDirection::NONE,
+                                              float maxDistance = -1)
 {
-	Vector4f pt_camera_f; Vector3f pt_block_s, pt_block_e, rayDirection, pt_result;
-	int vmIndex;
+	Vector4f pt_camera_f;
+	Vector3f pt_block_s, pt_block_e, rayDirection, pt_result;
+	int vmIndex = 0;
 	float sdfValue = 1.0f, confidence = 0;
 	float totalLength, stepLength, totalLengthMax, stepScale;
 
 	pt_out = Vector4f(0, 0, 0, 0);
 
-	stepScale = mu * oneOverVoxelSize;
+	stepScale = sceneParams.mu * sceneParams.oneOverVoxelSize;
 
-	pt_camera_f = Vector4f(reprojectImagePoint(x, y, viewFrustum_minmax.x, invProjParams), 1.0f);
-	totalLength = length(TO_VECTOR3(pt_camera_f)) * oneOverVoxelSize;
-	pt_block_s = TO_VECTOR3(invM * pt_camera_f) * oneOverVoxelSize;
+	pt_camera_f = Vector4f(reprojectImagePoint(x, y, minMaxImg.x, invProjParams), 1.0f);
+	totalLength = length(TO_VECTOR3(pt_camera_f)) * sceneParams.oneOverVoxelSize;
+	pt_block_s = TO_VECTOR3(invM * pt_camera_f) * sceneParams.oneOverVoxelSize;
 
 	pt_camera_f = Vector4f(reprojectImagePoint(x, y,
-		maxDistance > 0 ? maxDistance : viewFrustum_minmax.y,
-		invProjParams), 1.0f);
-	totalLengthMax = length(TO_VECTOR3(pt_camera_f)) * oneOverVoxelSize;
-	pt_block_e = TO_VECTOR3(invM * pt_camera_f) * oneOverVoxelSize;
+	                                           maxDistance > 0 ? maxDistance : minMaxImg.y,
+	                                           invProjParams), 1.0f);
+	totalLengthMax = length(TO_VECTOR3(pt_camera_f)) * sceneParams.oneOverVoxelSize;
+	pt_block_e = TO_VECTOR3(invM * pt_camera_f) * sceneParams.oneOverVoxelSize;
 
 	rayDirection = pt_block_e - pt_block_s;
-	float direction_norm = 1.0f / sqrt(rayDirection.x * rayDirection.x + rayDirection.y * rayDirection.y + rayDirection.z * rayDirection.z);
+	float direction_norm =
+		1.0f / sqrt(rayDirection.x * rayDirection.x + rayDirection.y * rayDirection.y + rayDirection.z * rayDirection.z);
 	rayDirection *= direction_norm;
 
 	pt_result = pt_block_s;
@@ -385,7 +389,8 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 	typename TIndex::IndexCache cache;
 
 	float lastSDFValue = sdfValue;
-	while (totalLength < totalLengthMax) {
+	while (totalLength < totalLengthMax)
+	{
 		sdfValue = readFromSDF_float_uninterpolated(voxelData, voxelIndex, pt_result, direction, vmIndex, cache);
 
 		if (entriesVisibleType)
@@ -393,13 +398,16 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 			if (vmIndex) entriesVisibleType[vmIndex - 1] = VISIBLE_IN_MEMORY;
 		}
 
-		if (!vmIndex) {
+		if (!vmIndex)
+		{
 			stepLength = SDF_BLOCK_SIZE;
-		} else {
-			if ((sdfValue <= 0.1f) && (sdfValue >= -0.5f)) {
+		} else
+		{
+			if ((sdfValue <= 0.1f) && (sdfValue >= -0.5f))
+			{
 				sdfValue = readFromSDF_float_interpolated(voxelData, voxelIndex, pt_result, direction, vmIndex, cache);
 			}
-			if (lastSDFValue > 0 and sdfValue <= 0)// and lastSDFValue - sdfValue < 1.1)
+			if (lastSDFValue > 0 and sdfValue <= 0)// and lastSDFValue - sdfValue < 1.5)
 			{
 				break;
 			}
@@ -407,13 +415,14 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 		}
 
 		lastSDFValue = sdfValue;
-		pt_result += stepLength * rayDirection; totalLength += stepLength;
+		pt_result += stepLength * rayDirection;
+		totalLength += stepLength;
 	}
 
-	// Perform 2 additional steps to get more accurate zero crossing
 	if (sdfValue > 0.0f)
 		return false;
 
+	// Perform 2 additional steps to get more accurate zero crossing
 	for (int i = 0; i < 2 or (i < 5 and fabs(sdfValue) > 1e-6); i++)
 	{
 		lastSDFValue = sdfValue;
@@ -421,7 +430,9 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 		pt_result += stepLength * rayDirection;
 		totalLength += stepLength;
 
-		sdfValue = readWithConfidenceFromSDF_float_interpolated(confidence, voxelData, voxelIndex, pt_result, direction, vmIndex, cache);
+		sdfValue = readWithConfidenceFromSDF_float_interpolated(confidence, voxelData, voxelIndex,
+		                                                        pt_result, direction, sceneParams.maxW,
+		                                                        vmIndex, cache);
 
 		// Compensate sign hopping with little to no reduction in magnitude (steep angles)
 		float reductionFactor = (fabs(sdfValue) - fabs(lastSDFValue)) / fabs(lastSDFValue);
@@ -433,40 +444,47 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 	}
 
 	if (fabs(sdfValue) > 0.1)
+	{
 		return false;
+	}
 
-	distance_out = totalLength / oneOverVoxelSize;
+	distance_out = totalLength / sceneParams.oneOverVoxelSize;
+	// multiply by transition: negative transition <=> negative confidence!
 	pt_out = Vector4f(pt_result, confidence + 1.0f);
 
 	return true;
 }
 
 template<class TVoxel, class TIndex>
-_CPU_AND_GPU_CODE_ inline bool castRayDirectional2(DEVICEPTR(Vector4f) &pt_out, Vector6f *directionalContribution,
-                                                  DEVICEPTR(HashEntryVisibilityType) *entriesVisibleType,
-                                                  int x, int y, const CONSTPTR(TVoxel) *voxelData,
-                                                  const CONSTPTR(typename TIndex::IndexData) *voxelIndex,
-                                                  Matrix4f invM, Vector4f invProjParams, float oneOverVoxelSize, float mu, const CONSTPTR(Vector2f) & viewFrustum_minmax)
+_CPU_AND_GPU_CODE_ inline bool castRayDirectional2(DEVICEPTR(Vector4f)& pt_out, Vector6f* directionalContribution,
+                                                   DEVICEPTR(HashEntryVisibilityType)* entriesVisibleType,
+                                                   int x, int y, const CONSTPTR(TVoxel)* voxelData,
+                                                   const CONSTPTR(typename TIndex::IndexData)* voxelIndex,
+                                                   Matrix4f invM, Vector4f invProjParams,
+                                                   const ITMSceneParams& sceneParams,
+                                                   const CONSTPTR(Vector2f)& minMaxImg)
 {
-	Vector4f pt_camera_f; Vector3f pt_block_s, pt_block_e, rayDirection, pt_result;
+	Vector4f pt_camera_f;
+	Vector3f pt_block_s, pt_block_e, rayDirection, pt_result;
 	float totalLength, totalLengthMax, stepScale;
 
 	pt_out = Vector4f(0, 0, 0, 0);
 
-	stepScale = mu * oneOverVoxelSize;
+	stepScale = sceneParams.mu * sceneParams.oneOverVoxelSize;
 
-	pt_camera_f = Vector4f(reprojectImagePoint(x, y, viewFrustum_minmax.x, invProjParams), 1.0f);
-	totalLength = length(TO_VECTOR3(pt_camera_f)) * oneOverVoxelSize;
-	pt_block_s = TO_VECTOR3(invM * pt_camera_f) * oneOverVoxelSize;
+	pt_camera_f = Vector4f(reprojectImagePoint(x, y, minMaxImg.x, invProjParams), 1.0f);
+	totalLength = length(TO_VECTOR3(pt_camera_f)) * sceneParams.oneOverVoxelSize;
+	pt_block_s = TO_VECTOR3(invM * pt_camera_f) * sceneParams.oneOverVoxelSize;
 
 	pt_camera_f = Vector4f(reprojectImagePoint(x, y,
-	                                           viewFrustum_minmax.y,
+	                                           minMaxImg.y,
 	                                           invProjParams), 1.0f);
-	totalLengthMax = length(TO_VECTOR3(pt_camera_f)) * oneOverVoxelSize;
-	pt_block_e = TO_VECTOR3(invM * pt_camera_f) * oneOverVoxelSize;
+	totalLengthMax = length(TO_VECTOR3(pt_camera_f)) * sceneParams.oneOverVoxelSize;
+	pt_block_e = TO_VECTOR3(invM * pt_camera_f) * sceneParams.oneOverVoxelSize;
 
 	rayDirection = pt_block_e - pt_block_s;
-	float direction_norm = 1.0f / sqrt(rayDirection.x * rayDirection.x + rayDirection.y * rayDirection.y + rayDirection.z * rayDirection.z);
+	float direction_norm =
+		1.0f / sqrt(rayDirection.x * rayDirection.x + rayDirection.y * rayDirection.y + rayDirection.z * rayDirection.z);
 	rayDirection *= direction_norm;
 
 	pt_result = pt_block_s;
@@ -478,21 +496,27 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional2(DEVICEPTR(Vector4f) &pt_out, 
 	typename TIndex::IndexCache cache[N_DIRECTIONS];
 	float stepLength = SDF_BLOCK_SIZE;
 	TSDFDirection_type firstCrossingDirection = static_cast<TSDFDirection_type>(TSDFDirection::NONE);
-	while (totalLength < totalLengthMax) {
+	while (totalLength < totalLengthMax)
+	{
 		bool foundZeroCrossing = false;
 		int numReadableValues = 0;
 		for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
 		{
 			const auto direction = TSDFDirection(directionIdx);
 
-			sdfValues[directionIdx] = readFromSDF_float_uninterpolated(voxelData, voxelIndex, pt_result, direction, vmIndex, cache[directionIdx]);
+			sdfValues[directionIdx] = readFromSDF_float_uninterpolated(voxelData, voxelIndex, pt_result, direction, vmIndex,
+			                                                           cache[directionIdx]);
 
-			if (vmIndex) {
+			if (vmIndex)
+			{
 				numReadableValues++;
 				float confidence = 0;
-				if (sdfValues[directionIdx] <= 0.5 and sdfValues[directionIdx] >= -0.5) {
-					sdfValues[directionIdx] = readWithConfidenceFromSDF_float_interpolated(confidence, voxelData, voxelIndex, pt_result,
-					                                                           TSDFDirection(directionIdx), vmIndex, cache[directionIdx]);
+				if (sdfValues[directionIdx] <= 0.5 and sdfValues[directionIdx] >= -0.5)
+				{
+					sdfValues[directionIdx] = readWithConfidenceFromSDF_float_interpolated(confidence, voxelData, voxelIndex,
+					                                                                       pt_result, TSDFDirection(directionIdx),
+					                                                                       sceneParams.maxW,
+					                                                                       vmIndex, cache[directionIdx]);
 				}
 				if (lastSDFValues[directionIdx] > 0 and sdfValues[directionIdx] <= 0)
 				{
@@ -531,14 +555,16 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional2(DEVICEPTR(Vector4f) &pt_out, 
 	{
 		float confidence = 0;
 		sdfValues[directionIdx] = readWithConfidenceFromSDF_float_interpolated(confidence, voxelData, voxelIndex, pt_result,
-		                                                                       TSDFDirection(directionIdx), vmIndex, cache[directionIdx]);
+		                                                                       TSDFDirection(directionIdx),
+		                                                                       sceneParams.maxW,
+		                                                                       vmIndex, cache[directionIdx]);
 		if (confidence == 0)
 		{
 			weights[directionIdx] = 0;
 			continue;
 		}
 		gradients[directionIdx] = computeSingleNormalFromSDF(voxelData, voxelIndex, pt_result,
-			TSDFDirection(directionIdx)).normalised();
+		                                                     TSDFDirection(directionIdx)).normalised();
 		confidence *= DirectionWeight(gradients[directionIdx], TSDFDirection(directionIdx));
 		confidence *= SIGN(dot(gradients[directionIdx], -rayDirection));
 
@@ -577,7 +603,9 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional2(DEVICEPTR(Vector4f) &pt_out, 
 			weights[directionIdx] = 0; // check NaN
 	}
 
-	stepScale =  mu * oneOverVoxelSize / MAX(fabs(dot(gradients[firstCrossingDirection], rayDirection)), 0.5); // Adapt step scale to angle between surface and observation ray
+	stepScale =
+		sceneParams.mu * sceneParams.oneOverVoxelSize / MAX(fabs(dot(gradients[firstCrossingDirection], rayDirection)),
+		                                                    0.5); // Adapt step scale to angle between surface and observation ray
 
 	float dbg_[10];
 	float dbg2_[10];
@@ -590,14 +618,16 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional2(DEVICEPTR(Vector4f) &pt_out, 
 	{
 		lastSDFValue = sdfValue;
 		sdfValue = 0;
-    weightSum = 0;
+		weightSum = 0;
 		for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
 		{
 			if (weights[directionIdx] < direction_weight_threshold) continue;
 
 			float confidence = 0;
 			float value = readWithConfidenceFromSDF_float_interpolated(confidence, voxelData, voxelIndex, pt_result,
-				TSDFDirection(directionIdx), vmIndex, cache[directionIdx]);
+			                                                           TSDFDirection(directionIdx),
+			                                                           sceneParams.maxW,
+			                                                           vmIndex, cache[directionIdx]);
 
 			if (confidence == 0)
 			{
@@ -646,17 +676,19 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional2(DEVICEPTR(Vector4f) &pt_out, 
  * @param directionalContribution vector of floats that holds the proportional contribution of every direction to the pixel
  */
 template<class TVoxel, class TIndex>
-_CPU_AND_GPU_CODE_ inline bool castRayDirectional(DEVICEPTR(Vector4f) &pt_out, Vector6f *directionalContribution,
-	                                                DEVICEPTR(HashEntryVisibilityType) *entriesVisibleType,
-                                                  int x, int y, const CONSTPTR(TVoxel) *voxelData,
-                                                  const CONSTPTR(typename TIndex::IndexData) *voxelIndex,
-                                                  Matrix4f invM, Vector4f invProjParams, float oneOverVoxelSize, float mu, const CONSTPTR(Vector2f) & viewFrustum_minmax)
+_CPU_AND_GPU_CODE_ inline bool castRayDirectional(DEVICEPTR(Vector4f)& pt_out, Vector6f* directionalContribution,
+                                                  DEVICEPTR(HashEntryVisibilityType)* entriesVisibleType,
+                                                  int x, int y, const CONSTPTR(TVoxel)* voxelData,
+                                                  const CONSTPTR(typename TIndex::IndexData)* voxelIndex,
+                                                  Matrix4f invM, Vector4f invProjParams,
+                                                  const ITMSceneParams& sceneParams,
+                                                  const CONSTPTR(Vector2f)& minMaxImg)
 {
-	Vector3f ptStart_camera = reprojectImagePoint(x, y, viewFrustum_minmax.x, invProjParams);
-	Vector3f ptStart_world = (invM * Vector4f(ptStart_camera, 1.0f)).toVector3() * oneOverVoxelSize;
+	Vector3f ptStart_camera = reprojectImagePoint(x, y, minMaxImg.x, invProjParams);
+	Vector3f ptStart_world = (invM * Vector4f(ptStart_camera, 1.0f)).toVector3() * sceneParams.oneOverVoxelSize;
 
-	Vector3f ptEnd_camera = reprojectImagePoint(x, y, viewFrustum_minmax.y, invProjParams);
-	Vector3f ptEnd_world = (invM * Vector4f(ptEnd_camera, 1.0f)).toVector3() * oneOverVoxelSize;
+	Vector3f ptEnd_camera = reprojectImagePoint(x, y, minMaxImg.y, invProjParams);
+	Vector3f ptEnd_world = (invM * Vector4f(ptEnd_camera, 1.0f)).toVector3() * sceneParams.oneOverVoxelSize;
 
 	Vector3f rayDirection_world = (ptEnd_world - ptStart_world).normalised();
 
@@ -679,7 +711,8 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional(DEVICEPTR(Vector4f) &pt_out, V
 	int opositeIdx = 2 * (maxIdx / 2) + (1 - maxIdx % 2);
 
 	const float MAX_LENGTH = 1e9;
-	float directionIntersectionLength[N_DIRECTIONS] = {MAX_LENGTH, MAX_LENGTH, MAX_LENGTH, MAX_LENGTH, MAX_LENGTH, MAX_LENGTH};
+	float directionIntersectionLength[N_DIRECTIONS] = {MAX_LENGTH, MAX_LENGTH, MAX_LENGTH, MAX_LENGTH, MAX_LENGTH,
+	                                                   MAX_LENGTH};
 	float directionIntersectionWeight[N_DIRECTIONS] = {0, 0, 0, 0, 0, 0};
 	Vector3f directionIntersectionPoint[N_DIRECTIONS];
 	Vector3f directionIntersectionNormal[N_DIRECTIONS];
@@ -691,10 +724,10 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional(DEVICEPTR(Vector4f) &pt_out, V
 		Vector4f point;
 		float distance = -1;
 		if (castRayDefault<TVoxel, TIndex>(
-				point, distance,
-				entriesVisibleType, x, y, voxelData, voxelIndex,
-				invM, invProjParams, oneOverVoxelSize, mu, viewFrustum_minmax, TSDFDirection(directionIdx),
-				maxIntersectionLength > 0 ? maxIntersectionLength + SDF_BLOCK_SIZE / oneOverVoxelSize : -1))
+			point, distance,
+			entriesVisibleType, x, y, voxelData, voxelIndex,
+			invM, invProjParams, sceneParams, minMaxImg, TSDFDirection(directionIdx),
+			maxIntersectionLength > 0 ? maxIntersectionLength + SDF_BLOCK_SIZE / sceneParams.oneOverVoxelSize : -1))
 		{
 			maxIntersectionLength = MAX(maxIntersectionLength, distance);
 #if 1
@@ -734,7 +767,7 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional(DEVICEPTR(Vector4f) &pt_out, V
 	for (TSDFDirection_type idx = 0; idx < N_DIRECTIONS; idx++)
 	{
 		if (directionIntersectionLength[idx] - shortestIntersectionLength > 0 and
-		directionIntersectionLength[idx] - currentIntersectionLength < SDF_BLOCK_SIZE)
+		    directionIntersectionLength[idx] - currentIntersectionLength < SDF_BLOCK_SIZE)
 		{
 			shortestIntersectionLength = directionIntersectionLength[idx];
 			shortestIntersectionIdx = idx;
@@ -779,26 +812,33 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional(DEVICEPTR(Vector4f) &pt_out, V
 }
 
 template<class TVoxel, class TIndex>
-_CPU_AND_GPU_CODE_ inline bool castRay(DEVICEPTR(Vector4f) &pt_out, Vector6f *directionalContribution, DEVICEPTR(HashEntryVisibilityType) *entriesVisibleType,
-                                       int x, int y, const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(typename TIndex::IndexData) *voxelIndex,
-                                       Matrix4f invM, Vector4f invProjParams, float oneOverVoxelSize, float mu, const CONSTPTR(Vector2f) & viewFrustum_minmax,
+_CPU_AND_GPU_CODE_ inline bool castRay(DEVICEPTR(Vector4f)& pt_out, Vector6f* directionalContribution,
+                                       DEVICEPTR(HashEntryVisibilityType)* entriesVisibleType,
+                                       int x, int y, const CONSTPTR(TVoxel)* voxelData,
+                                       const CONSTPTR(typename TIndex::IndexData)* voxelIndex,
+                                       Matrix4f invM, Vector4f invProjParams,
+                                       const ITMSceneParams& sceneParams,
+                                       const Vector2f& minMaxImg,
                                        bool directionalTSDF)
 {
 	float distance;
 	if (directionalTSDF)
-//		return castRayDirectional<TVoxel, TIndex>(pt_out, directionalContribution, entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams, oneOverVoxelSize, mu, viewFrustum_minmax);
-		return castRayDirectional2<TVoxel, TIndex>(pt_out, directionalContribution, entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams, oneOverVoxelSize, mu, viewFrustum_minmax);
+//		return castRayDirectional<TVoxel, TIndex>(pt_out, directionalContribution, entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams, sceneParams, minMaxImg);
+		return castRayDirectional2<TVoxel, TIndex>(pt_out, directionalContribution, entriesVisibleType, x, y, voxelData,
+		                                           voxelIndex, invM, invProjParams, sceneParams, minMaxImg);
 //		return castRayDefault<TVoxel, TIndex>(pt_out, distance, entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams,
-//																					oneOverVoxelSize, mu, viewFrustum_minmax, TSDFDirection::Z_NEG);
+//																					sceneParams, minMaxImg, TSDFDirection::Z_NEG);
 	else
-		return castRayDefault<TVoxel, TIndex>(pt_out, distance, entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams,
-	                                      oneOverVoxelSize, mu, viewFrustum_minmax);
+		return castRayDefault<TVoxel, TIndex>(pt_out, distance, entriesVisibleType, x, y, voxelData, voxelIndex, invM,
+		                                      invProjParams, sceneParams, minMaxImg);
 }
 
 template<class TVoxel, class TIndex>
-_CPU_AND_GPU_CODE_ inline void processPixelICP(DEVICEPTR(Vector4f) &pointsMap, DEVICEPTR(Vector4f) &normalsMap,
-	const THREADPTR(Vector3f) & point, bool foundPoint, const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(typename TIndex::IndexData) *voxelIndex,
-	float voxelSize, const THREADPTR(Vector3f) &lightSource)
+_CPU_AND_GPU_CODE_ inline void processPixelICP(DEVICEPTR(Vector4f)& pointsMap, DEVICEPTR(Vector4f)& normalsMap,
+                                               const THREADPTR(Vector3f)& point, bool foundPoint,
+                                               const CONSTPTR(TVoxel)* voxelData,
+                                               const CONSTPTR(typename TIndex::IndexData)* voxelIndex,
+                                               float voxelSize, const THREADPTR(Vector3f)& lightSource)
 {
 	Vector3f outNormal;
 	float angle;
@@ -808,26 +848,34 @@ _CPU_AND_GPU_CODE_ inline void processPixelICP(DEVICEPTR(Vector4f) &pointsMap, D
 	if (foundPoint)
 	{
 		Vector4f outPoint4;
-		outPoint4.x = point.x * voxelSize; outPoint4.y = point.y * voxelSize;
-		outPoint4.z = point.z * voxelSize; outPoint4.w = 1.0f;
+		outPoint4.x = point.x * voxelSize;
+		outPoint4.y = point.y * voxelSize;
+		outPoint4.z = point.z * voxelSize;
+		outPoint4.w = 1.0f;
 		pointsMap = outPoint4;
 
 		Vector4f outNormal4;
-		outNormal4.x = outNormal.x; outNormal4.y = outNormal.y; outNormal4.z = outNormal.z; outNormal4.w = 0.0f;
+		outNormal4.x = outNormal.x;
+		outNormal4.y = outNormal.y;
+		outNormal4.z = outNormal.z;
+		outNormal4.w = 0.0f;
 		normalsMap = outNormal4;
-	}
-	else
+	} else
 	{
 		Vector4f out4;
-		out4.x = 0.0f; out4.y = 0.0f; out4.z = 0.0f; out4.w = -1.0f;
+		out4.x = 0.0f;
+		out4.y = 0.0f;
+		out4.z = 0.0f;
+		out4.w = -1.0f;
 
-		pointsMap = out4; normalsMap = out4;
+		pointsMap = out4;
+		normalsMap = out4;
 	}
 }
 
 template<typename T>
 _CPU_AND_GPU_CODE_
-inline void insertionSort(const T *in, T *out, size_t *outIds, size_t length)
+inline void insertionSort(const T* in, T* out, size_t* outIds, size_t length)
 {
 	for (size_t idx = 0; idx < length; idx++)
 	{
@@ -846,7 +894,7 @@ inline void insertionSort(const T *in, T *out, size_t *outIds, size_t length)
 
 _CPU_AND_GPU_CODE_
 inline void findBestCluster(const float* distances, const float* confidences, const Vector3f* normals,
-	int *clusterOutput, Vector3f &clusterNormalOutput)
+                            int* clusterOutput, Vector3f& clusterNormalOutput)
 {
 	float distancesSorted[N_DIRECTIONS];
 	size_t distancesSortedIds[N_DIRECTIONS];
@@ -875,7 +923,7 @@ inline void findBestCluster(const float* distances, const float* confidences, co
 
 		if (confidence > interClusterMaxConfidence)
 		{
-			clusterNormals[numClusters -1] = normals[distancesSortedIds[idx]];
+			clusterNormals[numClusters - 1] = normals[distancesSortedIds[idx]];
 			interClusterMaxConfidence = confidence;
 		}
 
@@ -892,7 +940,7 @@ inline void findBestCluster(const float* distances, const float* confidences, co
 		}
 	}
 
-	for (int i = 0; i < N_DIRECTIONS; i++)
+	for (uchar i = 0; i < N_DIRECTIONS; i++)
 		clusterOutput[i] = -1;
 
 	if (bestCluster < 0 or clusterConfidences[bestCluster] <= 0)
@@ -909,18 +957,19 @@ inline void findBestCluster(const float* distances, const float* confidences, co
 	clusterNormalOutput = clusterNormals[bestCluster];
 }
 
-struct InputPointClouds{
-	Vector4f *pointCloud[N_DIRECTIONS];
+struct InputPointClouds
+{
+	Vector4f* pointCloud[N_DIRECTIONS];
 };
 
 template<bool useSmoothing, bool flipNormals>
 _CPU_AND_GPU_CODE_ inline void combineDirectionalPointClouds(
-	DEVICEPTR(Vector4f) *outputPointCloud,
-  const InputPointClouds &inputPointClouds,
-	DEVICEPTR(Vector6f) *directionalContribution,
-  const THREADPTR(Vector2i) &imgSize,
-  const Matrix4f &invM, const Vector4f &invProjParams,
-  const THREADPTR(int) &x, const THREADPTR(int) &y, float voxelSize)
+	DEVICEPTR(Vector4f)* outputPointCloud,
+	const InputPointClouds& inputPointClouds,
+	DEVICEPTR(Vector6f)* directionalContribution,
+	const THREADPTR(Vector2i)& imgSize,
+	const Matrix4f& invM, const Vector4f& invProjParams,
+	const THREADPTR(int)& x, const THREADPTR(int)& y, float voxelSize)
 {
 	int locId = x + y * imgSize.x;
 
@@ -993,9 +1042,9 @@ _CPU_AND_GPU_CODE_ inline void combineDirectionalPointClouds(
 	{
 		TSDFDirection_type directionIdx = cluster[idx];
 
-		Vector4f &point = points[directionIdx];
-		Vector3f &normal = normals[directionIdx];
-		float &confidence = confidences[directionIdx];
+		Vector4f& point = points[directionIdx];
+		Vector3f& normal = normals[directionIdx];
+		float& confidence = confidences[directionIdx];
 
 		if (confidence <= 0)
 			continue;
@@ -1021,9 +1070,10 @@ _CPU_AND_GPU_CODE_ inline void combineDirectionalPointClouds(
 }
 
 template<bool useSmoothing, bool flipNormals>
-_CPU_AND_GPU_CODE_ inline void processPixelICP(DEVICEPTR(Vector4f) *pointsMap, DEVICEPTR(Vector4f) *normalsMap,
-	const CONSTPTR(Vector4f) *pointsRay, const THREADPTR(Vector2i) &imgSize, const THREADPTR(int) &x, const THREADPTR(int) &y, float voxelSize,
-	const THREADPTR(Vector3f) &lightSource)
+_CPU_AND_GPU_CODE_ inline void processPixelICP(DEVICEPTR(Vector4f)* pointsMap, DEVICEPTR(Vector4f)* normalsMap,
+                                               const CONSTPTR(Vector4f)* pointsRay, const THREADPTR(Vector2i)& imgSize,
+                                               const THREADPTR(int)& x, const THREADPTR(int)& y, float voxelSize,
+                                               const THREADPTR(Vector3f)& lightSource)
 {
 	Vector3f outNormal;
 	float angle;
@@ -1033,31 +1083,42 @@ _CPU_AND_GPU_CODE_ inline void processPixelICP(DEVICEPTR(Vector4f) *pointsMap, D
 
 	bool foundPoint = point.w > 0.0f;
 
-	computeNormalAndAngle<useSmoothing, flipNormals>(foundPoint, x, y, pointsRay, lightSource, voxelSize, imgSize, outNormal, angle);
+	computeNormalAndAngle<useSmoothing, flipNormals>(foundPoint, x, y, pointsRay, lightSource, voxelSize, imgSize,
+	                                                 outNormal, angle);
 
 	if (foundPoint)
 	{
 		Vector4f outPoint4;
-		outPoint4.x = point.x * voxelSize; outPoint4.y = point.y * voxelSize;
-		outPoint4.z = point.z * voxelSize; outPoint4.w = point.w;//outPoint4.w = 1.0f;
+		outPoint4.x = point.x * voxelSize;
+		outPoint4.y = point.y * voxelSize;
+		outPoint4.z = point.z * voxelSize;
+		outPoint4.w = point.w;//outPoint4.w = 1.0f;
 		pointsMap[locId] = outPoint4;
 
 		Vector4f outNormal4;
-		outNormal4.x = outNormal.x; outNormal4.y = outNormal.y; outNormal4.z = outNormal.z; outNormal4.w = 0.0f;
+		outNormal4.x = outNormal.x;
+		outNormal4.y = outNormal.y;
+		outNormal4.z = outNormal.z;
+		outNormal4.w = 0.0f;
 		normalsMap[locId] = outNormal4;
-	}
-	else
+	} else
 	{
 		Vector4f out4;
-		out4.x = 0.0f; out4.y = 0.0f; out4.z = 0.0f; out4.w = -1.0f;
+		out4.x = 0.0f;
+		out4.y = 0.0f;
+		out4.z = 0.0f;
+		out4.w = -1.0f;
 
-		pointsMap[locId] = out4; normalsMap[locId] = out4;
+		pointsMap[locId] = out4;
+		normalsMap[locId] = out4;
 	}
 }
 
 template<bool useSmoothing, bool flipNormals>
-_CPU_AND_GPU_CODE_ inline void processPixelGrey_ImageNormals(DEVICEPTR(Vector4u) *outRendering, const CONSTPTR(Vector4f) *pointsRay, 
-	const THREADPTR(Vector2i) &imgSize, const THREADPTR(int) &x, const THREADPTR(int) &y, float voxelSize, const THREADPTR(Vector3f) &lightSource)
+_CPU_AND_GPU_CODE_ inline void
+processPixelGrey_ImageNormals(DEVICEPTR(Vector4u)* outRendering, const CONSTPTR(Vector4f)* pointsRay,
+                              const THREADPTR(Vector2i)& imgSize, const THREADPTR(int)& x, const THREADPTR(int)& y,
+                              float voxelSize, const THREADPTR(Vector3f)& lightSource)
 {
 	Vector3f outNormal;
 	float angle;
@@ -1066,15 +1127,18 @@ _CPU_AND_GPU_CODE_ inline void processPixelGrey_ImageNormals(DEVICEPTR(Vector4u)
 	Vector4f point = pointsRay[locId];
 
 	bool foundPoint = point.w > 0.0f;
-	computeNormalAndAngle<useSmoothing, flipNormals>(foundPoint, x, y, pointsRay, lightSource, voxelSize, imgSize, outNormal, angle);
+	computeNormalAndAngle<useSmoothing, flipNormals>(foundPoint, x, y, pointsRay, lightSource, voxelSize, imgSize,
+	                                                 outNormal, angle);
 
 	if (foundPoint) drawPixelGrey(outRendering[locId], angle);
-	else outRendering[locId] = Vector4u((uchar)0);
+	else outRendering[locId] = Vector4u((uchar) 0);
 }
 
 template<bool useSmoothing, bool flipNormals>
-_CPU_AND_GPU_CODE_ inline void processPixelNormals_ImageNormals(DEVICEPTR(Vector4u) *outRendering, const CONSTPTR(Vector4f) *pointsRay,
-	const THREADPTR(Vector2i) &imgSize, const THREADPTR(int) &x, const THREADPTR(int) &y, float voxelSize, Vector3f lightSource)
+_CPU_AND_GPU_CODE_ inline void
+processPixelNormals_ImageNormals(DEVICEPTR(Vector4u)* outRendering, const CONSTPTR(Vector4f)* pointsRay,
+                                 const THREADPTR(Vector2i)& imgSize, const THREADPTR(int)& x, const THREADPTR(int)& y,
+                                 float voxelSize, Vector3f lightSource)
 {
 	Vector3f outNormal;
 	float angle;
@@ -1083,15 +1147,18 @@ _CPU_AND_GPU_CODE_ inline void processPixelNormals_ImageNormals(DEVICEPTR(Vector
 	Vector4f point = pointsRay[locId];
 
 	bool foundPoint = point.w > 0.0f;
-	computeNormalAndAngle<useSmoothing, flipNormals>(foundPoint, x, y, pointsRay, lightSource, voxelSize, imgSize, outNormal, angle);
+	computeNormalAndAngle<useSmoothing, flipNormals>(foundPoint, x, y, pointsRay, lightSource, voxelSize, imgSize,
+	                                                 outNormal, angle);
 
 	if (foundPoint) drawPixelNormal(outRendering[locId], outNormal);
-	else outRendering[locId] = Vector4u((uchar)0);
+	else outRendering[locId] = Vector4u((uchar) 0);
 }
 
 template<bool useSmoothing, bool flipNormals>
-_CPU_AND_GPU_CODE_ inline void processPixelConfidence_ImageNormals(DEVICEPTR(Vector4u) *outRendering, const CONSTPTR(Vector4f) *pointsRay,
-	const THREADPTR(Vector2i) &imgSize, const THREADPTR(int) &x, const THREADPTR(int) &y, float voxelSize, Vector3f lightSource)
+_CPU_AND_GPU_CODE_ inline void
+processPixelConfidence_ImageNormals(DEVICEPTR(Vector4u)* outRendering, const CONSTPTR(Vector4f)* pointsRay,
+                                    const THREADPTR(Vector2i)& imgSize, const THREADPTR(int)& x,
+                                    const THREADPTR(int)& y, float voxelSize, Vector3f lightSource)
 {
 	Vector3f outNormal;
 	float angle;
@@ -1100,41 +1167,45 @@ _CPU_AND_GPU_CODE_ inline void processPixelConfidence_ImageNormals(DEVICEPTR(Vec
 	Vector4f point = pointsRay[locId];
 
 	bool foundPoint = point.w > 0.0f;
-	computeNormalAndAngle<useSmoothing, flipNormals>(foundPoint, x, y, pointsRay, lightSource, voxelSize, imgSize, outNormal, angle);
+	computeNormalAndAngle<useSmoothing, flipNormals>(foundPoint, x, y, pointsRay, lightSource, voxelSize, imgSize,
+	                                                 outNormal, angle);
 
 	if (foundPoint) drawPixelConfidence(outRendering[locId], angle, point.w - 1.0f);
-	else outRendering[locId] = Vector4u((uchar)0);
+	else outRendering[locId] = Vector4u((uchar) 0);
 }
 
 template<class TVoxel, class TIndex>
-_CPU_AND_GPU_CODE_ inline void processPixelGrey(DEVICEPTR(Vector4u) &outRendering, const CONSTPTR(Vector3f) & point,
-	const Vector6f *directionalContribution,
-	bool foundPoint, const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(typename TIndex::IndexData) *voxelIndex, 
-	Vector3f lightSource)
+_CPU_AND_GPU_CODE_ inline void processPixelGrey(DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point,
+                                                const Vector6f* directionalContribution,
+                                                bool foundPoint, const CONSTPTR(TVoxel)* voxelData,
+                                                const CONSTPTR(typename TIndex::IndexData)* voxelIndex,
+                                                Vector3f lightSource)
 {
 	Vector3f outNormal;
 	float angle;
 
-	computeNormalAndAngle<TVoxel, TIndex>(foundPoint, point, directionalContribution, voxelData, voxelIndex, lightSource, outNormal, angle);
+	computeNormalAndAngle<TVoxel, TIndex>(foundPoint, point, directionalContribution, voxelData, voxelIndex, lightSource,
+	                                      outNormal, angle);
 
 	if (foundPoint) drawPixelGrey(outRendering, angle);
-	else outRendering = Vector4u((uchar)0);
+	else outRendering = Vector4u((uchar) 0);
 }
 
 template<class TVoxel, class TIndex>
 _CPU_AND_GPU_CODE_ inline void processPixelColourDirectional(
-	DEVICEPTR(Vector4u) &outRendering, const CONSTPTR(Vector3f) &point, const Vector6f &directionalContribution,
-	bool foundPoint, const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(typename TIndex::IndexData) *voxelIndex)
+	DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point, const Vector6f& directionalContribution,
+	bool foundPoint, const CONSTPTR(TVoxel)* voxelData, const CONSTPTR(typename TIndex::IndexData)* voxelIndex)
 {
-	if (foundPoint) drawPixelColourDirectional<TVoxel, TIndex>(outRendering, point, directionalContribution, voxelData, voxelIndex);
-	else outRendering = Vector4u((uchar)0);
+	if (foundPoint)
+		drawPixelColourDirectional<TVoxel, TIndex>(outRendering, point, directionalContribution, voxelData, voxelIndex);
+	else outRendering = Vector4u((uchar) 0);
 }
 
 template<class TVoxel, class TIndex>
 _CPU_AND_GPU_CODE_ inline void processPixelColour(
-	DEVICEPTR(Vector4u) &outRendering, const CONSTPTR(Vector3f) & point,
-	const Vector6f *directionalContribution, bool foundPoint, const CONSTPTR(TVoxel) *voxelData,
-	const CONSTPTR(typename TIndex::IndexData) *voxelIndex)
+	DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point,
+	const Vector6f* directionalContribution, bool foundPoint, const CONSTPTR(TVoxel)* voxelData,
+	const CONSTPTR(typename TIndex::IndexData)* voxelIndex)
 {
 	if (foundPoint)
 	{
@@ -1142,38 +1213,42 @@ _CPU_AND_GPU_CODE_ inline void processPixelColour(
 			drawPixelColourDirectional<TVoxel, TIndex>(outRendering, point, *directionalContribution, voxelData, voxelIndex);
 		else
 			drawPixelColourDefault<TVoxel, TIndex>(outRendering, point, voxelData, voxelIndex);
-	}
-	else outRendering = Vector4u((uchar)0);
+	} else outRendering = Vector4u((uchar) 0);
 }
 
 template<class TVoxel, class TIndex>
-_CPU_AND_GPU_CODE_ inline void processPixelNormal(DEVICEPTR(Vector4u) &outRendering, const CONSTPTR(Vector3f) & point,
-	const Vector6f *directionalContribution,
-	bool foundPoint, const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(typename TIndex::IndexData) *voxelIndex,
-	Vector3f lightSource)
+_CPU_AND_GPU_CODE_ inline void processPixelNormal(DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point,
+                                                  const Vector6f* directionalContribution,
+                                                  bool foundPoint, const CONSTPTR(TVoxel)* voxelData,
+                                                  const CONSTPTR(typename TIndex::IndexData)* voxelIndex,
+                                                  Vector3f lightSource)
 {
 	Vector3f outNormal;
 	float angle;
 
-	computeNormalAndAngle<TVoxel, TIndex>(foundPoint, point, directionalContribution, voxelData, voxelIndex, lightSource, outNormal, angle);
+	computeNormalAndAngle<TVoxel, TIndex>(foundPoint, point, directionalContribution, voxelData, voxelIndex, lightSource,
+	                                      outNormal, angle);
 
 	if (foundPoint) drawPixelNormal(outRendering, outNormal);
-	else outRendering = Vector4u((uchar)0);
+	else outRendering = Vector4u((uchar) 0);
 }
 
 template<class TVoxel, class TIndex>
-_CPU_AND_GPU_CODE_ inline void processPixelConfidence(DEVICEPTR(Vector4u) &outRendering, const CONSTPTR(Vector4f) & point,
-	const Vector6f *directionalContribution,
-	bool foundPoint, const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(typename TIndex::IndexData) *voxelIndex, 
-	Vector3f lightSource)
+_CPU_AND_GPU_CODE_ inline void
+processPixelConfidence(DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector4f)& point,
+                       const Vector6f* directionalContribution,
+                       bool foundPoint, const CONSTPTR(TVoxel)* voxelData,
+                       const CONSTPTR(typename TIndex::IndexData)* voxelIndex,
+                       Vector3f lightSource)
 {
 	Vector3f outNormal;
 	float angle;
 
-	computeNormalAndAngle<TVoxel, TIndex>(foundPoint, TO_VECTOR3(point), directionalContribution, voxelData, voxelIndex, lightSource, outNormal, angle);
+	computeNormalAndAngle<TVoxel, TIndex>(foundPoint, TO_VECTOR3(point), directionalContribution, voxelData, voxelIndex,
+	                                      lightSource, outNormal, angle);
 
 	if (foundPoint) drawPixelConfidence(outRendering, angle, point.w - 1.0f);
-	else outRendering = Vector4u((uchar)0);
+	else outRendering = Vector4u((uchar) 0);
 }
 
 } // namespace ITMLib
