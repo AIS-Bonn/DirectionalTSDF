@@ -138,13 +138,14 @@ __global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, const
 	}
 
 	template<bool flipNormals>
-	__global__ void renderConfidence_ImageNormals_device(Vector4u *outRendering, const Vector4f *ptsRay, Vector2i imgSize, float voxelSize, Vector3f lightSource)
+	__global__ void renderConfidence_ImageNormals_device(Vector4u *outRendering, const Vector4f *ptsRay, Vector2i imgSize,
+		const ITMSceneParams sceneParams, Vector3f lightSource)
 	{
 		int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
 
 		if (x >= imgSize.x || y >= imgSize.y) return;
 
-		processPixelConfidence_ImageNormals<true, flipNormals>(outRendering, ptsRay, imgSize, x, y, voxelSize, lightSource);
+		processPixelConfidence_ImageNormals<true, flipNormals>(outRendering, ptsRay, imgSize, x, y, sceneParams, lightSource);
 	}
 
 	template<class TVoxel, class TIndex>
@@ -192,7 +193,8 @@ __global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, const
 	template<class TVoxel, class TIndex>
 	__global__ void renderColourFromConfidence_device(Vector4u *outRendering, const Vector4f *ptsRay,
 		const Vector6f *directionalContribution, const TVoxel *voxelData,
-		const typename TIndex::IndexData *voxelIndex, Vector2i imgSize, Vector3f lightSource)
+		const typename TIndex::IndexData *voxelIndex, Vector2i imgSize,
+		const ITMSceneParams sceneParams, Vector3f lightSource)
 	{
 		int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
 
@@ -204,10 +206,10 @@ __global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, const
 
 		if (directionalContribution)
 			processPixelConfidence<TVoxel, TIndex>(outRendering[locId], ptRay, &directionalContribution[locId],
-				ptRay.w > 0, voxelData, voxelIndex, lightSource);
+				ptRay.w > 0, voxelData, voxelIndex, sceneParams, lightSource);
 		else
 			processPixelConfidence<TVoxel, TIndex>(outRendering[locId], ptRay, nullptr,
-			                                       ptRay.w > 0, voxelData, voxelIndex, lightSource);
+			                                       ptRay.w > 0, voxelData, voxelIndex, sceneParams, lightSource);
 	}
 
 	template<class TVoxel, class TIndex>

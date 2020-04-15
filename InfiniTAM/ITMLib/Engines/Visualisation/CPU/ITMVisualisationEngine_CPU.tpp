@@ -292,7 +292,7 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::RenderImage(const ITMSce
 			Vector4f ptRay = pointsRay[locId];
 			processPixelConfidence<TVoxel, TIndex>(outRendering[locId], ptRay,
 				useDirectial ? &directionalContribution[locId] : nullptr,
-				ptRay.w > 0, voxelData, voxelIndex, lightSource);
+				ptRay.w > 0, voxelData, voxelIndex, *(scene->sceneParams), lightSource);
 		}
 		break;
 	case IITMVisualisationEngine::RENDER_SHADED_GREYSCALE_IMAGENORMALS:

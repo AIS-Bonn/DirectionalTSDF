@@ -256,11 +256,17 @@ _CPU_AND_GPU_CODE_ inline float baseCol(float val)
 	else return 0.0;
 }
 
+/**
+ * Paint the pixel wrt. the given normalized confidence (in [0, 1])
+ * @param dest
+ * @param angle
+ * @param normalizedConfidence confidence normalized to [0, 1]
+ */
 _CPU_AND_GPU_CODE_ inline void
-drawPixelConfidence(DEVICEPTR(Vector4u)& dest, const THREADPTR(float)& angle, const THREADPTR(float)& confidence)
+drawPixelConfidence(DEVICEPTR(Vector4u)& dest, const THREADPTR(float)& angle,
+                    const THREADPTR(float)& normalizedConfidence)
 {
-	//Vector4f color_red(255, 0, 0, 255), color_green(0, 255, 0, 255);
-	float confidenceNorm = CLAMP(confidence, 0, 100.f) / 100.0f;
+	float confidenceNorm = CLAMP(normalizedConfidence, 0, 1.0f);
 
 	Vector4f color;
 	color.r = (uchar) (baseCol(confidenceNorm) * 255.0f);
@@ -1158,7 +1164,7 @@ template<bool useSmoothing, bool flipNormals>
 _CPU_AND_GPU_CODE_ inline void
 processPixelConfidence_ImageNormals(DEVICEPTR(Vector4u)* outRendering, const CONSTPTR(Vector4f)* pointsRay,
                                     const THREADPTR(Vector2i)& imgSize, const THREADPTR(int)& x,
-                                    const THREADPTR(int)& y, float voxelSize, Vector3f lightSource)
+                                    const THREADPTR(int)& y, const ITMSceneParams& sceneParams, Vector3f lightSource)
 {
 	Vector3f outNormal;
 	float angle;
@@ -1167,10 +1173,12 @@ processPixelConfidence_ImageNormals(DEVICEPTR(Vector4u)* outRendering, const CON
 	Vector4f point = pointsRay[locId];
 
 	bool foundPoint = point.w > 0.0f;
-	computeNormalAndAngle<useSmoothing, flipNormals>(foundPoint, x, y, pointsRay, lightSource, voxelSize, imgSize,
-	                                                 outNormal, angle);
+	computeNormalAndAngle<useSmoothing, flipNormals>(foundPoint, x, y, pointsRay, lightSource, sceneParams.voxelSize,
+	                                                 imgSize, outNormal, angle);
 
-	if (foundPoint) drawPixelConfidence(outRendering[locId], angle, point.w - 1.0f);
+	if (foundPoint)
+		drawPixelConfidence(outRendering[locId], angle,
+		                    (point.w - 1.0f) / static_cast<float>(sceneParams.maxW));
 	else outRendering[locId] = Vector4u((uchar) 0);
 }
 
@@ -1239,7 +1247,7 @@ processPixelConfidence(DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector4
                        const Vector6f* directionalContribution,
                        bool foundPoint, const CONSTPTR(TVoxel)* voxelData,
                        const CONSTPTR(typename TIndex::IndexData)* voxelIndex,
-                       Vector3f lightSource)
+                       const ITMSceneParams& sceneParams, Vector3f lightSource)
 {
 	Vector3f outNormal;
 	float angle;
@@ -1247,7 +1255,9 @@ processPixelConfidence(DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector4
 	computeNormalAndAngle<TVoxel, TIndex>(foundPoint, TO_VECTOR3(point), directionalContribution, voxelData, voxelIndex,
 	                                      lightSource, outNormal, angle);
 
-	if (foundPoint) drawPixelConfidence(outRendering, angle, point.w - 1.0f);
+	if (foundPoint)
+		drawPixelConfidence(outRendering, angle,
+		                    (point.w - 1.0f) / static_cast<float>(sceneParams.maxW));
 	else outRendering = Vector4u((uchar) 0);
 }
 

@@ -306,7 +306,7 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::RenderImage(const ITMSc
 			renderColourFromConfidence_device<TVoxel, TIndex> <<<gridSize, cudaBlockSize>>>(outRendering, pointsRay,
 				useDirectioal ? directionalContribution : nullptr,
 				scene->localVBA.GetVoxelBlocks(),
-				scene->index.getIndexData(), imgSize, lightSource);
+				scene->index.getIndexData(), imgSize, *(scene->sceneParams), lightSource);
 			ORcudaKernelCheck;
 			break;
 		case IITMVisualisationEngine::RENDER_SHADED_GREYSCALE_IMAGENORMALS:
