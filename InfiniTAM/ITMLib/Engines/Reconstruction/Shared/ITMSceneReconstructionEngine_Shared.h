@@ -71,6 +71,7 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 		Vector4f normal_camera = depthNormals[idx];
 		if (normal_camera.w != 1)
 			return -1;
+		normal_camera.w = 0; // rotation-only transformation
 		Vector3f normal_world = (invM_d * normal_camera).toVector3();
 		distance = ORUtils::dot(voxel_world.toVector3() - pt_world, normal_world);
 	}
@@ -160,6 +161,7 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 		Vector4f normal_camera = depthNormals[idx];
 		if (normal_camera.w != 1)
 			return -1;
+		normal_camera.w = 0; // rotation-only transformation
 		Vector3f normal_world = (invM_d * normal_camera).toVector3();
 		distance = ORUtils::dot(voxel_world.toVector3() - pt_world, normal_world);
 	}
