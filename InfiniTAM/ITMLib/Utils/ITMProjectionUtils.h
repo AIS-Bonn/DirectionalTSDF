@@ -18,12 +18,12 @@ template<typename T> _CPU_AND_GPU_CODE_ inline Vector2f project(const THREADPTR(
 }
 
 _CPU_AND_GPU_CODE_
-inline Vector3f reprojectImagePoint(int x, int y, float depth, const Vector4f &invProjParams)
+inline Vector3f reprojectImagePoint(float x, float y, float depth, const Vector4f &invProjParams)
 {
 	Vector3f pt_camera;
 	pt_camera.z = depth;
-	pt_camera.x = pt_camera.z * ((float(x) - invProjParams.z) * invProjParams.x);
-	pt_camera.y = pt_camera.z * ((float(y) - invProjParams.w) * invProjParams.y);
+	pt_camera.x = pt_camera.z * ((x - invProjParams.z) * invProjParams.x);
+	pt_camera.y = pt_camera.z * ((y - invProjParams.w) * invProjParams.y);
 
 	return pt_camera;
 }
