@@ -58,8 +58,8 @@ fusionParams:
   useSpaceCarving: true
 
 # Defautl ICP tracking:
-voxelTrackerConfig: "type=icp,levels=rrrbb,minstep=1e-3,
-  outlierC=0.01,outlierF=0.002,
+voxelTrackerConfig: "type=icp,levels=rrbb,minstep=1e-5,
+  outlierC=0.1,outlierF=0.004,
   numiterC=20,numiterF=50,failureDec=20.0" # 5 for normal, 20 for loop closure
 
 ## Depth-only extended tracking:
