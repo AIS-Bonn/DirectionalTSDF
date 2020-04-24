@@ -74,6 +74,21 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 		normal_camera.w = 0; // rotation-only transformation
 		Vector3f normal_world = (invM_d * normal_camera).toVector3();
 		distance = ORUtils::dot(voxel_world.toVector3() - pt_world, normal_world);
+	} else
+	{
+		Matrix4f invM_d;
+		M_d.inv(invM_d);
+		Vector3f pt_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, depth_measure,
+		                                         invertProjectionParams(projParams_d));
+		Vector3f pt_world = (invM_d * Vector4f(pt_camera, 1)).toVector3();
+
+		// True point-to-point (euclidean distance)
+		Vector3f pixelRay_world = (invM_d * Vector4f(pt_camera, 0)).toVector3().normalised();
+		distance = ORUtils::dot(voxel_world.toVector3() - pt_world, -pixelRay_world);
+
+		// Original InfiniTAM: assumption is, all surface normals equal the inverse camera Z-axis
+//		Vector3f cameraRay_world = (invM_d * Vector4f(0, 0, -1, 0)).toVector3();
+//		distance = ORUtils::dot(voxel_world.toVector3() - pt_world, cameraRay_world);
 	}
 
 	newF = MIN(1.0f, distance / sceneParams.mu);
@@ -164,6 +179,21 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 		normal_camera.w = 0; // rotation-only transformation
 		Vector3f normal_world = (invM_d * normal_camera).toVector3();
 		distance = ORUtils::dot(voxel_world.toVector3() - pt_world, normal_world);
+	} else
+	{
+		Matrix4f invM_d;
+		M_d.inv(invM_d);
+		Vector3f pt_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, depth_measure,
+		                                         invertProjectionParams(projParams_d));
+		Vector3f pt_world = (invM_d * Vector4f(pt_camera, 1)).toVector3();
+
+		// True point-to-point (euclidean distance)
+		Vector3f pixelRay_world = (invM_d * Vector4f(pt_camera, 0)).toVector3().normalised();
+		distance = ORUtils::dot(voxel_world.toVector3() - pt_world, -pixelRay_world);
+
+		// Original InfiniTAM: assumption is, all surface normals equal the inverse camera Z-axis
+//		Vector3f cameraRay_world = (invM_d * Vector4f(0, 0, -1, 0)).toVector3();
+//		distance = ORUtils::dot(voxel_world.toVector3() - pt_world, cameraRay_world);
 	}
 
 	newF = MIN(1.0f, distance / sceneParams.mu);
