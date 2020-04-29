@@ -20,6 +20,12 @@ struct AllocationTempData
 	int noVisibleEntries;
 };
 
+_CPU_AND_GPU_CODE_ inline Vector3f
+normalCameraToWorld(const Vector4f& normal_camera, const Matrix4f& invM)
+{
+	return (invM * Vector4f(normal_camera.toVector3(), 0)).toVector3();
+}
+
 template<class TVoxel>
 _CPU_AND_GPU_CODE_ inline float
 computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direction,
@@ -71,8 +77,7 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 		Vector4f normal_camera = depthNormals[idx];
 		if (normal_camera.w != 1)
 			return -1;
-		normal_camera.w = 0; // rotation-only transformation
-		Vector3f normal_world = (invM_d * normal_camera).toVector3();
+		Vector3f normal_world = normalCameraToWorld(normal_camera, invM_d);
 		distance = ORUtils::dot(voxel_world.toVector3() - pt_world, normal_world);
 	} else
 	{
@@ -95,8 +100,8 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 	newW = 1;
 	if (fusionParams.useWeighting)
 	{
-		Vector4f normalCamera = depthNormals[idx];
-		if (normalCamera.w != 1)
+		Vector4f normal_camera = depthNormals[idx];
+		if (normal_camera.w != 1)
 			return -1;
 		Vector3f viewRay_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, 1,
 		                                              invertProjectionParams(projParams_d)).normalised();
@@ -105,12 +110,12 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 		{
 			Matrix4f invM_d;
 			M_d.inv(invM_d);
-			Vector4f normalWorld = invM_d * normalCamera;
-			directionWeight = DirectionWeight(TO_VECTOR3(normalWorld), direction);
+			Vector3f normal_world = normalCameraToWorld(normal_camera, invM_d);
+			directionWeight = DirectionWeight(normal_world, direction);
 			if (directionWeight < direction_weight_threshold)
 				return -1;
 		}
-		newW = depthWeight(depth_measure, normalCamera.toVector3(), viewRay_camera, directionWeight, sceneParams);
+		newW = depthWeight(depth_measure, normal_camera.toVector3(), viewRay_camera, directionWeight, sceneParams);
 	}
 
 	newF = oldW * oldF + newW * newF;
@@ -176,8 +181,7 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 		Vector4f normal_camera = depthNormals[idx];
 		if (normal_camera.w != 1)
 			return -1;
-		normal_camera.w = 0; // rotation-only transformation
-		Vector3f normal_world = (invM_d * normal_camera).toVector3();
+		Vector3f normal_world = normalCameraToWorld(normal_camera, invM_d);
 		distance = ORUtils::dot(voxel_world.toVector3() - pt_world, normal_world);
 	} else
 	{
@@ -200,8 +204,8 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 	newW = 1;
 	if (fusionParams.useWeighting)
 	{
-		Vector4f normalCamera = depthNormals[idx];
-		if (normalCamera.w != 1)
+		Vector4f normal_camera = depthNormals[idx];
+		if (normal_camera.w != 1)
 			return -1;
 		Vector3f viewRay_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, 1,
 		                                              invertProjectionParams(projParams_d)).normalised();
@@ -210,12 +214,12 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 		{
 			Matrix4f invM_d;
 			M_d.inv(invM_d);
-			Vector4f normalWorld = invM_d * normalCamera;
-			directionWeight = DirectionWeight(TO_VECTOR3(normalWorld), direction);
+			Vector3f normal_world = normalCameraToWorld(normal_camera, invM_d);
+			directionWeight = DirectionWeight(normal_world, direction);
 			if (directionWeight < direction_weight_threshold)
 				return -1;
 		}
-		newW = depthWeight(depth_measure, normalCamera.toVector3(), viewRay_camera, directionWeight, sceneParams);
+		newW = depthWeight(depth_measure, normal_camera.toVector3(), viewRay_camera, directionWeight, sceneParams);
 	}
 
 	newF = oldW * oldF + newW * newF;
@@ -587,9 +591,7 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* d
 	Matrix4f M_d;
 	invM_d.inv(M_d);
 
-//	float carveDistance = ORUtils::length(pt_world - rayStart_world) - 1 * mu;
-	normal_camera.w = 0; // rotation-only transformation
-	Vector3f normal_world = (invM_d * normal_camera).toVector3();
+	Vector3f normal_world = normalCameraToWorld(normal_camera, invM_d);
 	float carveDistance = ORUtils::length(pt_world - rayStart_world)
 	                      - fabs(1.0 / dot(normal_world, rayDirection_world)) * mu;
 
@@ -662,10 +664,9 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 	    (depthValue + mu) > viewFrustum_max or normal_camera.w != 1)
 		return;
 
-	normal_camera.w = 0; // rotation-only transformation
 	Vector4f pt_camera = Vector4f(reprojectImagePoint(x, y, depthValue, invProjParams_d), 1);
 	Vector3f pt_world = (invM_d * pt_camera).toVector3();
-	Vector3f normal_world = (invM_d * normal_camera).toVector3();
+	Vector3f normal_world = normalCameraToWorld(normal_camera, invM_d);
 
 	Vector3f viewRay_camera = reprojectImagePoint(x, y, 1, invProjParams_d).normalised();
 

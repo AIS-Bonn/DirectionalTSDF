@@ -298,9 +298,9 @@ _CPU_AND_GPU_CODE_ inline void drawPixelColourDirectional(
 		Vector3f(1, 0, 0),
 		Vector3f(0, 1, 0),
 		Vector3f(1, 1, 0),
-		Vector3f(0, 1, 1),
+		Vector3f(0, 0, 1),
 		Vector3f(1, 0, 1),
-		Vector3f(1, 1, 0)
+		Vector3f(0, 1, 1)
 	};
 
 	// Debugging: color in contributing directions
