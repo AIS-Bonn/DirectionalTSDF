@@ -135,6 +135,7 @@ void ITMSceneReconstructionEngine_CPU_common<TVoxel, TIndex>::IntegrateIntoScene
 				Vector3i globalPos = blockToVoxelPos(Vector3i(currentHashEntry.pos.x, currentHashEntry.pos.y, currentHashEntry.pos.z));
 
 				TVoxel *localVoxelBlock = &(localVBA[currentHashEntry.ptr * (SDF_BLOCK_SIZE3)]);
+				VoxelRayCastingSum *localRayCastingSum = &(entriesRayCasting[currentHashEntry.ptr * (SDF_BLOCK_SIZE3)]);
 
 				for (int z = 0; z < SDF_BLOCK_SIZE; z++) for (int y = 0; y < SDF_BLOCK_SIZE; y++) for (int x = 0; x < SDF_BLOCK_SIZE; x++)
 						{
@@ -151,7 +152,7 @@ void ITMSceneReconstructionEngine_CPU_common<TVoxel, TIndex>::IntegrateIntoScene
 							pt_model.w = 1.0f;
 
 							voxelProjectionCarveSpace(
-								localVoxelBlock[locId], TSDFDirection(currentHashEntry.direction),
+								localVoxelBlock[locId], localRayCastingSum[locId], TSDFDirection(currentHashEntry.direction),
 								pt_model, M_d, projParams_d, M_rgb, projParams_rgb,
 								this->settings->fusionParams, this->settings->sceneParams, depth, depthNormals, confidence,
 								depthImgSize, rgb, rgbImgSize);

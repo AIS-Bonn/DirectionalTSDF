@@ -8,7 +8,7 @@ namespace ITMLib
 {
 
 _CPU_AND_GPU_CODE_
-inline float sigma(float z, float theta)
+inline float depthNoiseSigma(float z, float theta)
 {
 	return 0.0012 + 0.019 * (z - 0.4) * (z - 0.4) +
 	       0.0001 / sqrt(z) * theta * theta / ((0.5 * M_PI - theta) * (0.5 * M_PI - theta));
@@ -21,7 +21,7 @@ inline float weightDepth(float depth, const ITMSceneParams& sceneParams)
 //	return 1 / depth;
 
 	// Nguyen2012
-//	return sigma(sceneParams.viewFrustum_min, 0) / sigma(depth, 0)
+//	return sigma(sceneParams.viewFrustum_min, 0) / depthNoiseSigma(depth, 0)
 //         * (sceneParams.viewFrustum_min * sceneParams.viewFrustum_min) / (depth * depth);
 
 	// Normalized, s.t. weight of minimum distance is 1

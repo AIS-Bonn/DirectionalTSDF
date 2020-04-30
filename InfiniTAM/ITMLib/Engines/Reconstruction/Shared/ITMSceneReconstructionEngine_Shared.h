@@ -365,7 +365,8 @@ struct ComputeUpdatedVoxelInfo<true, true, TVoxel>
 };
 
 template<class TVoxel>
-_CPU_AND_GPU_CODE_ static void voxelProjectionCarveSpace(DEVICEPTR(TVoxel)& voxel,
+_CPU_AND_GPU_CODE_ static void voxelProjectionCarveSpace(const TVoxel& voxel,
+                                                         VoxelRayCastingSum& voxelRayCastingSum,
                                                          const TSDFDirection direction,
                                                          const Vector4f pt_world,
                                                          const THREADPTR(Matrix4f)& M_d,
@@ -381,6 +382,11 @@ _CPU_AND_GPU_CODE_ static void voxelProjectionCarveSpace(DEVICEPTR(TVoxel)& voxe
                                                          const CONSTPTR(Vector4u)* rgb,
                                                          const THREADPTR(Vector2i)& imgSize_rgb)
 {
+	// Don't carve, when the voxel was updated during fusion of THIS frame
+	// (This prevents accidentally carving voxels with rays passing by close to a surface)
+	if (voxelRayCastingSum.weightSum > 0)
+		return;
+
 	Vector2i imgSize = imgSize_d;
 
 	Vector4f pt_camera = M_d * pt_world;
@@ -397,44 +403,49 @@ _CPU_AND_GPU_CODE_ static void voxelProjectionCarveSpace(DEVICEPTR(TVoxel)& voxe
 	Vector2f voxelUL_image = project(pt_camera.toVector3() - Vector3f(1, 1, 0) * 0.5 * sceneParams.voxelSize,
 	                                 projParams_d);
 
+	// TODO: check which pixels are used
 	int x_min = MAX(static_cast<int>(voxelUL_image.x + 0.5f), 1);
 	int x_max = MIN(static_cast<int>(voxelBR_image.x + 0.5f), imgSize.x - 2);
 	int y_min = MAX(static_cast<int>(voxelUL_image.y + 0.5f), 1);
 	int y_max = MIN(static_cast<int>(voxelBR_image.y + 0.5f), imgSize.y - 2);
 
 	/// Check area and carve voxel, if necessary
-	float newF = 1;
-	float newW = 0;
+	float sdf = TVoxel::valueToFloat(voxel.sdf);
+
+	// skip positive sdf values (because they either mean free space or are values required to estimate the 0-transition)
+	if (sdf >= 0)
+		return;
+
+	Matrix4f invM_d;
+	M_d.inv(invM_d);
+	Vector4f invProjParams_d = invertProjectionParams(projParams_d);
+
+	float carveWeight = 0;
 	for (int x = x_min; x <= x_max; x++)
 		for (int y = y_min; y <= y_max; y++)
 		{
 			int idx = x + y * imgSize.x;
 			// get measured depth from image
-			float depthMeasure = depth[idx];
-			Vector4f normalCamera = depthNormals[idx];
-			if (depthMeasure <= 0.0 or normalCamera.w != 1) continue;
+			float depthValue = depth[idx];
+			Vector4f normal_camera = depthNormals[idx];
+			if (depthValue <= 0.0 or normal_camera.w != 1) continue;
+
+			Vector3f normal_world = normalCameraToWorld(normal_camera, invM_d);
+			Vector3f rayDirection_camera = reprojectImagePoint(x, y, depthValue, invProjParams_d).normalised();
+			Vector3f rayDirection_world = normalCameraToWorld(Vector4f(rayDirection_camera, 0), invM_d);
+			float carveSurfaceOffset = sceneParams.mu + fabs(1.0 / dot(normal_world, rayDirection_world)) * sceneParams.mu;
+
 			// check whether voxel needs updating
-			float eta = depthMeasure - pt_camera.z;
-			if (eta < sceneParams.mu) // Within truncation range -> don't carve
+			float eta = depthValue - pt_camera.z;
+			if (eta < carveSurfaceOffset) // Within truncation range -> don't carve
 				return;
 
-			newW += 1;
+			carveWeight += 1;
 		}
-	if (newW <= 0)
+	if (carveWeight <= 0)
 		return;
 
-	/// Update SDF
-	float oldF = TVoxel::valueToFloat(voxel.sdf);
-	float oldW = TVoxel::weightToFloat(voxel.w_depth, sceneParams.maxW);
-
-	newF = oldW * oldF + newW * newF;
-	newW = oldW + newW;
-	newF /= newW;
-	newW = MIN(newW, sceneParams.maxW);
-
-	// write back^
-	voxel.sdf = TVoxel::floatToValue(newF);
-	voxel.w_depth = TVoxel::floatToWeight(newW, sceneParams.maxW);
+	voxelRayCastingSum.update(1, carveWeight);
 }
 
 _CPU_AND_GPU_CODE_
@@ -595,6 +606,9 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* d
 	float carveDistance = ORUtils::length(pt_world - rayStart_world)
 	                      - fabs(1.0 / dot(normal_world, rayDirection_world)) * mu;
 
+	// Decrease distance by depth noise model (std. dev * 3)
+	carveDistance -= depthNoiseSigma(depthValue, fabs(1.0 - dot(normal_world, -rayDirection_world)) * M_PI * 0.5) * 3;
+
 	BlockTraversal blockTraversal(rayStart_world, rayDirection_world, carveDistance, voxelSize);
 	ITMVoxelBlockHash::IndexCache cache[N_DIRECTIONS];
 	while (blockTraversal.HasNextBlock())
@@ -607,9 +621,10 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* d
 
 		/// Fixed values for distance and weight
 		float distance = 1;
-		// TODO: down weight, if close to surface
 
 		float weight = 1;
+		// TODO: down weight, if close to surface
+//		weight *= weightDepth(depthValue, sceneParams);
 
 		/// find and update voxels
 		if (fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL)
@@ -622,7 +637,17 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* d
 				if (not foundEntry)
 					continue;
 
+				// skip positive sdf values (because they either mean free space or are values required to estimate the 0-transition)
+				if (voxelArray[index].sdf >= 0)
+					continue;
+
 				VoxelRayCastingSum& voxelRayCastingSum = entriesRayCasting[index];
+
+				// Don't carve, when the voxel was updated during fusion of THIS frame
+				// (This prevents accidentally carving voxels with rays passing by close to a surface)
+				if (voxelRayCastingSum.weightSum > 0)
+					continue;
+
 				voxelRayCastingSum.update(distance, weight);
 			}
 		} else
@@ -633,7 +658,16 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* d
 			if (not foundEntry)
 				continue;
 
+			// skip positive sdf values (because they either mean free space or are values required to estimate the 0-transition)
+			if (voxelArray[index].sdf >= 0)
+				continue;
+
 			VoxelRayCastingSum& voxelRayCastingSum = entriesRayCasting[index];
+			// Don't carve, when the voxel was updated during fusion of THIS frame
+			// (This prevents accidentally carving voxels with rays passing by close to a surface)
+			if (voxelRayCastingSum.weightSum > 0)
+				continue;
+
 			voxelRayCastingSum.update(distance, weight);
 		}
 	}

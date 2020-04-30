@@ -145,7 +145,7 @@ void rayCastCarveSpace_device(
 
 template<class TVoxel, bool stopMaxW>
 __global__ void voxelProjectionCarveSpace_device(
-	TVoxel *localVBA, const ITMHashEntry *hashTable, int *visibleEntryIDs,
+	TVoxel *localVBA, VoxelRayCastingSum* entriesRayCasting, const ITMHashEntry *hashTable, int *visibleEntryIDs,
   const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, const Vector4f *depthNormals,
   const float *confidence, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d,
   Vector4f projParams_rgb, const ITMFusionParams fusionParams,
@@ -161,6 +161,7 @@ __global__ void voxelProjectionCarveSpace_device(
 	globalPos = currentHashEntry.pos.toInt() * SDF_BLOCK_SIZE;
 
 	TVoxel *localVoxelBlock = &(localVBA[currentHashEntry.ptr * SDF_BLOCK_SIZE3]);
+	VoxelRayCastingSum *localRayCastingSum = &(entriesRayCasting[currentHashEntry.ptr * SDF_BLOCK_SIZE3]);
 
 	int x = threadIdx.x, y = threadIdx.y, z = threadIdx.z;
 
@@ -178,7 +179,8 @@ __global__ void voxelProjectionCarveSpace_device(
 	pt_model.w = 1.0f;
 
 	voxelProjectionCarveSpace(
-		localVoxelBlock[locId], TSDFDirection(currentHashEntry.direction),
+		localVoxelBlock[locId], localRayCastingSum[locId],
+		TSDFDirection(currentHashEntry.direction),
 		pt_model, M_d, projParams_d, M_rgb, projParams_rgb,
 		fusionParams, sceneParams, depth, depthNormals, confidence,
 		depthImgSize, rgb, rgbImgSize);
@@ -252,7 +254,7 @@ ITMSceneReconstructionEngine_CUDA_common<TVoxel, TIndex>::IntegrateIntoSceneRayC
 			dim3 blockSizeVoxelProjection(SDF_BLOCK_SIZE, SDF_BLOCK_SIZE, SDF_BLOCK_SIZE);
 			dim3 gridSizeVoxelProjection(renderState_vh->noVisibleEntries);
 			voxelProjectionCarveSpace_device<TVoxel, false> << <gridSizeVoxelProjection, blockSizeVoxelProjection >> >(
-				localVBA, hashTable, visibleEntryIDs,
+				localVBA, entriesRayCasting, hashTable, visibleEntryIDs,
 				rgb, rgbImgSize, depth, depthNormals,
 				confidence, depthImgSize, M_d, M_rgb, projParams_d,
 				projParams_rgb, this->settings->fusionParams,
