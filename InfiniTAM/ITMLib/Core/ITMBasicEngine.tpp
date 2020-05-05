@@ -52,7 +52,7 @@ ITMBasicEngine<TVoxel,TIndex>::ITMBasicEngine(const std::shared_ptr<const ITMLib
 	tracker->UpdateInitialPose(trackingState);
 
 	view = NULL; // will be allocated by the view builder
-	
+
 	if (settings->behaviourOnFailure == settings->FAILUREMODE_RELOCALISE)
 		relocaliser = new FernRelocLib::Relocaliser<float>(imgSize_d, Vector2f(settings->sceneParams.viewFrustum_min, settings->sceneParams.viewFrustum_max), 0.2f, 500, 4);
 	else relocaliser = NULL;
@@ -65,6 +65,7 @@ ITMBasicEngine<TVoxel,TIndex>::ITMBasicEngine(const std::shared_ptr<const ITMLib
 	trackingInitialised = false;
 	relocalisationCount = 0;
 	framesProcessed = 0;
+	consecutiveGoodFrames = 0;
 }
 
 template <typename TVoxel, typename TIndex>
@@ -143,7 +144,7 @@ void ITMBasicEngine<TVoxel, TIndex>::LoadFromFile()
 
 		relocaliser_temp->LoadFromDirectory(relocaliserInputDirectory);
 
-		delete relocaliser; 
+		delete relocaliser;
 		relocaliser = relocaliser_temp;
 	}
 	catch (std::runtime_error &e)
@@ -264,6 +265,9 @@ ITMTrackingState::TrackingResult ITMBasicEngine<TVoxel,TIndex>::ProcessFrame(ITM
 	ORUtils::SE3Pose oldPose(*(trackingState->pose_d));
 	if (trackingActive) trackingController->Track(trackingState, view);
 
+	if (trackingState->trackerResult == ITMTrackingState::TRACKING_GOOD) consecutiveGoodFrames++;
+	else consecutiveGoodFrames = 0;
+
 	ITMTrackingState::TrackingResult trackerResult = ITMTrackingState::TRACKING_GOOD;
 	switch (settings->behaviourOnFailure) {
 	case ITMLibSettings::FAILUREMODE_RELOCALISE:
@@ -292,7 +296,7 @@ ITMTrackingState::TrackingResult ITMBasicEngine<TVoxel,TIndex>::ProcessFrame(ITM
 		bool hasAddedKeyframe = relocaliser->ProcessFrame(view->depth, trackingState->pose_d, 0, 1, &NN, &distances, trackerResult == ITMTrackingState::TRACKING_GOOD && relocalisationCount == 0);
 
 		//frame not added and tracking failed -> we need to relocalise
-		if (!hasAddedKeyframe && trackerResult == ITMTrackingState::TRACKING_FAILED)
+		if (!hasAddedKeyframe && trackerResult == ITMTrackingState::TRACKING_FAILED && trackingInitialised)
 		{
 			relocalisationCount = 10;
 
@@ -303,25 +307,29 @@ ITMTrackingState::TrackingResult ITMBasicEngine<TVoxel,TIndex>::ProcessFrame(ITM
 			trackingState->pose_d->SetFrom(&keyframe.pose);
 
 			denseMapper->UpdateVisibleList(view, trackingState, scene, renderState_live, true);
-			trackingController->Prepare(trackingState, scene, view, visualisationEngine, renderState_live); 
+			trackingController->Prepare(trackingState, scene, view, visualisationEngine, renderState_live);
 			trackingController->Track(trackingState, view);
 
 			trackerResult = trackingState->trackerResult;
+
+			addKeyframeIdx = 1;
 		}
 	}
 	this->timeStats.relocalization.relocalization = timer.Tock();
 
 	bool didFusion = false;
-	if ((trackerResult == ITMTrackingState::TRACKING_GOOD || !trackingInitialised) && (fusionActive) && (relocalisationCount == 0)) {
+	if ((trackerResult != ITMTrackingState::TRACKING_FAILED || !trackingInitialised)
+	    && (fusionActive)
+	    && (relocalisationCount == 0)) {
 		// fusion
 		denseMapper->ProcessFrame(view, trackingState, scene, renderState_live);
 		didFusion = true;
-		if (framesProcessed > 50) trackingInitialised = true;
+		if (consecutiveGoodFrames >= 10 or framesProcessed > 50) trackingInitialised = true;
 
 		framesProcessed++;
 	}
 
-	if (trackerResult == ITMTrackingState::TRACKING_GOOD || trackerResult == ITMTrackingState::TRACKING_POOR)
+	if (trackerResult == ITMTrackingState::TRACKING_GOOD || trackerResult == ITMTrackingState::TRACKING_POOR || !trackingInitialised)
 	{
 		if (!didFusion) denseMapper->UpdateVisibleList(view, trackingState, scene, renderState_live);
 
@@ -375,7 +383,7 @@ void ITMBasicEngine<TVoxel,TIndex>::GetImage(ITMUChar4Image *out, GetImageType g
 	{
 	case ITMBasicEngine::InfiniTAM_IMAGE_ORIGINAL_RGB:
 		out->ChangeDims(view->rgb->noDims);
-		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA) 
+		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA)
 			out->SetFrom(view->rgb, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);
 		else out->SetFrom(view->rgb, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);
 		break;

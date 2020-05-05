@@ -22,7 +22,7 @@ namespace ITMLib
 		std::shared_ptr<const ITMLibSettings> settings;
 
 		bool trackingActive, fusionActive, mainProcessingActive, trackingInitialised;
-		int framesProcessed, relocalisationCount;
+		int framesProcessed, consecutiveGoodFrames, relocalisationCount;
 
 		ITMLowLevelEngine *lowLevelEngine;
 		ITMVisualisationEngine<TVoxel, TIndex> *visualisationEngine;
