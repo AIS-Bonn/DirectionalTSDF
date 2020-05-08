@@ -186,7 +186,7 @@ static void QuaternionFromRotationMatrix(const double *matrix, double *q) {
 #endif
 
 template <typename TSurfel>
-ITMTrackingState::TrackingResult ITMBasicSurfelEngine<TSurfel>::ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement)
+ITMTrackingState::TrackingResult ITMBasicSurfelEngine<TSurfel>::ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement, const ORUtils::SE3Pose* pose)
 {
 	// prepare image and turn it into a depth image
 	if (imuMeasurement == NULL) viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter);
@@ -197,6 +197,13 @@ ITMTrackingState::TrackingResult ITMBasicSurfelEngine<TSurfel>::ProcessFrame(ITM
 	// tracking
 	ORUtils::SE3Pose oldPose(*(trackingState->pose_d));
 	if (trackingActive) trackingController->Track(trackingState, view);
+
+	// If poses provided externallyy
+	if (pose)
+	{
+		trackingState->trackerResult = ITMTrackingState::TRACKING_GOOD;
+		trackingState->pose_d->SetFrom(pose);
+	}
 
 	ITMTrackingState::TrackingResult trackerResult = ITMTrackingState::TRACKING_GOOD;
 	switch (settings->behaviourOnFailure) {

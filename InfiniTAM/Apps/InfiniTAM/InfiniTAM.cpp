@@ -60,9 +60,7 @@ int main(int argc, char** argv)
 
 	fs::create_directories(appData.outputDirectory);
 
-	UIEngine::Instance()->Initialise(argc, argv, imageSource, imuSource, mainEngine,
-	                                 appData.outputDirectory,
-	                                 internalSettings->deviceType);
+	UIEngine::Instance()->Initialise(argc, argv, &appData, mainEngine);
 	UIEngine::Instance()->Run();
 	UIEngine::Instance()->Shutdown();
 

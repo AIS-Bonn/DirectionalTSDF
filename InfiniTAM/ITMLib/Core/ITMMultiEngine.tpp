@@ -140,7 +140,7 @@ struct TodoListEntry {
 };
 
 template <typename TVoxel, typename TIndex>
-ITMTrackingState::TrackingResult ITMMultiEngine<TVoxel, TIndex>::ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement)
+ITMTrackingState::TrackingResult ITMMultiEngine<TVoxel, TIndex>::ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement, const ORUtils::SE3Pose* pose)
 {
 	std::vector<TodoListEntry> todoList;
 	ITMTrackingState::TrackingResult primaryLocalMapTrackingResult;
@@ -242,6 +242,13 @@ ITMTrackingState::TrackingResult ITMMultiEngine<TVoxel, TIndex>::ProcessFrame(IT
 			// actual tracking
 			ORUtils::SE3Pose oldPose(*(currentLocalMap->trackingState->pose_d));
 			trackingController->Track(currentLocalMap->trackingState, view);
+
+			// If poses provided externallyy
+			if (pose)
+			{
+				currentLocalMap->trackingState->trackerResult = ITMTrackingState::TRACKING_GOOD;
+				currentLocalMap->trackingState->pose_d->SetFrom(pose);
+			}
 
 			// tracking is allowed to be poor only in the primary scenes. 
 			ITMTrackingState::TrackingResult trackingResult = currentLocalMap->trackingState->trackerResult;

@@ -12,6 +12,7 @@
 #include "ITMLib/Utils/ITMLibSettings.h"
 #include "InputSource/ImageSourceEngine.h"
 #include "ImageSourceUtils.h"
+#include "InputSource/TrajectorySourceEngine.h"
 
 using namespace InputSource;
 using namespace ITMLib;
@@ -20,21 +21,23 @@ struct AppData
 {
 	ImageSourceEngine* imageSource;
 	IMUSourceEngine* imuSource;
+	TrajectorySourceEngine* trajectorySource;
 	std::shared_ptr<ITMLibSettings> internalSettings;
 	std::string outputDirectory;
 
 	AppData()
-		: imageSource(nullptr), imuSource(nullptr), internalSettings(nullptr), outputDirectory("./Output")
+		: imageSource(nullptr), imuSource(nullptr), trajectorySource(nullptr),
+		  internalSettings(nullptr), outputDirectory("./Output")
 	{}
 };
 
 inline int ParseCLIOptions(int argc, char** argv,
-                    AppData &appData)
+                           AppData& appData)
 {
 
 	CLI::App app{"RGB-D reconstruction with visualization"};
 
-	std::string calibrationFile, settingsFile, datasetDirectory;
+	std::string calibrationFile, settingsFile, datasetDirectory, trajectoryFile;
 	std::vector<std::string> device, rawPaths, videoPaths;
 
 	app.add_option("-c,--calibration", calibrationFile,
@@ -67,6 +70,9 @@ inline int ParseCLIOptions(int argc, char** argv,
 		->type_name("RGB DEPTH")
 		->expected(2);
 
+	auto trajectoryOption = app.add_option("-t,--trajectory", trajectoryFile,
+	                                       "Use trajectory file (TUM format) instead of ICP tracker");
+
 	CLI11_PARSE(app, argc, argv)
 
 	if (tumOption->count())
@@ -95,6 +101,13 @@ inline int ParseCLIOptions(int argc, char** argv,
 		if (device.size() > 1)
 			deviceId = device.at(1);
 		CreateDeviceImageSource(appData.imageSource, appData.imuSource, calibrationFile, deviceType, deviceId);
+	}
+
+	// External trajectory provided
+	if (trajectoryOption->count())
+	{
+		appData.trajectorySource = new TrajectorySourceEngine();
+		appData.trajectorySource->Read(trajectoryFile);
 	}
 
 	if (settingsFile.empty())

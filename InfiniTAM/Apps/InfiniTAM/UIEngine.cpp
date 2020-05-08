@@ -191,13 +191,13 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 		}
 		break;
 	case 'v':
-		if ((uiEngine->rgbVideoWriter != NULL) || (uiEngine->depthVideoWriter != NULL))
+		if ((uiEngine->rgbVideoWriter != nullptr) || (uiEngine->depthVideoWriter != nullptr))
 		{
 			printf("stop recoding video\n");
 			delete uiEngine->rgbVideoWriter;
 			delete uiEngine->depthVideoWriter;
-			uiEngine->rgbVideoWriter = NULL;
-			uiEngine->depthVideoWriter = NULL;
+			uiEngine->rgbVideoWriter = nullptr;
+			uiEngine->depthVideoWriter = nullptr;
 		}
 		else
 		{
@@ -226,13 +226,13 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 			uiEngine->outImageType[1] = ITMMainEngine::InfiniTAM_IMAGE_SCENERAYCAST;
 
 			uiEngine->freeviewPose.SetFrom(uiEngine->mainEngine->GetTrackingState()->pose_d);
-			if (uiEngine->mainEngine->GetView() != NULL) {
+			if (uiEngine->mainEngine->GetView() != nullptr) {
 				uiEngine->freeviewIntrinsics = uiEngine->mainEngine->GetView()->calib.intrinsics_d;
 				uiEngine->outImage[0]->ChangeDims(uiEngine->mainEngine->GetView()->depth->noDims);
 			}
 
 			ITMMultiEngine<ITMVoxel, ITMVoxelIndex> *multiEngine = dynamic_cast<ITMMultiEngine<ITMVoxel, ITMVoxelIndex>*>(uiEngine->mainEngine);
-			if (multiEngine != NULL)
+			if (multiEngine != nullptr)
 			{
 				int idx = multiEngine->findPrimaryLocalMapIdx();
 				if (idx < 0) idx = 0;
@@ -255,14 +255,14 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 		uiEngine->integrationActive = !uiEngine->integrationActive;
 
 		ITMBasicEngine<ITMVoxel, ITMVoxelIndex> *basicEngine = dynamic_cast<ITMBasicEngine<ITMVoxel, ITMVoxelIndex>*>(uiEngine->mainEngine);
-		if (basicEngine != NULL) 
+		if (basicEngine != nullptr)
 		{
 			if (uiEngine->integrationActive) basicEngine->turnOnIntegration();
 			else basicEngine->turnOffIntegration();
 		}
 
 		ITMBasicSurfelEngine<ITMSurfelT> *basicSurfelEngine = dynamic_cast<ITMBasicSurfelEngine<ITMSurfelT>*>(uiEngine->mainEngine);
-		if (basicSurfelEngine != NULL)
+		if (basicSurfelEngine != nullptr)
 		{
 			if (uiEngine->integrationActive) basicSurfelEngine->turnOnIntegration();
 			else basicSurfelEngine->turnOffIntegration();
@@ -279,10 +279,10 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 	case 'r':
 	{
 		ITMBasicEngine<ITMVoxel, ITMVoxelIndex> *basicEngine = dynamic_cast<ITMBasicEngine<ITMVoxel, ITMVoxelIndex>*>(uiEngine->mainEngine);
-		if (basicEngine != NULL) basicEngine->resetAll();
+		if (basicEngine != nullptr) basicEngine->resetAll();
 
 		ITMBasicSurfelEngine<ITMSurfelT> *basicSurfelEngine = dynamic_cast<ITMBasicSurfelEngine<ITMSurfelT>*>(uiEngine->mainEngine);
-		if (basicSurfelEngine != NULL) basicSurfelEngine->resetAll();
+		if (basicSurfelEngine != nullptr) basicSurfelEngine->resetAll();
 	}
 	break;
 	case 'k':
@@ -319,7 +319,7 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 	case ']':
 	{
 		ITMMultiEngine<ITMVoxel, ITMVoxelIndex> *multiEngine = dynamic_cast<ITMMultiEngine<ITMVoxel, ITMVoxelIndex>*>(uiEngine->mainEngine);
-		if (multiEngine != NULL) 
+		if (multiEngine != nullptr)
 		{
 			int idx = multiEngine->getFreeviewLocalMapIdx();
 			if (key == '[') idx--;
@@ -489,9 +489,9 @@ void UIEngine::glutMouseWheelFunction(int button, int dir, int x, int y)
 	uiEngine->needsRefresh = true;
 }
 
-void UIEngine::Initialise(int & argc, char** argv, ImageSourceEngine *imageSource, IMUSourceEngine *imuSource, ITMMainEngine *mainEngine,
-	const std::string &outFolder, ITMLibSettings::DeviceType deviceType)
+void UIEngine::Initialise(int & argc, char** argv, AppData* appData, ITMMainEngine *mainEngine)
 {
+	this->appData = appData;
 	this->freeviewActive = false;
 	this->integrationActive = true;
 	this->currentColourMode = 0;
@@ -504,21 +504,19 @@ void UIEngine::Initialise(int & argc, char** argv, ImageSourceEngine *imageSourc
 	this->colourModes_freeview.push_back(UIColourMode("surface normals", ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL));
 	this->colourModes_freeview.push_back(UIColourMode("confidence", ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_CONFIDENCE));
 
-	this->imageSource = imageSource;
-	this->imuSource = imuSource;
 	this->mainEngine = mainEngine;
 	{
-		size_t len = outFolder.size();
+		size_t len = appData->outputDirectory.size();
 		this->outFolder = new char[len + 1];
-		strcpy(this->outFolder, outFolder.c_str());
+		strcpy(this->outFolder, appData->outputDirectory.c_str());
 	}
 
 	this->statisticsEngine.Initialize(std::string(outFolder));
 
 	//Vector2i winSize;
 	//int textHeight = 30; // Height of text area
-	//winSize.x = 2 * MAX(imageSource->getRGBImageSize().x, imageSource->getDepthImageSize().x);
-	//winSize.y = MAX(imageSource->getRGBImageSize().y, imageSource->getDepthImageSize().y) + textHeight;
+	//winSize.x = 2 * MAX(appData->imageSource->getRGBImageSize().x, appData->imageSource->getDepthImageSize().x);
+	//winSize.y = MAX(appData->imageSource->getRGBImageSize().y, appData->imageSource->getDepthImageSize().y) + textHeight;
 	//float h1 = textHeight / (float)winSize.y, h2 = (1.f + h1) / 2;
 	//winReg[0] = Vector4f(0, h1, 0.5, 1); // Main render
 	//winReg[1] = Vector4f(0.5, h2, 0.75, 1); // Side sub window 0
@@ -527,10 +525,10 @@ void UIEngine::Initialise(int & argc, char** argv, ImageSourceEngine *imageSourc
 	//winReg[4] = Vector4f(0.75, h1, 1, h2); // Side sub window 3
 
 	int textHeight = 30; // Height of text area
-	//winSize.x = (int)(1.5f * (float)MAX(imageSource->getImageSize().x, imageSource->getDepthImageSize().x));
-	//winSize.y = MAX(imageSource->getRGBImageSize().y, imageSource->getDepthImageSize().y) + textHeight;
-	winSize.x = (int)(1.5f * (float)(imageSource->getDepthImageSize().x));
-	winSize.y = imageSource->getDepthImageSize().y + textHeight;
+	//winSize.x = (int)(1.5f * (float)MAX(appData->imageSource->getImageSize().x, appData->imageSource->getDepthImageSize().x));
+	//winSize.y = MAX(appData->imageSource->getRGBImageSize().y, appData->imageSource->getDepthImageSize().y) + textHeight;
+	winSize.x = (int)(1.5f * (float)(appData->imageSource->getDepthImageSize().x));
+	winSize.y = appData->imageSource->getDepthImageSize().y + textHeight;
 	float h1 = textHeight / (float)winSize.y, h2 = (1.f + h1) / 2;
 	winReg[0] = Vector4f(0.0f, h1, 0.665f, 1.0f);   // Main render
 	winReg[1] = Vector4f(0.665f, h2, 1.0f, 1.0f);   // Side sub window 0
@@ -538,8 +536,8 @@ void UIEngine::Initialise(int & argc, char** argv, ImageSourceEngine *imageSourc
 
 	this->isRecording = false;
 	this->currentFrameNo = 0;
-	this->rgbVideoWriter = NULL;
-	this->depthVideoWriter = NULL;
+	this->rgbVideoWriter = nullptr;
+	this->depthVideoWriter = nullptr;
 
 	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
@@ -559,16 +557,16 @@ void UIEngine::Initialise(int & argc, char** argv, ImageSourceEngine *imageSourc
 #endif
 
 	bool allocateGPU = false;
-	if (deviceType == ITMLibSettings::DEVICE_CUDA) allocateGPU = true;
+	if (appData->internalSettings->deviceType == ITMLibSettings::DEVICE_CUDA) allocateGPU = true;
 
 	for (int w = 0; w < NUM_WIN; w++)
-		outImage[w] = new ITMUChar4Image(imageSource->getDepthImageSize(), true, allocateGPU);
+		outImage[w] = new ITMUChar4Image(appData->imageSource->getDepthImageSize(), true, allocateGPU);
 
-	inputRGBImage = new ITMUChar4Image(imageSource->getRGBImageSize(), true, allocateGPU);
-	inputRawDepthImage = new ITMShortImage(imageSource->getDepthImageSize(), true, allocateGPU);
+	inputRGBImage = new ITMUChar4Image(appData->imageSource->getRGBImageSize(), true, allocateGPU);
+	inputRawDepthImage = new ITMShortImage(appData->imageSource->getDepthImageSize(), true, allocateGPU);
 	inputIMUMeasurement = new ITMIMUMeasurement();
 
-	saveImage = new ITMUChar4Image(imageSource->getDepthImageSize(), true, false);
+	saveImage = new ITMUChar4Image(appData->imageSource->getDepthImageSize(), true, false);
 
 	outImageType[0] = ITMMainEngine::InfiniTAM_IMAGE_SCENERAYCAST;
 	outImageType[1] = ITMMainEngine::InfiniTAM_IMAGE_ORIGINAL_DEPTH;
@@ -610,12 +608,19 @@ void UIEngine::GetScreenshot(ITMUChar4Image *dest) const
 
 void UIEngine::ProcessFrame()
 {
-	if (!imageSource->hasMoreImages()) return;
-	imageSource->getImages(inputRGBImage, inputRawDepthImage);
+	if (!appData->imageSource->hasMoreImages()) return;
+	appData->imageSource->getImages(inputRGBImage, inputRawDepthImage);
 
-	if (imuSource != NULL) {
-		if (!imuSource->hasMoreMeasurements()) return;
-		else imuSource->getMeasurement(inputIMUMeasurement);
+	if (appData->imuSource != nullptr) {
+		if (!appData->imuSource->hasMoreMeasurements()) return;
+		else appData->imuSource->getMeasurement(inputIMUMeasurement);
+	}
+
+	const ORUtils::SE3Pose *inputPose = nullptr;
+	if (appData->trajectorySource != nullptr)
+	{
+		if (!appData->trajectorySource->hasMorePoses()) return;
+		inputPose = appData->trajectorySource->getPose();
 	}
 
 	if (isRecording)
@@ -630,11 +635,11 @@ void UIEngine::ProcessFrame()
 			SaveImageToFile(inputRGBImage, str);
 		}
 	}
-	if ((rgbVideoWriter != NULL) && (inputRGBImage->noDims.x != 0)) {
+	if ((rgbVideoWriter != nullptr) && (inputRGBImage->noDims.x != 0)) {
 		if (!rgbVideoWriter->isOpen()) rgbVideoWriter->open("out_rgb.avi", inputRGBImage->noDims.x, inputRGBImage->noDims.y, false, 30);
 		rgbVideoWriter->writeFrame(inputRGBImage);
 	}
-	if ((depthVideoWriter != NULL) && (inputRawDepthImage->noDims.x != 0)) {
+	if ((depthVideoWriter != nullptr) && (inputRawDepthImage->noDims.x != 0)) {
 		if (!depthVideoWriter->isOpen()) depthVideoWriter->open("out_d.avi", inputRawDepthImage->noDims.x, inputRawDepthImage->noDims.y, true, 30);
 		depthVideoWriter->writeFrame(inputRawDepthImage);
 	}
@@ -644,8 +649,8 @@ void UIEngine::ProcessFrame()
 
 	ITMTrackingState::TrackingResult trackerResult;
 	//actual processing on the mailEngine
-	if (imuSource != NULL) trackerResult = mainEngine->ProcessFrame(inputRGBImage, inputRawDepthImage, inputIMUMeasurement);
-	else trackerResult = mainEngine->ProcessFrame(inputRGBImage, inputRawDepthImage);
+	if (appData->imuSource != nullptr) trackerResult = mainEngine->ProcessFrame(inputRGBImage, inputRawDepthImage, inputIMUMeasurement, inputPose);
+	else trackerResult = mainEngine->ProcessFrame(inputRGBImage, inputRawDepthImage, nullptr, inputPose);
 
 	trackingResult = (int)trackerResult;
 
@@ -671,8 +676,8 @@ void UIEngine::Shutdown()
 
 	statisticsEngine.CloseAll();
 
-	if (rgbVideoWriter != NULL) delete rgbVideoWriter;
-	if (depthVideoWriter != NULL) delete depthVideoWriter;
+	if (rgbVideoWriter != nullptr) delete rgbVideoWriter;
+	if (depthVideoWriter != nullptr) delete depthVideoWriter;
 
 	for (int w = 0; w < NUM_WIN; w++)
 		delete outImage[w];
@@ -684,5 +689,5 @@ void UIEngine::Shutdown()
 	delete[] outFolder;
 	delete saveImage;
 	delete instance;
-	instance = NULL;
+	instance = nullptr;
 }

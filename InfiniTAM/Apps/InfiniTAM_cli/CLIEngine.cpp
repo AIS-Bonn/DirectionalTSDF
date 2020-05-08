@@ -3,6 +3,7 @@
 #include "CLIEngine.h"
 
 #include <string.h>
+#include <Apps/Utils/CLIUtils.h>
 
 #include "InputSource/ImageSourceEngine.h"
 #include "InputSource/IMUSourceEngine.h"
@@ -16,25 +17,22 @@ using namespace ITMLib;
 
 CLIEngine* CLIEngine::instance;
 
-void CLIEngine::Initialise(ImageSourceEngine* imageSource_, IMUSourceEngine* imuSource_,
-                           ITMMainEngine* mainEngine_, ITMLibSettings::DeviceType deviceType,
-                           const std::string& outFolder)
+void CLIEngine::Initialise(AppData* appData, ITMMainEngine* mainEngine)
 {
-	this->imageSource = imageSource_;
-	this->imuSource = imuSource_;
-	this->mainEngine = mainEngine_;
+	this->appData = appData;
+	this->mainEngine = mainEngine;
 
 	this->currentFrameNo = 0;
 
 	bool allocateGPU = false;
-	if (deviceType == ITMLibSettings::DEVICE_CUDA) allocateGPU = true;
+	if (appData->internalSettings->deviceType == ITMLibSettings::DEVICE_CUDA) allocateGPU = true;
 
-	inputRGBImage = new ITMUChar4Image(imageSource->getRGBImageSize(), true, allocateGPU);
-	inputRawDepthImage = new ITMShortImage(imageSource->getDepthImageSize(), true, allocateGPU);
+	inputRGBImage = new ITMUChar4Image(appData->imageSource->getRGBImageSize(), true, allocateGPU);
+	inputRawDepthImage = new ITMShortImage(appData->imageSource->getDepthImageSize(), true, allocateGPU);
 	inputIMUMeasurement = new ITMIMUMeasurement();
 	statisticsEngine = new ITMLoggingEngine();
 
-	this->statisticsEngine->Initialize(outFolder);
+	this->statisticsEngine->Initialize(appData->outputDirectory);
 
 #ifndef COMPILE_WITHOUT_CUDA
 	ORcudaSafeCall(cudaThreadSynchronize());
@@ -50,13 +48,20 @@ void CLIEngine::Initialise(ImageSourceEngine* imageSource_, IMUSourceEngine* imu
 
 bool CLIEngine::ProcessFrame()
 {
-	if (!imageSource->hasMoreImages()) return false;
-	imageSource->getImages(inputRGBImage, inputRawDepthImage);
+	if (!appData->imageSource->hasMoreImages()) return false;
+	appData->imageSource->getImages(inputRGBImage, inputRawDepthImage);
 
-	if (imuSource != NULL)
+	if (appData->imuSource != nullptr)
 	{
-		if (!imuSource->hasMoreMeasurements()) return false;
-		else imuSource->getMeasurement(inputIMUMeasurement);
+		if (!appData->imuSource->hasMoreMeasurements()) return false;
+		else appData->imuSource->getMeasurement(inputIMUMeasurement);
+	}
+
+	const ORUtils::SE3Pose *inputPose = nullptr;
+	if (appData->trajectorySource != nullptr)
+	{
+		if (!appData->trajectorySource->hasMorePoses()) return false;
+		inputPose = appData->trajectorySource->getPose();
 	}
 
 	sdkResetTimer(&timer_instant);
@@ -64,8 +69,8 @@ bool CLIEngine::ProcessFrame()
 	sdkStartTimer(&timer_average);
 
 	//actual processing on the mailEngine
-	if (imuSource != NULL) mainEngine->ProcessFrame(inputRGBImage, inputRawDepthImage, inputIMUMeasurement);
-	else mainEngine->ProcessFrame(inputRGBImage, inputRawDepthImage);
+	if (appData->imuSource != nullptr) mainEngine->ProcessFrame(inputRGBImage, inputRawDepthImage, inputIMUMeasurement, inputPose);
+	else mainEngine->ProcessFrame(inputRGBImage, inputRawDepthImage, nullptr, inputPose);
 
 #ifndef COMPILE_WITHOUT_CUDA
 	ORcudaSafeCall(cudaThreadSynchronize());

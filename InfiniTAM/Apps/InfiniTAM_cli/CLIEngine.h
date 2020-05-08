@@ -20,14 +20,15 @@ namespace InputSource
 	class IMUSourceEngine;
 }
 
+struct AppData;
+
 namespace InfiniTAM::Engine
 {
 class CLIEngine
 {
 	static CLIEngine* instance;
 
-	InputSource::ImageSourceEngine* imageSource;
-	InputSource::IMUSourceEngine* imuSource;
+	AppData *appData;
 	ITMLib::ITMMainEngine* mainEngine;
 	ITMLib::ITMLoggingEngine* statisticsEngine;
 
@@ -47,9 +48,7 @@ public:
 		return instance;
 	}
 
-	void Initialise(InputSource::ImageSourceEngine* imageSource_, InputSource::IMUSourceEngine* imuSource_,
-	                ITMLib::ITMMainEngine* mainEngine_,
-	                ITMLib::ITMLibSettings::DeviceType deviceType, const std::string& outFolder);
+	void Initialise(AppData* appData, ITMLib::ITMMainEngine* mainEngine);
 
 	void Shutdown();
 

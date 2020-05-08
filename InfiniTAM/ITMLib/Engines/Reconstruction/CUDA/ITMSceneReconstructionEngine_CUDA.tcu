@@ -195,8 +195,7 @@ ITMSceneReconstructionEngine_CUDA_common<TVoxel, TIndex>::IntegrateIntoSceneRayC
 	ITMTimer timer;
 	timer.Tick();
 
-	Matrix4f invM_d;
-	trackingState->pose_d->GetM().inv(invM_d);
+	Matrix4f invM_d = trackingState->pose_d->GetInvM();
 	Vector4f projParams_d = view->calib.intrinsics_d.projectionParamsSimple.all;
 	Vector4f projParams_rgb = view->calib.intrinsics_rgb.projectionParamsSimple.all;
 
@@ -536,8 +535,6 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMPlainVoxelArray>::IntegrateInt
 
 	projParams_d = view->calib.intrinsics_d.projectionParamsSimple.all;
 	projParams_rgb = view->calib.intrinsics_rgb.projectionParamsSimple.all;
-
-	float mu = scene->sceneParams->mu; int maxW = scene->sceneParams->maxW;
 
 	float *depth = view->depth->GetData(MEMORYDEVICE_CUDA);
 	Vector4f *depthNormals = view->depthNormal->GetData(MEMORYDEVICE_CUDA);

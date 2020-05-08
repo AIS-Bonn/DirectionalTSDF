@@ -53,38 +53,40 @@ namespace ITMLib
 		/// Pointer for storing the current input frame
 		ITMView *view;
 	public:
-		ITMView* GetView() { return view; }
+		ITMView* GetView() override { return view; }
 
-		ITMTrackingState* GetTrackingState(void);
+		ITMTrackingState* GetTrackingState() override;
 
 		/// Process a frame with rgb and depth images and (optionally) a corresponding imu measurement
-		ITMTrackingState::TrackingResult ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement = NULL);
+		ITMTrackingState::TrackingResult ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement = nullptr, const ORUtils::SE3Pose* pose = nullptr) override;
 
 		/// Get a result image as output
-		Vector2i GetImageSize(void) const;
+		Vector2i GetImageSize() const override;
 
-		void GetImage(ITMUChar4Image *out, GetImageType getImageType, ORUtils::SE3Pose *pose = NULL, ITMIntrinsics *intrinsics = NULL);
+		void GetImage(ITMUChar4Image *out, GetImageType getImageType, ORUtils::SE3Pose *pose = nullptr, ITMIntrinsics *intrinsics = nullptr) override;
 
 		void changeFreeviewLocalMapIdx(ORUtils::SE3Pose *pose, int newIdx);
 		void setFreeviewLocalMapIdx(int newIdx)
 		{
 			freeviewLocalMapIdx = newIdx;
 		}
-		int getFreeviewLocalMapIdx(void) const
+		[[nodiscard]]
+		int getFreeviewLocalMapIdx() const
 		{
 			return freeviewLocalMapIdx;
 		}
-		int findPrimaryLocalMapIdx(void) const
+		[[nodiscard]]
+		int findPrimaryLocalMapIdx() const
 		{
 			return mActiveDataManager->findPrimaryLocalMapIdx();
 		}
 
 		/// Extracts a mesh from the current scene and saves it to the model file specified by the file name
-		void SaveSceneToMesh(const char *fileName);
+		void SaveSceneToMesh(const char *fileName) override;
 
 		/// save and load the full scene and relocaliser (if any) to/from file
-		void SaveToFile();
-		void LoadFromFile();
+		void SaveToFile() override;
+		void LoadFromFile() override;
 
 		//void writeFullTrajectory(void) const;
 		//void SaveSceneToMesh(const char *objFileName);

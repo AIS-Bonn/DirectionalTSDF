@@ -12,6 +12,7 @@
 #include "ORUtils/NVTimer.h"
 
 #include <vector>
+#include <Apps/Utils/CLIUtils.h>
 
 namespace InfiniTAM
 {
@@ -36,9 +37,7 @@ namespace InfiniTAM
 			std::vector<UIColourMode> colourModes_main, colourModes_freeview;
 			int currentColourMode;
 
-			InputSource::ImageSourceEngine *imageSource;
-			InputSource::IMUSourceEngine *imuSource;
-			ITMLib::ITMLibSettings internalSettings;
+			AppData *appData;
 			ITMLib::ITMMainEngine *mainEngine;
 			ITMLib::ITMLoggingEngine statisticsEngine;
 
@@ -91,8 +90,7 @@ namespace InfiniTAM
 			bool needsRefresh;
 			ITMUChar4Image *saveImage;
 
-			void Initialise(int & argc, char** argv, InputSource::ImageSourceEngine *imageSource, InputSource::IMUSourceEngine *imuSource,
-				ITMLib::ITMMainEngine *mainEngine, const std::string &outFolder, ITMLib::ITMLibSettings::DeviceType deviceType);
+			void Initialise(int & argc, char** argv, AppData* appData, ITMLib::ITMMainEngine *mainEngine);
 			void Shutdown();
 
 			void Run();

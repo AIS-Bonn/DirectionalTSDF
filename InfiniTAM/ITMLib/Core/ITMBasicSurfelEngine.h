@@ -49,22 +49,22 @@ namespace ITMLib
 		static typename ITMSurfelVisualisationEngine<TSurfel>::RenderImageType ToSurfelImageType(GetImageType getImageType);
 
 	public:
-		ITMView* GetView(void) { return view; }
-		ITMTrackingState* GetTrackingState(void) { return trackingState; }
+		ITMView* GetView() override { return view; }
+		ITMTrackingState* GetTrackingState() override { return trackingState; }
 
-		ITMTrackingState::TrackingResult ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement = NULL);
+		ITMTrackingState::TrackingResult ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement = nullptr, const ORUtils::SE3Pose* pose = nullptr) override;
 
 		/// Extracts a mesh from the current scene and saves it to the model file specified by the file name
-		void SaveSceneToMesh(const char *fileName);
+		void SaveSceneToMesh(const char *fileName) override;
 
 		/// save and load the full scene and relocaliser (if any) to/from file
-		void SaveToFile();
-		void LoadFromFile();
+		void SaveToFile() override;
+		void LoadFromFile() override;
 
 		/// Get a result image as output
-		Vector2i GetImageSize(void) const;
+		Vector2i GetImageSize(void) const override;
 
-		void GetImage(ITMUChar4Image *out, GetImageType getImageType, ORUtils::SE3Pose *pose = NULL, ITMIntrinsics *intrinsics = NULL);
+		void GetImage(ITMUChar4Image *out, GetImageType getImageType, ORUtils::SE3Pose *pose = NULL, ITMIntrinsics *intrinsics = NULL) override;
 
 		/// switch for turning tracking on/off
 		void turnOnTracking();

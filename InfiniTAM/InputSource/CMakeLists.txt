@@ -47,6 +47,7 @@ OpenNIEngine.cpp
 PicoFlexxEngine.cpp
 RealSenseEngine.cpp
 RealSense2Engine.cpp
+TrajectorySourceEngine.cpp
 )
 
 SET(headers
@@ -62,6 +63,7 @@ OpenNIEngine.h
 PicoFlexxEngine.h
 RealSenseEngine.h
 RealSense2Engine.h
+TrajectorySourceEngine.h
 )
 
 #############################

@@ -244,7 +244,7 @@ static void QuaternionFromRotationMatrix(const double *matrix, double *q) {
 #endif
 
 template <typename TVoxel, typename TIndex>
-ITMTrackingState::TrackingResult ITMBasicEngine<TVoxel,TIndex>::ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement)
+ITMTrackingState::TrackingResult ITMBasicEngine<TVoxel,TIndex>::ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement, const ORUtils::SE3Pose* pose)
 {
 	this->timeStats.Reset();
 	ITMTimer timer;
@@ -264,6 +264,13 @@ ITMTrackingState::TrackingResult ITMBasicEngine<TVoxel,TIndex>::ProcessFrame(ITM
 	// tracking
 	ORUtils::SE3Pose oldPose(*(trackingState->pose_d));
 	if (trackingActive) trackingController->Track(trackingState, view);
+
+	// If poses provided externally
+	if (pose)
+	{
+		trackingState->trackerResult = ITMTrackingState::TRACKING_GOOD;
+		trackingState->pose_d->SetFrom(pose);
+	}
 
 	if (trackingState->trackerResult == ITMTrackingState::TRACKING_GOOD) consecutiveGoodFrames++;
 	else consecutiveGoodFrames = 0;
