@@ -380,6 +380,10 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 	tempData->noAllocatedVoxelEntries = scene->localVBA.lastFreeBlockId;
 	tempData->noAllocatedExcessEntries = scene->index.GetLastFreeExcessListId();
 	tempData->noVisibleEntries = 0;
+	if (scene->localVBA.lastFreeBlockId <= 0)
+	{
+		printf("No more free blocks. Allocation stopped.\n");
+	}
 	ORcudaSafeCall(cudaMemcpyAsync(allocationTempData_device, tempData, sizeof(AllocationTempData), cudaMemcpyHostToDevice));
 
 	ORcudaSafeCall(cudaMemsetAsync(entriesAllocType_device, 0, sizeof(unsigned char)* noTotalEntries));

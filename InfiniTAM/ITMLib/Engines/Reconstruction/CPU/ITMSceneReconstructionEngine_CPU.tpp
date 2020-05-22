@@ -412,6 +412,11 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 	allocationTempData.noAllocatedExcessEntries = scene->index.GetLastFreeExcessListId();
 	allocationTempData.noVisibleEntries = 0;
 
+	if (scene->localVBA.lastFreeBlockId <= 0)
+	{
+		printf("No more free blocks. Allocation stopped.\n");
+	}
+
 	memset(entriesAllocType, 0, noTotalEntries);
 
 	for (int i = 0; i < renderState_vh->noVisibleEntries; i++)
