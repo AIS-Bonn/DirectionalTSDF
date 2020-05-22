@@ -138,6 +138,7 @@ void ITMExtendedTracker::SetupLevels(int numIterCoarse, int numIterFine, float s
 		}
 	}
 	if (spaceThreshCoarse >= 0.0f && spaceThreshFine >= 0.0f) {
+		spaceThreshCoarse = MAX(spaceThreshCoarse, spaceThreshFine);
 		float step = (float)(spaceThreshCoarse - spaceThreshFine) / (float)(noHierarchyLevels - 1);
 		float val = spaceThreshCoarse;
 		for (int levelId = noHierarchyLevels - 1; levelId >= 0; levelId--) {
@@ -146,6 +147,7 @@ void ITMExtendedTracker::SetupLevels(int numIterCoarse, int numIterFine, float s
 		}
 	}
 	if (colourThreshCoarse >= 0.0f && colourThreshFine >= 0.0f) {
+		colourThreshCoarse = MAX(colourThreshCoarse, colourThreshFine);
 		float step = (float)(colourThreshCoarse - colourThreshFine) / (float)(noHierarchyLevels - 1);
 		float val = colourThreshCoarse;
 		for (int levelId = noHierarchyLevels - 1; levelId >= 0; levelId--) {

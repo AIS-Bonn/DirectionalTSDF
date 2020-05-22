@@ -65,7 +65,8 @@ void ITMDepthTracker::SetupLevels(int numIterCoarse, int numIterFine, float dist
 		}
 	}
 	if ((distThreshCoarse >= 0.0f) && (distThreshFine >= 0.0f)) {
-		float step = (float)(distThreshCoarse - distThreshFine) / (float)(noHierarchyLevels - 1);
+		distThreshCoarse = MAX(distThreshCoarse, distThreshFine);
+		float step = (distThreshCoarse - distThreshFine) / (float)(noHierarchyLevels - 1);
 		float val = distThreshCoarse;
 		for (int levelId = noHierarchyLevels - 1; levelId >= 0; levelId--) {
 			this->distThresh[levelId] = val;
