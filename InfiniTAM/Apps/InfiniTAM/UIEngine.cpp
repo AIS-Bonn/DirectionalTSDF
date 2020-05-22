@@ -623,27 +623,6 @@ void UIEngine::ProcessFrame()
 		inputPose = appData->trajectorySource->getPose();
 	}
 
-	if (isRecording)
-	{
-		char str[250];
-
-		sprintf(str, "%s/%04d.pgm", outFolder, currentFrameNo);
-		SaveImageToFile(inputRawDepthImage, str);
-
-		if (inputRGBImage->noDims != Vector2i(0, 0)) {
-			sprintf(str, "%s/%04d.ppm", outFolder, currentFrameNo);
-			SaveImageToFile(inputRGBImage, str);
-		}
-	}
-	if ((rgbVideoWriter != nullptr) && (inputRGBImage->noDims.x != 0)) {
-		if (!rgbVideoWriter->isOpen()) rgbVideoWriter->open("out_rgb.avi", inputRGBImage->noDims.x, inputRGBImage->noDims.y, false, 30);
-		rgbVideoWriter->writeFrame(inputRGBImage);
-	}
-	if ((depthVideoWriter != nullptr) && (inputRawDepthImage->noDims.x != 0)) {
-		if (!depthVideoWriter->isOpen()) depthVideoWriter->open("out_d.avi", inputRawDepthImage->noDims.x, inputRawDepthImage->noDims.y, true, 30);
-		depthVideoWriter->writeFrame(inputRawDepthImage);
-	}
-
 	sdkResetTimer(&timer_instant);
 	sdkStartTimer(&timer_instant); sdkStartTimer(&timer_average);
 
@@ -653,6 +632,30 @@ void UIEngine::ProcessFrame()
 	else trackerResult = mainEngine->ProcessFrame(inputRGBImage, inputRawDepthImage, nullptr, inputPose);
 
 	trackingResult = (int)trackerResult;
+
+	if (isRecording)
+	{
+		char str[250];
+
+		sprintf(str, "%s/recording/%04d.pgm", outFolder, currentFrameNo);
+		SaveImageToFile(inputRawDepthImage, str);
+
+		if (inputRGBImage->noDims != Vector2i(0, 0)) {
+			sprintf(str, "%s/recording/%04d.ppm", outFolder, currentFrameNo);
+			SaveImageToFile(inputRGBImage, str);
+		}
+
+		sprintf(str, "%s/recording/render%04d.ppm", outFolder, currentFrameNo);
+		SaveImageToFile(outImage[0], str);
+	}
+	if ((rgbVideoWriter != nullptr) && (inputRGBImage->noDims.x != 0)) {
+		if (!rgbVideoWriter->isOpen()) rgbVideoWriter->open("out_rgb.avi", inputRGBImage->noDims.x, inputRGBImage->noDims.y, false, 30);
+		rgbVideoWriter->writeFrame(inputRGBImage);
+	}
+	if ((depthVideoWriter != nullptr) && (inputRawDepthImage->noDims.x != 0)) {
+		if (!depthVideoWriter->isOpen()) depthVideoWriter->open("out_d.avi", inputRawDepthImage->noDims.x, inputRawDepthImage->noDims.y, true, 30);
+		depthVideoWriter->writeFrame(inputRawDepthImage);
+	}
 
 #ifndef COMPILE_WITHOUT_CUDA
 	ORcudaSafeCall(cudaThreadSynchronize());
