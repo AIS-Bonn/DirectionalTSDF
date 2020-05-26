@@ -62,6 +62,9 @@ bool CLIEngine::ProcessFrame()
 	{
 		if (!appData->trajectorySource->hasMorePoses()) return false;
 		inputPose = appData->trajectorySource->getPose();
+	} else if (currentFrameNo == 0)
+	{
+		inputPose = &appData->initialPose;
 	}
 
 	sdkResetTimer(&timer_instant);

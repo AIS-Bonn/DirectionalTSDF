@@ -24,6 +24,7 @@ struct AppData
 	TrajectorySourceEngine* trajectorySource;
 	std::shared_ptr<ITMLibSettings> internalSettings;
 	std::string outputDirectory;
+	ORUtils::SE3Pose initialPose;
 
 	AppData()
 		: imageSource(nullptr), imuSource(nullptr), trajectorySource(nullptr),
@@ -39,6 +40,7 @@ inline int ParseCLIOptions(int argc, char** argv,
 
 	std::string calibrationFile, settingsFile, datasetDirectory, trajectoryFile;
 	std::vector<std::string> device, rawPaths, videoPaths;
+	std::vector<float> initialPose;
 
 	app.add_option("-c,--calibration", calibrationFile,
 	               "Path to the calibration file (required by all modes excluding Realsense)")
@@ -72,6 +74,11 @@ inline int ParseCLIOptions(int argc, char** argv,
 
 	auto trajectoryOption = app.add_option("-t,--trajectory", trajectoryFile,
 	                                       "Use trajectory file (TUM format) instead of ICP tracker");
+
+	auto initialPoseOption = app.add_option("--initial_pose", initialPose, "Start pose for tracking")
+		->type_name("x y z rx ry rz rw")
+		->excludes(trajectoryOption)
+		->expected(7);
 
 	CLI11_PARSE(app, argc, argv)
 
@@ -108,6 +115,12 @@ inline int ParseCLIOptions(int argc, char** argv,
 	{
 		appData.trajectorySource = new TrajectorySourceEngine();
 		appData.trajectorySource->Read(trajectoryFile);
+	}
+
+	if (initialPoseOption->count())
+	{
+		appData.initialPose.SetFrom(initialPose.at(0), initialPose.at(1), initialPose.at(2),
+		                            initialPose.at(3), initialPose.at(4), initialPose.at(5), initialPose.at(6));
 	}
 
 	if (settingsFile.empty())

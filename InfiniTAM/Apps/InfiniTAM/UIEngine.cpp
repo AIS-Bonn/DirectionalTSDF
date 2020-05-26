@@ -288,7 +288,7 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 	case 'k':
 	{
 		printf("saving scene to disk ... ");
-		
+
 		try
 		{
 			uiEngine->mainEngine->SaveToFile();
@@ -621,6 +621,9 @@ void UIEngine::ProcessFrame()
 	{
 		if (!appData->trajectorySource->hasMorePoses()) return;
 		inputPose = appData->trajectorySource->getPose();
+	} else if (processedFrameNo == 0)
+	{
+		inputPose = &appData->initialPose;
 	}
 
 	sdkResetTimer(&timer_instant);
