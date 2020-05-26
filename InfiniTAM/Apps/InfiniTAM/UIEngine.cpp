@@ -664,6 +664,7 @@ void UIEngine::ProcessFrame()
 
 	statisticsEngine.LogTimeStats(mainEngine->GetTimeStats());
 	statisticsEngine.LogPose(*mainEngine->GetTrackingState());
+	statisticsEngine.LogBlockAllocations(mainEngine->GetAllocationsPerDirection());
 
 	//processedTime = sdkGetTimerValue(&timer_instant);
 	processedTime = sdkGetAverageTimerValue(&timer_average);

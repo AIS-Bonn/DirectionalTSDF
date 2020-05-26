@@ -53,6 +53,9 @@ namespace ITMLib
 		ITMView* GetView() override { return view; }
 		ITMTrackingState* GetTrackingState() override { return trackingState; }
 
+		virtual const unsigned int* GetAllocationsPerDirection() override
+		{ return scene->localVBA.noAllocationsPerDirection; }
+
 		/// Gives access to the internal world representation
 		ITMScene<TVoxel, TIndex>* GetScene() { return scene; }
 

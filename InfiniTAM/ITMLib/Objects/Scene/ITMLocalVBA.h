@@ -31,6 +31,8 @@ namespace ITMLib
 #endif
 		int lastFreeBlockId;
 
+		unsigned int noAllocationsPerDirection[N_DIRECTIONS];
+
 		int allocatedSize;
 
 		void SaveToDirectory(const std::string &outputDirectory) const
@@ -67,6 +69,7 @@ namespace ITMLib
 		: memoryType(memoryType), lastFreeBlockId(0)
 		{
 			allocatedSize = noBlocks * blockSize;
+			memset(noAllocationsPerDirection, 0, N_DIRECTIONS * sizeof(unsigned int));
 
 			printf("Allocating new local VBA with size %lu kB\n", (allocatedSize * sizeof(TVoxel)) / 1024);
 			voxelBlocks = new ORUtils::MemoryBlock<TVoxel>(allocatedSize, memoryType);

@@ -52,6 +52,8 @@ namespace ITMLib
 		ITMView* GetView() override { return view; }
 		ITMTrackingState* GetTrackingState() override { return trackingState; }
 
+		const unsigned int* GetAllocationsPerDirection() override;
+
 		ITMTrackingState::TrackingResult ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement = nullptr, const ORUtils::SE3Pose* pose = nullptr) override;
 
 		/// Extracts a mesh from the current scene and saves it to the model file specified by the file name

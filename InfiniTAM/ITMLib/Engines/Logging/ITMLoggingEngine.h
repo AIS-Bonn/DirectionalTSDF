@@ -24,12 +24,16 @@ public:
 
 	void LogPose(const ITMTrackingState &trackingState);
 
+	void LogBlockAllocations(const unsigned int* noAllocationsPerDirection);
+
 private:
 	std::string m_outputDirectory;
 
 	std::ofstream m_timeStatsFile;
 
 	std::ofstream m_trackingFile;
+
+	std::ofstream m_allocationsFile;
 };
 
 } // namespace ITMLib

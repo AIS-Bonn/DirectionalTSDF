@@ -284,6 +284,8 @@ void allocateVoxelBlocksList(
 					hashEntry.direction = static_cast<TSDFDirection_type>(blockDirections[targetIdx]);
 
 					hashTable[targetIdx] = hashEntry;
+
+					allocationTempData->noAllocationsPerDirection[hashEntry.direction % 255]++;
 				}
 				else
 				{
@@ -316,6 +318,8 @@ void allocateVoxelBlocksList(
 					hashTable[SDF_BUCKET_NUM + exlOffset] = hashEntry; //add child to the excess list
 
 					entriesVisibleType[SDF_BUCKET_NUM + exlOffset] = VISIBLE_IN_MEMORY; //make child visible and in memory
+
+					allocationTempData->noAllocationsPerDirection[hashEntry.direction % 255]++;
 				}
 				else
 				{
@@ -411,6 +415,8 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 	allocationTempData.noAllocatedVoxelEntries = scene->localVBA.lastFreeBlockId;
 	allocationTempData.noAllocatedExcessEntries = scene->index.GetLastFreeExcessListId();
 	allocationTempData.noVisibleEntries = 0;
+	memcpy(allocationTempData.noAllocationsPerDirection,
+		     scene->localVBA.noAllocationsPerDirection, sizeof(unsigned int) * N_DIRECTIONS);
 
 	if (scene->localVBA.lastFreeBlockId <= 0)
 	{
@@ -494,6 +500,8 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 
 	scene->localVBA.lastFreeBlockId = allocationTempData.noAllocatedVoxelEntries;
 	scene->index.SetLastFreeExcessListId(allocationTempData.noAllocatedExcessEntries);
+	memcpy(scene->localVBA.noAllocationsPerDirection,
+		     allocationTempData.noAllocationsPerDirection, sizeof(unsigned int) * N_DIRECTIONS);
 }
 
 template<class TVoxel>

@@ -15,6 +15,7 @@ namespace ITMLib
 
 struct AllocationTempData
 {
+	unsigned int noAllocationsPerDirection[N_DIRECTIONS];
 	int noAllocatedVoxelEntries;
 	int noAllocatedExcessEntries;
 	int noVisibleEntries;
@@ -881,9 +882,7 @@ buildSpaceCarvingVisibleType(DEVICEPTR(HashEntryVisibilityType)* entriesVisibleT
 	Vector3f rayStart_world = (invM_d * rayStart_camera).toVector3();
 	Vector3f rayDirection_world = (pt_world - rayStart_world).normalised();
 
-//	float carveDistance = ORUtils::length(pt_world - rayStart_world)
-//	                      - fabs(1.0 / dot(normal_world, rayDirection_world)) * mu;
-	float carveDistance = ORUtils::length(pt_world - rayStart_world) - 1 * mu;
+	float carveDistance = ORUtils::length(pt_world - rayStart_world);
 	BlockTraversal blockTraversal_carving(rayStart_world, rayDirection_world, carveDistance,
 	                                      voxelSize * SDF_BLOCK_SIZE, false);
 	while (blockTraversal_carving.HasNextBlock())

@@ -380,6 +380,7 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 	tempData->noAllocatedVoxelEntries = scene->localVBA.lastFreeBlockId;
 	tempData->noAllocatedExcessEntries = scene->index.GetLastFreeExcessListId();
 	tempData->noVisibleEntries = 0;
+	memcpy(tempData->noAllocationsPerDirection, scene->localVBA.noAllocationsPerDirection, sizeof(unsigned int) * N_DIRECTIONS);
 	if (scene->localVBA.lastFreeBlockId <= 0)
 	{
 		printf("No more free blocks. Allocation stopped.\n");
@@ -443,6 +444,7 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 	renderState_vh->noVisibleEntries = tempData->noVisibleEntries;
 	scene->localVBA.lastFreeBlockId = tempData->noAllocatedVoxelEntries;
 	scene->index.SetLastFreeExcessListId(tempData->noAllocatedExcessEntries);
+	memcpy(scene->localVBA.noAllocationsPerDirection, tempData->noAllocationsPerDirection, sizeof(unsigned int) * N_DIRECTIONS);
 }
 
 template<class TVoxel>
@@ -681,6 +683,8 @@ __global__ void allocateVoxelBlocksList_device(int *voxelAllocationList, int *ex
 			hashEntry.direction = static_cast<TSDFDirection_type>(blockDirections[targetIdx]);
 
 			hashTable[targetIdx] = hashEntry;
+
+			atomicAdd(&allocData->noAllocationsPerDirection[hashEntry.direction % 255], 1);
 		}
 		else
 		{
@@ -713,6 +717,8 @@ __global__ void allocateVoxelBlocksList_device(int *voxelAllocationList, int *ex
 			hashTable[SDF_BUCKET_NUM + exlOffset] = hashEntry; //add child to the excess list
 
 			entriesVisibleType[SDF_BUCKET_NUM + exlOffset] = VISIBLE_IN_MEMORY; //make child visible
+
+			atomicAdd(&allocData->noAllocationsPerDirection[hashEntry.direction % 255], 1);
 		}
 		else
 		{

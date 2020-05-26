@@ -435,3 +435,10 @@ void ITMMultiEngine<TVoxel, TIndex>::GetImage(ITMUChar4Image *out, GetImageType 
 		break;
 	};
 }
+
+template<typename TVoxel, typename TIndex>
+const unsigned int* ITMMultiEngine<TVoxel, TIndex>::GetAllocationsPerDirection()
+{
+  throw std::logic_error("GetAllocationsPerDirection not implemented");
+	return nullptr;
+}

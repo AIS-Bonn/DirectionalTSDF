@@ -57,6 +57,8 @@ namespace ITMLib
 
 		ITMTrackingState* GetTrackingState() override;
 
+		const unsigned int* GetAllocationsPerDirection() override;
+
 		/// Process a frame with rgb and depth images and (optionally) a corresponding imu measurement
 		ITMTrackingState::TrackingResult ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement = nullptr, const ORUtils::SE3Pose* pose = nullptr) override;
 

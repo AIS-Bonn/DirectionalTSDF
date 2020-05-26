@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <experimental/filesystem>
 #include <iostream>
+#include <ITMLib/Objects/Scene/ITMDirectional.h>
 
 #include "ITMLoggingEngine.h"
 
@@ -27,6 +28,9 @@ void ITMLoggingEngine::Initialize(const std::string& outputDirectory)
 	m_trackingFile.open(m_outputDirectory + "/tracking.txt");
 	m_trackingFile << std::fixed << std::left << std::setprecision(10);
 	m_trackingFile << "# tx ty tz qx qy qz qw score result" << std::endl;
+
+	m_allocationsFile.open(m_outputDirectory + "/allocation.txt");
+	m_allocationsFile << "# X_POS X_NEG Y_POS Y_NEG Z_POS Z_NEG" << std::endl;
 }
 
 void ITMLoggingEngine::CloseAll()
@@ -36,6 +40,9 @@ void ITMLoggingEngine::CloseAll()
 
 	m_trackingFile.flush();
 	m_trackingFile.close();
+
+	m_allocationsFile.flush();
+	m_allocationsFile.close();
 }
 
 void ITMLoggingEngine::LogTimeStats(const ITMTimeStats& timeStats)
@@ -96,6 +103,17 @@ void ITMLoggingEngine::LogPose(const ITMTrackingState& trackingState)
 	m_trackingFile << " " << trackingState.trackerScore;
 	m_trackingFile << " " << trackingState.trackerResult;
 	m_trackingFile << std::endl;
+}
+
+void ITMLoggingEngine::LogBlockAllocations(const unsigned int* noAllocationsPerDirection)
+{
+	if (not noAllocationsPerDirection)
+		return;
+
+	m_allocationsFile << noAllocationsPerDirection[0];
+	for (size_t d = 1; d < N_DIRECTIONS; d++)
+		m_allocationsFile << " " << noAllocationsPerDirection[d];
+	m_allocationsFile << std::endl;
 }
 
 } // namespace ITMLib

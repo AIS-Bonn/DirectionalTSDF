@@ -80,6 +80,7 @@ bool CLIEngine::ProcessFrame()
 
 	statisticsEngine->LogTimeStats(mainEngine->GetTimeStats());
 	statisticsEngine->LogPose(*mainEngine->GetTrackingState());
+	statisticsEngine->LogBlockAllocations(mainEngine->GetAllocationsPerDirection());
 
 	float processedTime_inst = sdkGetTimerValue(&timer_instant);
 	float processedTime_avg = sdkGetAverageTimerValue(&timer_average);

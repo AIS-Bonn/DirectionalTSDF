@@ -383,3 +383,9 @@ void ITMBasicSurfelEngine<TSurfel>::turnOnMainProcessing() { mainProcessingActiv
 
 template <typename TSurfel>
 void ITMBasicSurfelEngine<TSurfel>::turnOffMainProcessing() { mainProcessingActive = false; }
+
+template<typename TSurfel>
+const unsigned int* ITMBasicSurfelEngine<TSurfel>::GetAllocationsPerDirection()
+{
+	return nullptr;
+}

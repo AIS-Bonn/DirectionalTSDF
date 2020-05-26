@@ -86,6 +86,8 @@ namespace ITMLib
 
 		virtual ~ITMMainEngine() {}
 
+		virtual const unsigned int* GetAllocationsPerDirection() = 0;
+
 		const ITMTimeStats &GetTimeStats() const
 		{
 			return timeStats;
