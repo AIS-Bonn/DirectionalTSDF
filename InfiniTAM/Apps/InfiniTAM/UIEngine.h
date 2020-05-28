@@ -57,6 +57,8 @@ namespace InfiniTAM
 
 			bool freeviewActive;
 			bool integrationActive;
+			bool helpActive;
+			bool renderAxesActive;
 			ORUtils::SE3Pose freeviewPose;
 			ITMLib::ITMIntrinsics freeviewIntrinsics;
 
@@ -74,11 +76,15 @@ namespace InfiniTAM
 			}
 
 			static void glutDisplayFunction();
+			static void glutReshape(int w, int h);
 			static void glutIdleFunction();
 			static void glutKeyUpFunction(unsigned char key, int x, int y);
 			static void glutMouseButtonFunction(int button, int state, int x, int y);
 			static void glutMouseMoveFunction(int x, int y);
 			static void glutMouseWheelFunction(int button, int dir, int x, int y);
+
+			static void displayAxes();
+			static void displayHelp();
 
 			const Vector2i & getWindowSize(void) const
 			{ return winSize; }

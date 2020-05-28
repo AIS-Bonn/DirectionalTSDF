@@ -39,6 +39,100 @@ static void safe_glutBitmapString(void *font, const char *str)
 	}
 }
 
+void UIEngine::glutReshape(int w, int h)
+{
+	glViewport(0, 0, w, h);
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	float r = float(w) / h;
+	glFrustum(-r, r, -1.0, 1.0, 1.5, 20.0); // Set frustum projection for coordinate axes
+	glMatrixMode(GL_MODELVIEW);
+}
+
+void UIEngine::displayHelp()
+{
+//	UIEngine *uiEngine = UIEngine::Instance();
+
+	glMatrixMode(GL_PROJECTION);
+	glPushMatrix();
+	{
+		glLoadIdentity();
+
+		const static unsigned char helpString[] = "Fusion\n"
+		                                          "n   - process single frame\n"
+		                                          "b   - process continuously\n"
+		                                          "t   - activate/deactivate integration\n"
+		                                          "Esc - exit\n"
+		                                          "\n"
+		                                          "Display Options\n"
+		                                          "f   - activate/deactivate free view\n"
+		                                          "]/[ - change local map (MultiEngine only)\n"
+		                                          "c   - change color mode\n"
+		                                          "a   - display/hide world coordinate axes\n"
+		                                          "h/? - display/hide help\n"
+		                                          "\n"
+		                                          "File Operations\n"
+		                                          "s   - start/stop image recording\n"
+		                                          "v   - start/stop video recording\n"
+		                                          "w   - save scene mesh\n"
+		                                          "r   - reset scene\n"
+		                                          "k   - save scene to disk\n"
+		                                          "l   - load scene from disk\n";
+
+
+		glLineWidth(2.5);
+		glTranslatef(-0.95, 0.95f, 0);
+		glScalef(0.00015,0.00025,1);
+		glColor3f(1.0f, 0.0f, 0.0f);
+		glutStrokeString(GLUT_STROKE_MONO_ROMAN, helpString);
+	}
+	glPopMatrix();
+
+}
+
+void UIEngine::displayAxes()
+{
+	UIEngine *uiEngine = UIEngine::Instance();
+
+	// Draw Coordinate Axes
+	Matrix3f R = uiEngine->mainEngine->GetTrackingState()->pose_d->GetR();
+	Matrix3f R_inv;
+	R.inv(R_inv);
+	glMatrixMode(GL_MODELVIEW);
+	glPushMatrix();
+	{
+		glLoadIdentity();
+		GLfloat T_gl[16] = {
+			R_inv.m00, R_inv.m01, R_inv.m02, 0,
+			R_inv.m10, R_inv.m11, R_inv.m12, 0,
+			R_inv.m20, R_inv.m21, R_inv.m22, 0,
+			0, 0, 0, 1
+		};
+		glTranslated(0.5, -1.4, -3);
+		glMultMatrixf(T_gl);
+
+		const Vector3f axes[3] {Vector3f(1, 0, 0), Vector3f(0, 1, 0), Vector3f(0, 0, 1)};
+		const Vector3f colors[3] = {Vector3f(1, 0, 0), Vector3f(0, 1, 0), Vector3f(0, 0, 1)};
+		const char* axesLabels[3]{"x", "y", "z"};
+		const float axesScale = 0.5;
+
+		glLineWidth(5.0);
+		for (int i = 0; i < 3; i++)
+		{
+			glColor3f(colors[i].x, colors[i].y, colors[i].z);
+			glBegin(GL_LINES);
+			Vector3f vert = axesScale * axes[i];
+			glVertex3f(0, 0, 0);
+			glVertex3f(vert.x, vert.y, vert.z);
+			glEnd();
+			Vector3f vert2 = (axesScale + 0.05) * axes[i];
+			glRasterPos3f(vert2.x, vert2.y, vert2.z);
+			safe_glutBitmapString(GLUT_BITMAP_HELVETICA_18, axesLabels[i]);
+		}
+	}
+	glPopMatrix();
+}
+
 void UIEngine::glutDisplayFunction()
 {
 	UIEngine *uiEngine = UIEngine::Instance();
@@ -86,30 +180,56 @@ void UIEngine::glutDisplayFunction()
 	glMatrixMode(GL_PROJECTION);
 	glPopMatrix();
 
-	switch (uiEngine->trackingResult)
+	glMatrixMode(GL_PROJECTION);
+	glPushMatrix();
 	{
-	case 0: glColor3f(1.0f, 0.0f, 0.0f); break; // failure
-	case 1: glColor3f(1.0f, 1.0f, 0.0f); break; // poor
-	case 2: glColor3f(0.0f, 1.0f, 0.0f); break; // good
-	default: glColor3f(1.0f, 1.0f, 1.0f); break; // relocalising
+		glLoadIdentity();
+
+		switch (uiEngine->trackingResult)
+		{
+			case 0:
+				glColor3f(1.0f, 0.0f, 0.0f);
+				break; // failure
+			case 1:
+				glColor3f(1.0f, 1.0f, 0.0f);
+				break; // poor
+			case 2:
+				glColor3f(0.0f, 1.0f, 0.0f);
+				break; // good
+			default:
+				glColor3f(1.0f, 1.0f, 1.0f);
+				break; // relocalising
+		}
+
+		glRasterPos2f(0.9, -0.962f);
+
+		char str[200];
+		sprintf(str, "%04.2lf", uiEngine->processedTime);
+		safe_glutBitmapString(GLUT_BITMAP_HELVETICA_18, (const char*) str);
+
+		glColor3f(1.0f, 1.0f, 1.0f);
+		glRasterPos2f(0.65, -0.962f);
+		sprintf(str, "Frame: %i", uiEngine->currentFrameNo);
+		safe_glutBitmapString(GLUT_BITMAP_HELVETICA_18, (const char*) str);
+
+
+		glColor3f(1.0f, 0.0f, 0.0f);
+		glRasterPos2f(-0.98f, -0.95f);
+
+		sprintf(str,
+		        "Esc: exit \t h/?: help \t free view: %s \t colour mode: %s \t fusion: %s",
+		        uiEngine->freeviewActive ?  "on" : "off",
+		        uiEngine->colourModes_freeview[uiEngine->currentColourMode].name,
+		        uiEngine->integrationActive ? "on" : "off");
+		safe_glutBitmapString(GLUT_BITMAP_HELVETICA_18, (const char*) str);
 	}
+	glPopMatrix();
 
-	glRasterPos2f(0.85f, -0.962f);
+	if (uiEngine->renderAxesActive)
+		displayAxes();
 
-	char str[200]; sprintf(str, "%04.2lf", uiEngine->processedTime);
-	safe_glutBitmapString(GLUT_BITMAP_HELVETICA_18, (const char*)str);
-
-
-	glColor3f(1.0f, 0.0f, 0.0f); glRasterPos2f(-0.98f, -0.95f);
-	if (uiEngine->freeviewActive)
-	{
-		sprintf(str, "n: one frame \t b: continous \t e/esc: exit \t r: reset \t k: save \t l: load \t f: follow camera \t c: colours (currently %s) \t t: turn fusion %s", uiEngine->colourModes_freeview[uiEngine->currentColourMode].name, uiEngine->integrationActive ? "off" : "on");
-	}
-	else
-	{
-		sprintf(str, "n: one frame \t b: continous \t e/esc: exit \t r: reset \t k: save \t l: load \t f: free viewpoint \t c: colours (currently %s) \t t: turn fusion %s", uiEngine->colourModes_main[uiEngine->currentColourMode].name, uiEngine->integrationActive ? "off" : "on");
-	}
-	safe_glutBitmapString(GLUT_BITMAP_HELVETICA_12, (const char*)str);
+	if (uiEngine->helpActive)
+		displayHelp();
 
 	glutSwapBuffers();
 	uiEngine->needsRefresh = false;
@@ -329,6 +449,14 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 		}
 	}
 	break;
+	case 'a':
+		uiEngine->renderAxesActive = !uiEngine->renderAxesActive;
+		glutPostRedisplay();
+	break;
+	case 'h':
+	case '?':
+		uiEngine->helpActive = !uiEngine->helpActive;
+		glutPostRedisplay();
 	default:
 		break;
 	}
@@ -494,6 +622,8 @@ void UIEngine::Initialise(int & argc, char** argv, AppData* appData, ITMMainEngi
 	this->appData = appData;
 	this->freeviewActive = false;
 	this->integrationActive = true;
+	this->helpActive = false;
+	this->renderAxesActive = true;
 	this->currentColourMode = 0;
 	this->colourModes_main.push_back(UIColourMode("shaded greyscale", ITMMainEngine::InfiniTAM_IMAGE_SCENERAYCAST));
 	this->colourModes_main.push_back(UIColourMode("integrated colours", ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_VOLUME));
@@ -546,6 +676,7 @@ void UIEngine::Initialise(int & argc, char** argv, AppData* appData, ITMMainEngi
 	glGenTextures(NUM_WIN, textureId);
 
 	glutDisplayFunc(UIEngine::glutDisplayFunction);
+	glutReshapeFunc(UIEngine::glutReshape);
 	glutKeyboardUpFunc(UIEngine::glutKeyUpFunction);
 	glutMouseFunc(UIEngine::glutMouseButtonFunction);
 	glutMotionFunc(UIEngine::glutMouseMoveFunction);
