@@ -375,32 +375,23 @@ void SE3Pose::Coerce(void)
 
 void SE3Pose::SetFrom(float tx, float ty, float tz, float qx, float qy, float qz, float qw)
 {
-	ORUtils::Matrix3<float> R_CW, R_WC;
-	R_CW.m[0] = 1 - 2 * qy * qy - 2 * qz * qz;
-	R_CW.m[1] = 2 * qx * qy - 2 * qz * qw;
-	R_CW.m[2] = 2 * qx * qz + 2 * qy * qw;
-	R_CW.m[3] = 2 * qx * qy + 2 * qz * qw;
-	R_CW.m[4] = 1 - 2 * qx * qx - 2 * qz * qz;
-	R_CW.m[5] = 2 * qy * qz - 2 * qx * qw;
-	R_CW.m[6] = 2 * qx * qz - 2 * qy * qw;
-	R_CW.m[7] = 2 * qy * qz + 2 * qx * qw;
-	R_CW.m[8] = 1 - 2 * qx * qx - 2 * qy * qy;
-	R_CW.inv(R_WC);
-
 	ORUtils::Matrix4<float> T_WC;
-	T_WC.setIdentity();
-	T_WC.m00 = R_WC.m00;
-	T_WC.m01 = R_WC.m01;
-	T_WC.m02 = R_WC.m02;
-	T_WC.m10 = R_WC.m10;
-	T_WC.m11 = R_WC.m11;
-	T_WC.m12 = R_WC.m12;
-	T_WC.m20 = R_WC.m20;
-	T_WC.m21 = R_WC.m21;
-	T_WC.m22 = R_WC.m22;
-	T_WC.m30 =  tx;
-	T_WC.m31 =  ty;
-	T_WC.m32 =  tz;
-	SetInvM(T_WC);
+	T_WC.m00 = 1 - 2 * qy * qy - 2 * qz * qz;
+	T_WC.m10 = 2 * qx * qy - 2 * qz * qw;
+	T_WC.m20 = 2 * qx * qz + 2 * qy * qw;
+	T_WC.m30 = tx;
+	T_WC.m01 = 2 * qx * qy + 2 * qz * qw;
+	T_WC.m11 = 1 - 2 * qx * qx - 2 * qz * qz;
+	T_WC.m21 = 2 * qy * qz - 2 * qx * qw;
+	T_WC.m31 = ty;
+	T_WC.m02 = 2 * qx * qz - 2 * qy * qw;
+	T_WC.m12 = 2 * qy * qz + 2 * qx * qw;
+	T_WC.m22 = 1 - 2 * qx * qx - 2 * qy * qy;
+	T_WC.m32 = tz;
+	T_WC.m03 = 0;
+	T_WC.m13 = 0;
+	T_WC.m23 = 0;
+	T_WC.m33 = 1;
 
+	SetInvM(T_WC);
 }
