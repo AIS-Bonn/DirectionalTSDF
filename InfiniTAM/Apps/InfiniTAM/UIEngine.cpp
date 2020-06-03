@@ -94,29 +94,46 @@ void UIEngine::displayAxes()
 {
 	UIEngine *uiEngine = UIEngine::Instance();
 
-	// Draw Coordinate Axes
-	Matrix3f R = uiEngine->mainEngine->GetTrackingState()->pose_d->GetR();
-	Matrix3f R_inv;
-	R.inv(R_inv);
 	glMatrixMode(GL_MODELVIEW);
 	glPushMatrix();
 	{
 		glLoadIdentity();
-		GLfloat T_gl[16] = {
-			R_inv.m00, R_inv.m01, R_inv.m02, 0,
-			R_inv.m10, R_inv.m11, R_inv.m12, 0,
-			R_inv.m20, R_inv.m21, R_inv.m22, 0,
+
+		/// Compute view matrix
+		Matrix4f T_CW = uiEngine->mainEngine->GetTrackingState()->pose_d->GetM();
+		// GL matrices are column-major
+		GLfloat R_CW_gl[16] = {
+			T_CW.m00, T_CW.m01, T_CW.m02, 0, // first column
+			T_CW.m10, T_CW.m11, T_CW.m12, 0, // second column
+			T_CW.m20, T_CW.m21, T_CW.m22, 0,
 			0, 0, 0, 1
 		};
-		glTranslated(0.5, -1.4, -3);
-		glMultMatrixf(T_gl);
 
+		// 3) Translate frame, s.t. it is in front of the camera (i.e. visible)
+		glTranslated(0.5, -1.2, -3);
+
+		// 2) Transform from InfiniTAM camera to GL camera
+		// InfiniTAM              OpenGL
+		//   z                    y
+		//  /                     |
+		// +----x                 +----x
+		// |                     /
+		// y                    z
+		glRotatef(180, 1, 0, 0);
+
+		// 1) Transform axes from world to InfiniTAM camera
+		glMultMatrixf(R_CW_gl);
+
+
+		/// Draw the actual axes
 		const Vector3f axes[3] {Vector3f(1, 0, 0), Vector3f(0, 1, 0), Vector3f(0, 0, 1)};
 		const Vector3f colors[3] = {Vector3f(1, 0, 0), Vector3f(0, 1, 0), Vector3f(0, 0, 1)};
 		const char* axesLabels[3]{"x", "y", "z"};
 		const float axesScale = 0.5;
 
 		glLineWidth(5.0);
+		glClear(GL_DEPTH_BUFFER_BIT);
+		glEnable(GL_DEPTH_TEST);
 		for (int i = 0; i < 3; i++)
 		{
 			glColor3f(colors[i].x, colors[i].y, colors[i].z);
@@ -129,6 +146,7 @@ void UIEngine::displayAxes()
 			glRasterPos3f(vert2.x, vert2.y, vert2.z);
 			safe_glutBitmapString(GLUT_BITMAP_HELVETICA_18, axesLabels[i]);
 		}
+		glDisable(GL_DEPTH_TEST);
 	}
 	glPopMatrix();
 }
