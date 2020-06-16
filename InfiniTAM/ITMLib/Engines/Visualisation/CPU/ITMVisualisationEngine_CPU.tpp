@@ -232,21 +232,22 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::RenderImage(const ITMSce
 
 	bool useDirectial = this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL;
 
-	Vector4f *pointsRay;
-    if (raycastType == IITMVisualisationEngine::RENDER_FROM_OLD_RAYCAST)
-        pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CPU);
-    else
-    {
-        if (raycastType == IITMVisualisationEngine::RENDER_FROM_OLD_FORWARDPROJ)
-            pointsRay = renderState->forwardProjection->GetData(MEMORYDEVICE_CPU);
-        else
-        {
-            // this one is generally done for freeview visualisation, so
-            // no, do not update the list of visible blocks
-            GenericRaycast(scene, imgSize, invM, intrinsics->projectionParamsSimple.all, renderState, false);
-            pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CPU);
-        }
-    }
+	Vector4f *pointsRay, *normalsRay;
+	if (raycastType == IITMVisualisationEngine::RENDER_FROM_OLD_RAYCAST)
+			pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CPU);
+	else
+	{
+			if (raycastType == IITMVisualisationEngine::RENDER_FROM_OLD_FORWARDPROJ)
+					pointsRay = renderState->forwardProjection->GetData(MEMORYDEVICE_CPU);
+			else
+			{
+					// this one is generally done for freeview visualisation, so
+					// no, do not update the list of visible blocks
+					GenericRaycast(scene, imgSize, invM, intrinsics->projectionParamsSimple.all, renderState, false);
+					pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CPU);
+			}
+	}
+	normalsRay = renderState->raycastNormals->GetData(MEMORYDEVICE_CPU);
 
 	Vector3f lightSource = Vector3f(invM.getColumn(3)) / scene->sceneParams->voxelSize;
 	Vector4u *outRendering = outputImage->GetData(MEMORYDEVICE_CPU);
@@ -266,33 +267,82 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::RenderImage(const ITMSce
 		{
 			Vector4f ptRay = pointsRay[locId];
 			processPixelColour<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
-																				 useDirectial ? &directionalContribution[locId] : nullptr,
-																				 ptRay.w > 0,
-																				 voxelData, voxelIndex);
+			                                   useDirectial ? &directionalContribution[locId] : nullptr,
+			                                   ptRay.w > 0,
+			                                   voxelData, voxelIndex);
 		}
 		break;
-	case IITMVisualisationEngine::RENDER_COLOUR_FROM_NORMAL:
+	case IITMVisualisationEngine::RENDER_COLOUR_FROM_SDFNORMAL:
 #ifdef WITH_OPENMP
 		#pragma omp parallel for
 #endif
 		for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
 		{
 			Vector4f ptRay = pointsRay[locId];
-			processPixelNormal<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
-				useDirectial ? &directionalContribution[locId] : nullptr,
-				ptRay.w > 0, voxelData, voxelIndex, lightSource);
+			processPixelNormal_SDFNormals<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
+			                                              useDirectial ? &directionalContribution[locId] : nullptr,
+			                                              ptRay.w > 0, voxelData, voxelIndex, lightSource);
 		}
 		break;
-	case IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE:
+	case IITMVisualisationEngine::RENDER_COLOUR_FROM_IMAGENORMAL:
+		if (intrinsics->FocalLengthSignsDiffer())
+		{
+#ifdef WITH_OPENMP
+#pragma omp parallel for
+#endif
+			for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
+			{
+				int y = locId / imgSize.x, x = locId - y * imgSize.x;
+				processPixelNormals_ImageNormals<true, true>(outRendering, pointsRay, normalsRay, imgSize, x, y, scene->sceneParams->voxelSize, lightSource);
+			}
+		} else
+		{
+#ifdef WITH_OPENMP
+#pragma omp parallel for
+#endif
+			for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
+			{
+				int y = locId / imgSize.x, x = locId - y * imgSize.x;
+				processPixelNormals_ImageNormals<true, false>(outRendering, pointsRay, normalsRay, imgSize, x, y, scene->sceneParams->voxelSize, lightSource);
+			}
+		}
+		break;
+	case IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE_SDFNORMAL:
 #ifdef WITH_OPENMP
 		#pragma omp parallel for
 #endif
 		for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
 		{
 			Vector4f ptRay = pointsRay[locId];
-			processPixelConfidence<TVoxel, TIndex>(outRendering[locId], ptRay,
-				useDirectial ? &directionalContribution[locId] : nullptr,
-				ptRay.w > 0, voxelData, voxelIndex, *(scene->sceneParams), lightSource);
+			processPixelConfidence_SDFNormals<TVoxel, TIndex>(outRendering[locId], ptRay,
+			                                                  useDirectial ? &directionalContribution[locId] : nullptr,
+			                                                  ptRay.w > 0, voxelData, voxelIndex, *(scene->sceneParams),
+			                                                  lightSource);
+		}
+		break;
+	case IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE_IMAGENORMAL:
+		if (intrinsics->FocalLengthSignsDiffer())
+		{
+#ifdef WITH_OPENMP
+#pragma omp parallel for
+#endif
+			for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
+			{
+				int y = locId / imgSize.x, x = locId - y * imgSize.x;
+				processPixelConfidence_ImageNormals<true, true>(outRendering, pointsRay, normalsRay, imgSize, x, y,
+																												*(scene->sceneParams), lightSource);
+			}
+		} else
+		{
+#ifdef WITH_OPENMP
+#pragma omp parallel for
+#endif
+			for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
+			{
+				int y = locId / imgSize.x, x = locId - y * imgSize.x;
+				processPixelConfidence_ImageNormals<true, false>(outRendering, pointsRay, normalsRay, imgSize, x, y,
+																												 *(scene->sceneParams), lightSource);
+			}
 		}
 		break;
 	case IITMVisualisationEngine::RENDER_SHADED_GREYSCALE_IMAGENORMALS:
@@ -306,11 +356,11 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::RenderImage(const ITMSce
 
 			if (intrinsics->FocalLengthSignsDiffer())
 			{
-				processPixelGrey_ImageNormals<true, true>(outRendering, pointsRay, imgSize, x, y, scene->sceneParams->voxelSize, lightSource);
+				processPixelGrey_ImageNormals<true, true>(outRendering, pointsRay, normalsRay, imgSize, x, y, scene->sceneParams->voxelSize, lightSource);
 			}
 			else
 			{
-				processPixelGrey_ImageNormals<true, false>(outRendering, pointsRay, imgSize, x, y, scene->sceneParams->voxelSize, lightSource);
+				processPixelGrey_ImageNormals<true, false>(outRendering, pointsRay, normalsRay, imgSize, x, y, scene->sceneParams->voxelSize, lightSource);
 			}
 		}
 		break;
@@ -322,9 +372,9 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::RenderImage(const ITMSce
 		for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
 		{
 			Vector4f ptRay = pointsRay[locId];
-			processPixelGrey<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
-				useDirectial ? &directionalContribution[locId] : nullptr,
-				ptRay.w > 0, voxelData, voxelIndex, lightSource);
+			processPixelGrey_SDFNormals<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
+			                                            useDirectial ? &directionalContribution[locId] : nullptr,
+			                                            ptRay.w > 0, voxelData, voxelIndex, lightSource);
 		}
 	}
 }
@@ -379,6 +429,7 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::CreateICPMaps(const ITMS
 	Vector4f *normalsMap = trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CPU);
 	Vector4f *pointsMap = trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CPU);
 	Vector4f *pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CPU);
+	Vector4f *normalsRay = renderState->raycastNormals->GetData(MEMORYDEVICE_CPU);
 	float voxelSize = scene->sceneParams->voxelSize;
 
 #ifdef WITH_OPENMP
@@ -388,11 +439,11 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::CreateICPMaps(const ITMS
 	{
 		if (view->calib.intrinsics_d.FocalLengthSignsDiffer())
 		{
-			processPixelICP<true, true>(pointsMap, normalsMap, pointsRay, imgSize, x, y, voxelSize, lightSource);
+			processPixelICP<true, true>(pointsMap, normalsMap, pointsRay, normalsRay, imgSize, x, y, voxelSize, lightSource);
 		}
 		else
 		{
-			processPixelICP<true, false>(pointsMap, normalsMap, pointsRay, imgSize, x, y, voxelSize, lightSource);
+			processPixelICP<true, false>(pointsMap, normalsMap, pointsRay, normalsRay, imgSize, x, y, voxelSize, lightSource);
 		}
 
 	}
@@ -472,6 +523,7 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::GenericRaycast(const ITM
 {
 	const Vector2f *minmaximg = renderState->renderingRangeImage->GetData(MEMORYDEVICE_CPU);
 	Vector4f *pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CPU);
+	Vector4f *normalsRay = renderState->raycastNormals->GetData(MEMORYDEVICE_CPU);
 	Vector6f *directionalContribution = renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CPU);
 	const TVoxel *voxelData = scene->localVBA.GetVoxelBlocks();
 	const typename ITMVoxelBlockHash::IndexData *voxelIndex = scene->index.getIndexData();
@@ -490,7 +542,7 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::GenericRaycast(const ITM
 		InputPointClouds pointClouds;
 		for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
 		{
-			Vector4f *pointCloudDirectional = renderState->raycastResultDirectional[directionIdx]->GetData(MEMORYDEVICE_CPU);
+			pointClouds.pointCloud[directionIdx] = renderState->raycastResultDirectional[directionIdx]->GetData(MEMORYDEVICE_CPU);
 			for (int locId = 0; locId < imgSize.x * imgSize.y; ++locId)
 			{
 				int y = locId / imgSize.x;
@@ -500,7 +552,7 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::GenericRaycast(const ITM
 
 				float distance;
 				castRayDefault<TVoxel, TIndex>(
-					pointCloudDirectional[locId],
+					pointClouds.pointCloud[directionIdx][locId],
 					distance,
 					entriesVisibleType,
 					x, y,
@@ -513,7 +565,27 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::GenericRaycast(const ITM
 					TSDFDirection(directionIdx)
 				);
 			}
-			pointClouds.pointCloud[directionIdx] = renderState->raycastResultDirectional[directionIdx]->GetData(MEMORYDEVICE_CPU);
+
+			pointClouds.pointCloudNormals[directionIdx] = renderState->raycastNormalsDirectional[directionIdx]->GetData(
+				MEMORYDEVICE_CPU);
+			Vector4f* normals = pointClouds.pointCloudNormals[directionIdx];
+			for (int locId = 0; locId < imgSize.x * imgSize.y; ++locId)
+			{
+				int y = locId / imgSize.x;
+				int x = locId - y * imgSize.x;
+
+				bool foundPoint = true;
+				Vector3f normal;
+				computeNormal<false, false>(pointClouds.pointCloud[directionIdx], scene->sceneParams->voxelSize, imgSize, x, y, foundPoint, normal);
+
+				if (not foundPoint)
+				{
+					normals[x + y * imgSize.x] = Vector4f(0, 0, 0, -1);
+					continue;
+				}
+
+				normals[x + y * imgSize.x] = Vector4f(normal, 1);
+			}
 		}
 
 		for (int locId = 0; locId < imgSize.x * imgSize.y; ++locId)
@@ -521,7 +593,7 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::GenericRaycast(const ITM
 			int y = locId / imgSize.x;
 			int x = locId - y * imgSize.x;
 
-			combineDirectionalPointClouds<true, false>(pointsRay, pointClouds, directionalContribution, imgSize,
+			combineDirectionalPointClouds<true, false>(pointsRay, normalsRay, pointClouds, directionalContribution, imgSize,
 			                                           invM, invProjParams, x, y, scene->sceneParams->voxelSize);
 		}
 	} else{
@@ -544,6 +616,25 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::GenericRaycast(const ITM
 				minmaximg[locId2],
 				this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL
 			);
+		}
+
+		Vector4f* normals = renderState->raycastNormals->GetData(MEMORYDEVICE_CPU);
+		for (int locId = 0; locId < imgSize.x*imgSize.y; ++locId)
+		{
+			int y = locId / imgSize.x;
+			int x = locId - y * imgSize.x;
+
+			bool foundPoint = true;
+			Vector3f normal;
+			computeNormal<false, false>(pointsRay, scene->sceneParams->voxelSize, imgSize, x, y, foundPoint, normal);
+
+			if (not foundPoint)
+			{
+				normals[x + y * imgSize.x] = Vector4f(0, 0, 0, -1);
+				continue;
+			}
+
+			normals[x + y * imgSize.x] = Vector4f(normal, 1);
 		}
 	}
 }

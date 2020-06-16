@@ -61,7 +61,7 @@ void ITMViewBuilder_CUDA::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImag
 	{
 		if (!view->rgb_prev) view->rgb_prev = new ITMUChar4Image(rgbImage->noDims, true, true);
 		else view->rgb_prev->SetFrom(view->rgb, MemoryBlock<Vector4u>::CUDA_TO_CUDA);
-	}	
+	}
 
 	view->rgb->SetFrom(rgbImage, MemoryBlock<Vector4u>::CPU_TO_CUDA);
 	this->shortImage->SetFrom(rawDepthImage, MemoryBlock<short>::CPU_TO_CUDA);
@@ -240,7 +240,7 @@ __global__ void filterNormals_device(Vector4f *normals_out, const Vector4f *norm
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
 
-	if (x < 5 || x > imgDims.x - 5 || y < 5 || y > imgDims.y - 5) return;
+	if (x >= imgDims.x || y >= imgDims.y) return;
 
 	filterNormals(normals_out, normals_in, 5, 5, x, y, imgDims);
 }
@@ -248,17 +248,10 @@ __global__ void filterNormals_device(Vector4f *normals_out, const Vector4f *norm
 __global__ void ComputeNormalAndWeight_device(const float* depth_in, Vector4f* normal_out, float *sigmaZ_out, Vector2i imgDims, Vector4f intrinsic)
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
-	int idx = x + y * imgDims.x;
 
-	if (x < 2 || x > imgDims.x - 2 || y < 2 || y > imgDims.y - 2)
-	{
-		normal_out[idx].w = -1.0f;
-		sigmaZ_out[idx] = -1;
+	if (x >= imgDims.x || y >= imgDims.y)
 		return;
-	}
-	else
-	{
-		computeNormalAndWeight(depth_in, normal_out, sigmaZ_out, x, y, imgDims, intrinsic);
-	}
+
+	computeNormalAndWeight(depth_in, normal_out, sigmaZ_out, x, y, imgDims, intrinsic);
 }
 

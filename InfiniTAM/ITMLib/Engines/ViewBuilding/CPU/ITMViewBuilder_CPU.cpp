@@ -167,7 +167,7 @@ void ITMViewBuilder_CPU::ComputeNormalAndWeights(ITMFloat4Image *normal_out, ITM
 	float *sigmaZData_out = sigmaZ_out->GetData(MEMORYDEVICE_CPU);
 	Vector4f *normalData_out = normal_out->GetData(MEMORYDEVICE_CPU);
 
-	for (int y = 2; y < imgDims.y - 2; y++) for (int x = 2; x < imgDims.x - 2; x++)
+	for (int y = 0; y < imgDims.y; y++) for (int x = 0; x < imgDims.x; x++)
 		computeNormalAndWeight(depthData_in, normalData_out, sigmaZData_out, x, y, imgDims, intrinsic);
 }
 
@@ -178,7 +178,7 @@ void ITMViewBuilder_CPU::NormalFiltering(ITMFloat4Image* normals_out, const ITMF
 	Vector4f *n_out = normals_out->GetData(MEMORYDEVICE_CPU);
 	const Vector4f *n_in = normals_in->GetData(MEMORYDEVICE_CPU);
 
-	for (int y = 5; y < imgDims.y - 5; y++) for (int x = 5; x < imgDims.x - 5; x++)
+	for (int y = 0; y < imgDims.y; y++) for (int x = 0; x < imgDims.x; x++)
 		filterNormals(n_out, n_in, 5, 5, x, y, imgDims);
 
 //	for (int y = 2; y < imgDims.y - 2; y++) for (int x = 2; x < imgDims.x - 2; x++)

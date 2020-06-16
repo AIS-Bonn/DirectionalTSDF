@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "ITMLib/Utils/ITMFilter.h"
 #include "ITMLib/Utils/ITMMath.h"
 #include "ITMLib/Utils/ITMProjectionUtils.h"
 #include "ORUtils/PlatformIndependence.h"
@@ -58,25 +59,6 @@ _CPU_AND_GPU_CODE_ inline void filterDepth(DEVICEPTR(float) *imageData_out, cons
 	imageData_out[x + y*imgDims.x] = final_depth;
 }
 
-/**
- * Implementation from BundleFusion
- * Copyright (c) 2017 by Angela Dai and Matthias Niessner
- */
-_CPU_AND_GPU_CODE_
-inline float gaussD(float factor, int x, int y)
-{
-	return exp(-((x * x + y * y) * factor));
-}
-
-/**
- * Implementation from BundleFusion
- * Copyright (c) 2017 by Angela Dai and Matthias Niessner
- */
-_CPU_AND_GPU_CODE_
-inline float gaussR(float factor, float dist)
-{
-	return exp(-(dist * dist) * factor);
-}
 
 /**
  * Bilateral filtering for normals
@@ -95,50 +77,10 @@ inline float gaussR(float factor, float dist)
 _CPU_AND_GPU_CODE_ inline void filterNormals(Vector4f *normals_out, const Vector4f *normals_in,
 	float sigma_d, float sigma_r, int x, int y, Vector2i imgDims)
 {
-	const int width = imgDims.x;
-	const int height = imgDims.y;
-
-	if (x >= width or y >= height)
+	if (x >= imgDims.x or y >= imgDims.y)
 		return;
 
-	const uint idx = y * width + x;
-
-	normals_out[idx] = Vector4f(0, 0, 0, -1);
-
-	const Vector4f center = normals_in[idx];
-	if (center.w == -1)
-		return;
-
-	Vector3f sum(0, 0, 0);
-	float sum_weight = 0.0f;
-
-	float sigma_d_factor = 1 / (2.0f * sigma_d * sigma_d);
-	float sigma_r_factor = 1 / (2.0f * sigma_r * sigma_r);
-
-	const uchar radius = static_cast<uchar>(sigma_d);
-	for (int i = x - radius; i <= x + radius; i++)
-	{
-		for (int j = y - radius; j <= y + radius; j++)
-		{
-			if (i < 0 or j < 0 or i >= width or j >= height)
-				continue;
-
-			const Vector4f value = normals_in[j * width + i];
-
-			if (value.w == -1)
-				continue;
-
-			const float weight = gaussD(sigma_d_factor, i - x, j - y) * gaussR(sigma_r_factor, length(value - center));
-
-			sum += weight * value.toVector3();
-			sum_weight += weight;
-		}
-	}
-
-	if (sum_weight >= 0.0f)
-	{
-		normals_out[idx] = Vector4f((sum / sum_weight).normalised(), 1.0f);
-	}
+	normals_out[y * imgDims.x + x] = computeNormalBilateralFiltered(normals_in, sigma_d, sigma_r, 5, x, y, imgDims);
 }
 
 

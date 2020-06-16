@@ -123,6 +123,7 @@ void ITMMultiVisualisationEngine_CUDA<TVoxel, TIndex>::RenderImage(const ORUtils
 	Vector3f lightSource = Vector3f(invM.getColumn(3)) / this->settings->sceneParams.voxelSize;
 	Vector4u *outRendering = outputImage->GetData(MEMORYDEVICE_CUDA);
 	Vector4f *pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CUDA);
+	Vector4f *normalsRay = renderState->raycastNormals->GetData(MEMORYDEVICE_CUDA);
 	Vector6f *directionalContribution = renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA);
 
 	dim3 cudaBlockSize(8, 8);
@@ -139,26 +140,32 @@ void ITMMultiVisualisationEngine_CUDA<TVoxel, TIndex>::RenderImage(const ORUtils
 			renderState->indexData_device, imgSize);
 		ORcudaKernelCheck;
 		break;
-	case IITMVisualisationEngine::RENDER_COLOUR_FROM_NORMAL:
+	case IITMVisualisationEngine::RENDER_COLOUR_FROM_SDFNORMAL:
+		printf("RENDER_COLOUR_FROM_SDFNORMAL nor implemented\n");
+		break;
+	case IITMVisualisationEngine::RENDER_COLOUR_FROM_IMAGENORMAL:
 		if (intrinsics->FocalLengthSignsDiffer())
-			renderNormals_ImageNormals_device<true> << <gridSize, cudaBlockSize >> >(outRendering, pointsRay, imgSize, renderState->sceneParams.voxelSize, lightSource);
+			renderNormals_ImageNormals_device<true> << <gridSize, cudaBlockSize >> >(outRendering, pointsRay, normalsRay, imgSize, renderState->sceneParams.voxelSize, lightSource);
 		else
-			renderNormals_ImageNormals_device<false> << <gridSize, cudaBlockSize >> >(outRendering, pointsRay, imgSize, renderState->sceneParams.voxelSize, lightSource);
+			renderNormals_ImageNormals_device<false> << <gridSize, cudaBlockSize >> >(outRendering, pointsRay, normalsRay, imgSize, renderState->sceneParams.voxelSize, lightSource);
 		ORcudaKernelCheck;
 		break;
-	case IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE:
+	case IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE_SDFNORMAL:
+		printf("RENDER_COLOUR_FROM_CONFIDENCE_SDFNORMAL nor implemented\n");
+			break;
+	case IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE_IMAGENORMAL:
 		if (intrinsics->FocalLengthSignsDiffer())
-			renderConfidence_ImageNormals_device<true> << <gridSize, cudaBlockSize >> >(outRendering, pointsRay, imgSize, renderState->sceneParams, lightSource);
+			renderConfidence_ImageNormals_device<true> << <gridSize, cudaBlockSize >> >(outRendering, pointsRay, normalsRay, imgSize, renderState->sceneParams, lightSource);
 		else
-			renderConfidence_ImageNormals_device<false> << <gridSize, cudaBlockSize >> >(outRendering, pointsRay, imgSize, renderState->sceneParams, lightSource);
+			renderConfidence_ImageNormals_device<false> << <gridSize, cudaBlockSize >> >(outRendering, pointsRay, normalsRay, imgSize, renderState->sceneParams, lightSource);
 		ORcudaKernelCheck;
 		break;
 	case IITMVisualisationEngine::RENDER_SHADED_GREYSCALE:
 	default:
 		if (intrinsics->FocalLengthSignsDiffer())
-			renderGrey_ImageNormals_device<true> << <gridSize, cudaBlockSize >> >(outRendering, pointsRay, renderState->sceneParams.voxelSize, imgSize, lightSource);
+			renderGrey_ImageNormals_device<true> << <gridSize, cudaBlockSize >> >(outRendering, pointsRay, normalsRay, renderState->sceneParams.voxelSize, imgSize, lightSource);
 		else
-			renderGrey_ImageNormals_device<false> << <gridSize, cudaBlockSize >> >(outRendering, pointsRay, renderState->sceneParams.voxelSize, imgSize, lightSource);
+			renderGrey_ImageNormals_device<false> << <gridSize, cudaBlockSize >> >(outRendering, pointsRay, normalsRay, renderState->sceneParams.voxelSize, imgSize, lightSource);
 		ORcudaKernelCheck;
 		break;
 	}

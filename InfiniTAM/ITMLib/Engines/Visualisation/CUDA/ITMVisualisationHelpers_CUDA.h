@@ -73,7 +73,7 @@ __global__ void genericRaycast_device(Vector4f* out_ptsRay, Vector6f* raycastDir
 
 
 template<class TVoxel, class TIndex>
-__global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, const InputPointClouds in_ptsRay,
+__global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, Vector4f* out_normals, const InputPointClouds in_ptsRay,
                                                      Vector6f* raycastDirectionalContribution,
                                                      HashEntryVisibilityType* entriesVisibleType,
                                                      const TVoxel* voxelData,
@@ -86,7 +86,7 @@ __global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, const
 
 	if (x >= imgSize.x || y >= imgSize.y) return;
 
-	combineDirectionalPointClouds<true, false>(out_ptsRay, in_ptsRay, raycastDirectionalContribution, imgSize,
+	combineDirectionalPointClouds<true, false>(out_ptsRay, out_normals, in_ptsRay, raycastDirectionalContribution, imgSize,
 		invM, invProjParams, x, y, sceneParams.voxelSize);
 }
 
@@ -107,45 +107,46 @@ __global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, const
 	}
 
 	template<bool flipNormals>
-	__global__ void renderICP_device(Vector4f *pointsMap, Vector4f *normalsMap, const Vector4f *pointsRay,
+	__global__ void renderICP_device(Vector4f *pointsMap, Vector4f *normalsMap, const Vector4f *pointsRay, const Vector4f *normalsRay,
 		float voxelSize, Vector2i imgSize, Vector3f lightSource)
 	{
 		int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
 
 		if (x >= imgSize.x || y >= imgSize.y) return;
 
-		processPixelICP<true, flipNormals>(pointsMap, normalsMap, pointsRay, imgSize, x, y, voxelSize, lightSource);
+		processPixelICP<true, flipNormals>(pointsMap, normalsMap, pointsRay, normalsRay, imgSize, x, y, voxelSize, lightSource);
 	}
 
 	template<bool flipNormals>
-	__global__ void renderGrey_ImageNormals_device(Vector4u *outRendering, const Vector4f *pointsRay, float voxelSize, Vector2i imgSize, Vector3f lightSource)
+	__global__ void renderGrey_ImageNormals_device(Vector4u *outRendering, const Vector4f *pointsRay, const Vector4f *normalsRay, float voxelSize, Vector2i imgSize, Vector3f lightSource)
 	{
 		int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
 
 		if (x >= imgSize.x || y >= imgSize.y) return;
 
-		processPixelGrey_ImageNormals<true, flipNormals>(outRendering, pointsRay, imgSize, x, y, voxelSize, lightSource);
+		processPixelGrey_ImageNormals<true, flipNormals>(outRendering, pointsRay, normalsRay, imgSize, x, y, voxelSize, lightSource);
 	}
 
 	template<bool flipNormals>
-	__global__ void renderNormals_ImageNormals_device(Vector4u *outRendering, const Vector4f *ptsRay, Vector2i imgSize, float voxelSize, Vector3f lightSource)
+	__global__ void renderNormals_ImageNormals_device(Vector4u *outRendering, const Vector4f *ptsRay, const Vector4f *normalsRay, Vector2i imgSize, float voxelSize, Vector3f lightSource)
 	{
 		int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
 
 		if (x >= imgSize.x || y >= imgSize.y) return;
 
-		processPixelNormals_ImageNormals<true, flipNormals>(outRendering, ptsRay, imgSize, x, y, voxelSize, lightSource);
+		processPixelNormals_ImageNormals<true, flipNormals>(outRendering, ptsRay, normalsRay, imgSize, x, y, voxelSize, lightSource);
 	}
 
 	template<bool flipNormals>
-	__global__ void renderConfidence_ImageNormals_device(Vector4u *outRendering, const Vector4f *ptsRay, Vector2i imgSize,
+	__global__ void renderConfidence_ImageNormals_device(Vector4u *outRendering, const Vector4f *ptsRay,
+		const Vector4f *normalsRay, Vector2i imgSize,
 		const ITMSceneParams sceneParams, Vector3f lightSource)
 	{
 		int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
 
 		if (x >= imgSize.x || y >= imgSize.y) return;
 
-		processPixelConfidence_ImageNormals<true, flipNormals>(outRendering, ptsRay, imgSize, x, y, sceneParams, lightSource);
+		processPixelConfidence_ImageNormals<true, flipNormals>(outRendering, ptsRay, normalsRay, imgSize, x, y, sceneParams, lightSource);
 	}
 
 	template<class TVoxel, class TIndex>
@@ -162,17 +163,18 @@ __global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, const
 		Vector4f ptRay = ptsRay[locId];
 
 		if (directionalContribution)
-			processPixelGrey<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
-				&directionalContribution[locId],ptRay.w > 0, voxelData, voxelIndex, lightSource);
+			processPixelGrey_SDFNormals<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
+			                                            &directionalContribution[locId], ptRay.w > 0, voxelData, voxelIndex,
+			                                            lightSource);
 		else
-			processPixelGrey<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
-																			 nullptr,ptRay.w > 0, voxelData, voxelIndex, lightSource);
+			processPixelGrey_SDFNormals<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
+			                                            nullptr, ptRay.w > 0, voxelData, voxelIndex, lightSource);
 	}
 
 	template<class TVoxel, class TIndex>
-	__global__ void renderColourFromNormal_device(Vector4u *outRendering, const Vector4f *ptsRay,
-		const Vector6f *directionalContribution, const TVoxel *voxelData,
-		const typename TIndex::IndexData *voxelIndex, Vector2i imgSize, Vector3f lightSource)
+	__global__ void renderColourFromNormals_device(Vector4u *outRendering, const Vector4f *ptsRay,
+	                                               const Vector6f *directionalContribution, const TVoxel *voxelData,
+	                                               const typename TIndex::IndexData *voxelIndex, Vector2i imgSize, Vector3f lightSource)
 	{
 		int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
 
@@ -183,11 +185,12 @@ __global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, const
 		Vector4f ptRay = ptsRay[locId];
 
 		if (directionalContribution)
-			processPixelNormal<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
-			                                   &directionalContribution[locId], ptRay.w > 0, voxelData, voxelIndex, lightSource);
+			processPixelNormal_SDFNormals<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
+			                                              &directionalContribution[locId], ptRay.w > 0, voxelData, voxelIndex,
+			                                              lightSource);
 		else
-			processPixelNormal<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
-																				 nullptr, ptRay.w > 0, voxelData, voxelIndex, lightSource);
+			processPixelNormal_SDFNormals<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
+			                                              nullptr, ptRay.w > 0, voxelData, voxelIndex, lightSource);
 	}
 
 	template<class TVoxel, class TIndex>
@@ -205,11 +208,11 @@ __global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, const
 		Vector4f ptRay = ptsRay[locId];
 
 		if (directionalContribution)
-			processPixelConfidence<TVoxel, TIndex>(outRendering[locId], ptRay, &directionalContribution[locId],
-				ptRay.w > 0, voxelData, voxelIndex, sceneParams, lightSource);
+			processPixelConfidence_SDFNormals<TVoxel, TIndex>(outRendering[locId], ptRay, &directionalContribution[locId],
+			                                                  ptRay.w > 0, voxelData, voxelIndex, sceneParams, lightSource);
 		else
-			processPixelConfidence<TVoxel, TIndex>(outRendering[locId], ptRay, nullptr,
-			                                       ptRay.w > 0, voxelData, voxelIndex, sceneParams, lightSource);
+			processPixelConfidence_SDFNormals<TVoxel, TIndex>(outRendering[locId], ptRay, nullptr,
+			                                                  ptRay.w > 0, voxelData, voxelIndex, sceneParams, lightSource);
 	}
 
 	template<class TVoxel, class TIndex>
@@ -286,8 +289,33 @@ __global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, const
 		Vector4f ptRay = ptsRay[locId];
 
 		if (directionalContribution)
-			processPixelColour<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(), &directionalContribution[locId], ptRay.w > 1, voxelData, voxelIndex);
+			processPixelColour<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
+			                                   &directionalContribution[locId], ptRay.w > 1, voxelData, voxelIndex);
 		else
-			processPixelColour<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(), nullptr, ptRay.w > 1, voxelData, voxelIndex);
+			processPixelColour<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(), nullptr, ptRay.w > 1,
+			                                   voxelData, voxelIndex);
 	}
+
+template<class TVoxel, class TIndex>
+__global__ void computePointCloudNormals_device(Vector4f* outputNormals, const Vector4f* pointsRay,
+                                                const Vector2i imgSize, float voxelSize)
+{
+	int x = (threadIdx.x + blockIdx.x * blockDim.x);
+	int y = (threadIdx.y + blockIdx.y * blockDim.y);
+
+	if (x >= imgSize.x || y >= imgSize.y) return;
+
+	bool foundPoint = true;
+	Vector3f normal;
+	computeNormal<false, false>(pointsRay, voxelSize, imgSize, x, y, foundPoint, normal);
+
+	if (not foundPoint)
+	{
+		outputNormals[x + y * imgSize.x] = Vector4f(0, 0, 0, -1);
+		return;
+	}
+
+	outputNormals[x + y * imgSize.x] = Vector4f(normal, 1);
 }
+
+} // ITMLib

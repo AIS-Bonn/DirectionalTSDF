@@ -414,10 +414,10 @@ void ITMBasicEngine<TVoxel,TIndex>::GetImage(ITMUChar4Image *out, GetImageType g
 		IITMVisualisationEngine::RenderImageType imageType;
 		switch (getImageType) {
 		case ITMBasicEngine::InfiniTAM_IMAGE_COLOUR_FROM_CONFIDENCE:
-			imageType = IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE;
+			imageType = IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE_IMAGENORMAL;
 			break;
 		case ITMBasicEngine::InfiniTAM_IMAGE_COLOUR_FROM_NORMAL:
-			imageType = IITMVisualisationEngine::RENDER_COLOUR_FROM_NORMAL;
+			imageType = IITMVisualisationEngine::RENDER_COLOUR_FROM_IMAGENORMAL;
 			break;
 		case ITMBasicEngine::InfiniTAM_IMAGE_COLOUR_FROM_VOLUME:
 			imageType = IITMVisualisationEngine::RENDER_COLOUR_FROM_VOLUME;
@@ -446,8 +446,8 @@ void ITMBasicEngine<TVoxel,TIndex>::GetImage(ITMUChar4Image *out, GetImageType g
 	{
 		IITMVisualisationEngine::RenderImageType type = IITMVisualisationEngine::RENDER_SHADED_GREYSCALE;
 		if (getImageType == ITMBasicEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME) type = IITMVisualisationEngine::RENDER_COLOUR_FROM_VOLUME;
-		else if (getImageType == ITMBasicEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL) type = IITMVisualisationEngine::RENDER_COLOUR_FROM_NORMAL;
-		else if (getImageType == ITMBasicEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_CONFIDENCE) type = IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE;
+		else if (getImageType == ITMBasicEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL) type = IITMVisualisationEngine::RENDER_COLOUR_FROM_SDFNORMAL;
+		else if (getImageType == ITMBasicEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_CONFIDENCE) type = IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE_SDFNORMAL;
 
 		if (renderState_freeview == NULL)
 		{

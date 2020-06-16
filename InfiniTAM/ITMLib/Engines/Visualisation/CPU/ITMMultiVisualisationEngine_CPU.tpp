@@ -116,6 +116,7 @@ void ITMMultiVisualisationEngine_CPU<TVoxel, TIndex>::RenderImage(const ORUtils:
 	bool useDirectioal = this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL;
 
 	Vector4f* pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CPU);
+	Vector4f* normalsRay = renderState->raycastNormals->GetData(MEMORYDEVICE_CPU);
 	Vector6f* directionalContribution = renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CPU);
 
 	// Generic Raycast
@@ -143,6 +144,25 @@ void ITMMultiVisualisationEngine_CPU<TVoxel, TIndex>::RenderImage(const ORUtils:
 			                &renderState->indexData_host, invM, invProjParams, renderState->sceneParams, minmaximg[locId2],
 			                useDirectioal);
 		}
+
+		Vector4f* normals = renderState->raycastNormals->GetData(MEMORYDEVICE_CPU);
+		for (int locId = 0; locId < imgSize.x*imgSize.y; ++locId)
+		{
+			int y = locId / imgSize.x;
+			int x = locId - y * imgSize.x;
+
+			bool foundPoint = true;
+			Vector3f normal;
+			computeNormal<false, false>(pointsRay, voxelSize, imgSize, x, y, foundPoint, normal);
+
+			if (not foundPoint)
+			{
+				normals[x + y * imgSize.x] = Vector4f(0, 0, 0, -1);
+				continue;
+			}
+
+			normals[x + y * imgSize.x] = Vector4f(normal, 1);
+		}
 	}
 
 	Vector3f lightSource = Vector3f(invM.getColumn(3)) / this->settings->sceneParams.voxelSize;
@@ -168,7 +188,10 @@ void ITMMultiVisualisationEngine_CPU<TVoxel, TIndex>::RenderImage(const ORUtils:
 					&(renderState->indexData_host));
 			}
 			break;
-		case IITMVisualisationEngine::RENDER_COLOUR_FROM_NORMAL:
+		case IITMVisualisationEngine::RENDER_COLOUR_FROM_SDFNORMAL:
+			printf("RENDER_COLOUR_FROM_SDFNORMAL not implemented\n");
+			break;
+		case IITMVisualisationEngine::RENDER_COLOUR_FROM_IMAGENORMAL:
 			if (intrinsics->FocalLengthSignsDiffer())
 			{
 #ifdef WITH_OPENMP
@@ -177,7 +200,7 @@ void ITMMultiVisualisationEngine_CPU<TVoxel, TIndex>::RenderImage(const ORUtils:
 				for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
 				{
 					int y = locId / imgSize.x, x = locId - y * imgSize.x;
-					processPixelNormals_ImageNormals<true, true>(outRendering, pointsRay, imgSize, x, y, voxelSize, lightSource);
+					processPixelNormals_ImageNormals<true, true>(outRendering, pointsRay, normalsRay, imgSize, x, y, voxelSize, lightSource);
 				}
 			} else
 			{
@@ -187,11 +210,14 @@ void ITMMultiVisualisationEngine_CPU<TVoxel, TIndex>::RenderImage(const ORUtils:
 				for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
 				{
 					int y = locId / imgSize.x, x = locId - y * imgSize.x;
-					processPixelNormals_ImageNormals<true, false>(outRendering, pointsRay, imgSize, x, y, voxelSize, lightSource);
+					processPixelNormals_ImageNormals<true, false>(outRendering, pointsRay, normalsRay, imgSize, x, y, voxelSize, lightSource);
 				}
 			}
 			break;
-		case IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE:
+		case IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE_SDFNORMAL:
+			printf("RENDER_COLOUR_FROM_CONFIDENCE_SDFNORMAL not implemented\n");
+			break;
+		case IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE_IMAGENORMAL:
 			if (intrinsics->FocalLengthSignsDiffer())
 			{
 #ifdef WITH_OPENMP
@@ -200,7 +226,7 @@ void ITMMultiVisualisationEngine_CPU<TVoxel, TIndex>::RenderImage(const ORUtils:
 				for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
 				{
 					int y = locId / imgSize.x, x = locId - y * imgSize.x;
-					processPixelConfidence_ImageNormals<true, true>(outRendering, pointsRay, imgSize, x, y,
+					processPixelConfidence_ImageNormals<true, true>(outRendering, pointsRay, normalsRay, imgSize, x, y,
 					                                                renderState->sceneParams, lightSource);
 				}
 			} else
@@ -211,7 +237,7 @@ void ITMMultiVisualisationEngine_CPU<TVoxel, TIndex>::RenderImage(const ORUtils:
 				for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
 				{
 					int y = locId / imgSize.x, x = locId - y * imgSize.x;
-					processPixelConfidence_ImageNormals<true, false>(outRendering, pointsRay, imgSize, x, y,
+					processPixelConfidence_ImageNormals<true, false>(outRendering, pointsRay, normalsRay, imgSize, x, y,
 					                                                 renderState->sceneParams, lightSource);
 				}
 			}
@@ -226,7 +252,7 @@ void ITMMultiVisualisationEngine_CPU<TVoxel, TIndex>::RenderImage(const ORUtils:
 				for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
 				{
 					int y = locId / imgSize.x, x = locId - y * imgSize.x;
-					processPixelGrey_ImageNormals<true, true>(outRendering, pointsRay, imgSize, x, y, voxelSize, lightSource);
+					processPixelGrey_ImageNormals<true, true>(outRendering, pointsRay, normalsRay, imgSize, x, y, voxelSize, lightSource);
 				}
 			} else
 			{
@@ -236,7 +262,7 @@ void ITMMultiVisualisationEngine_CPU<TVoxel, TIndex>::RenderImage(const ORUtils:
 				for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
 				{
 					int y = locId / imgSize.x, x = locId - y * imgSize.x;
-					processPixelGrey_ImageNormals<true, false>(outRendering, pointsRay, imgSize, x, y, voxelSize, lightSource);
+					processPixelGrey_ImageNormals<true, false>(outRendering, pointsRay, normalsRay, imgSize, x, y, voxelSize, lightSource);
 				}
 			}
 			break;

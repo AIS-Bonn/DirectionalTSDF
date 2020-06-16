@@ -8,6 +8,7 @@
 #include "ITMLib/Objects/Scene/ITMRepresentationAccess.h"
 #include "ITMLib/Engines/Reconstruction/Interface/ITMSceneReconstructionEngine.h"
 #include "ITMLib/Utils/ITMProjectionUtils.h"
+#include "ITMLib/Utils/ITMFilter.h"
 
 namespace ITMLib
 {
@@ -15,6 +16,10 @@ namespace ITMLib
 static const CONSTPTR(int) MAX_RENDERING_BLOCKS = 65536 * 4;
 //static const int MAX_RENDERING_BLOCKS = 16384;
 static const CONSTPTR(int) minmaximg_subsample = 8;
+
+static const float bilateralFilterSigmaD = 2.0;
+static const float bilateralFilterSigmaR = 0.3;
+static const int bilateralFilterRadius = 3;
 
 #if !(defined __METALC__)
 
@@ -159,81 +164,114 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndAngle(THREADPTR(bool)& foundPoint
 
 template<bool useSmoothing, bool flipNormals>
 _CPU_AND_GPU_CODE_ inline void
-computeNormalAndAngle(THREADPTR(bool)& foundPoint, const THREADPTR(int)& x, const THREADPTR(int)& y,
-                      const CONSTPTR(Vector4f)* pointsRay, const THREADPTR(Vector3f)& lightSource,
-                      const THREADPTR(float)& voxelSize,
-                      const THREADPTR(Vector2i)& imgSize, THREADPTR(Vector3f)& outNormal, THREADPTR(float)& angle)
+computeNormalAndAngle(
+	const Vector4f* pointsRay, const Vector4f* normalsRay, const Vector3f& lightSource, const Vector2i& imgSize,
+	const int x, const int y,
+	bool& foundPoint, Vector3f& outNormal, float& angle)
 {
 	if (!foundPoint) return;
 
-	Vector4f xp1_y, xm1_y, x_yp1, x_ym1;
-
-	if (useSmoothing)
+	Vector4f normal = computeNormalBilateralFiltered(normalsRay, bilateralFilterSigmaD,
+	                                                 bilateralFilterSigmaR, bilateralFilterRadius,
+	                                                 x, y, imgSize);
+	if (normal.w < 0)
 	{
-		if (y <= 2 || y >= imgSize.y - 3 || x <= 2 || x >= imgSize.x - 3)
-		{
-			foundPoint = false;
-			return;
-		}
-
-		xp1_y = pointsRay[(x + 2) + y * imgSize.x], x_yp1 = pointsRay[x + (y + 2) * imgSize.x];
-		xm1_y = pointsRay[(x - 2) + y * imgSize.x], x_ym1 = pointsRay[x + (y - 2) * imgSize.x];
-	} else
-	{
-		if (y <= 1 || y >= imgSize.y - 2 || x <= 1 || x >= imgSize.x - 2)
-		{
-			foundPoint = false;
-			return;
-		}
-
-		xp1_y = pointsRay[(x + 1) + y * imgSize.x], x_yp1 = pointsRay[x + (y + 1) * imgSize.x];
-		xm1_y = pointsRay[(x - 1) + y * imgSize.x], x_ym1 = pointsRay[x + (y - 1) * imgSize.x];
+		foundPoint = false;
+		return;
 	}
 
-	Vector4f diff_x(0.0f, 0.0f, 0.0f, 0.0f), diff_y(0.0f, 0.0f, 0.0f, 0.0f);
-
-	bool doPlus1 = false;
-	if (xp1_y.w <= 0 || x_yp1.w <= 0 || xm1_y.w <= 0 || x_ym1.w <= 0) doPlus1 = true;
-	else
-	{
-		diff_x = xp1_y - xm1_y, diff_y = x_yp1 - x_ym1;
-
-		float length_diff = MAX(diff_x.x * diff_x.x + diff_x.y * diff_x.y + diff_x.z * diff_x.z,
-		                        diff_y.x * diff_y.x + diff_y.y * diff_y.y + diff_y.z * diff_y.z);
-
-		if (length_diff * voxelSize * voxelSize > (0.15f * 0.15f)) doPlus1 = true;
-	}
-
-	if (doPlus1)
-	{
-		if (useSmoothing)
-		{
-			xp1_y = pointsRay[(x + 1) + y * imgSize.x];
-			x_yp1 = pointsRay[x + (y + 1) * imgSize.x];
-			xm1_y = pointsRay[(x - 1) + y * imgSize.x];
-			x_ym1 = pointsRay[x + (y - 1) * imgSize.x];
-			diff_x = xp1_y - xm1_y;
-			diff_y = x_yp1 - x_ym1;
-		}
-
-		if (xp1_y.w <= 0 || x_yp1.w <= 0 || xm1_y.w <= 0 || x_ym1.w <= 0)
-		{
-			foundPoint = false;
-			return;
-		}
-	}
-
-	outNormal.x = -(diff_x.y * diff_y.z - diff_x.z * diff_y.y);
-	outNormal.y = -(diff_x.z * diff_y.x - diff_x.x * diff_y.z);
-	outNormal.z = -(diff_x.x * diff_y.y - diff_x.y * diff_y.x);
-
+	outNormal = normal.toVector3();
 	if (flipNormals) outNormal = -outNormal;
-
-	outNormal = outNormal.normalised();
 
 	Vector3f lightDirection = (lightSource - pointsRay[x + y * imgSize.x].toVector3()).normalised();
 	angle = dot(outNormal, lightDirection);
 	if (!(angle > 0.0)) foundPoint = false;
+}
+
+template<bool useSmoothing, bool flipNormals>
+_CPU_AND_GPU_CODE_ inline void
+computeNormal(const Vector4f* pointsRay, const float& voxelSize, const Vector2i& imgSize,
+							const int& x, const int& y, bool& foundPoint, Vector3f& outNormal)
+{
+	if (!foundPoint) return;
+
+	int levels = 1;
+	if (useSmoothing)
+		levels = 2;
+	if (y < levels || y > imgSize.y - levels - 1 || x < levels || x > imgSize.x - levels - 1)
+	{
+		foundPoint = false;
+		return;
+	}
+
+	// gaussian exp(-i^2 / (2 * sigma^2)) with sigma = 1
+	const float weights[6] = {1.0, 0.6065306597126334, 0.1353352832366127, 0.011108996538242306, 0.00033546262790251185,
+	                          3.726653172078671e-06};
+	Vector3f sum(0, 0, 0);
+	float weightSum = 0;
+
+	const Vector4f& x_y = pointsRay[x + y * imgSize.x];
+	for (int i = 1; i < levels + 1; i++)
+	{
+		const Vector4f& xp_y = pointsRay[(x + i) + y * imgSize.x];
+		const Vector4f& xm_y = pointsRay[(x - i) + y * imgSize.x];
+		const Vector4f& x_yp = pointsRay[x + (y + i) * imgSize.x];
+		const Vector4f& x_ym = pointsRay[x + (y - i) * imgSize.x];
+
+		if (xp_y.w > 0 and x_yp.w > 0)
+		{
+			Vector3f diff_x = (xp_y - x_y).toVector3();
+			Vector3f diff_y = (x_yp - x_y).toVector3();
+			if (ORUtils::length(diff_x) < i * 3 and ORUtils::length(diff_y) < i * 3)
+			{
+				weightSum += weights[i - 1];
+				Vector3f normal = -ORUtils::cross(diff_x, diff_y).normalised();
+				sum += weights[i - 1] * normal;
+			}
+		}
+		if (xm_y.w > 0 and x_yp.w > 0)
+		{
+			Vector3f diff_x = (x_y - xm_y).toVector3();
+			Vector3f diff_y = (x_yp - x_y).toVector3();
+			if (ORUtils::length(diff_x) < i * 3 and ORUtils::length(diff_y) < i * 3)
+			{
+				weightSum += weights[i - 1];
+				Vector3f normal = -ORUtils::cross(diff_x, diff_y).normalised();
+				sum += weights[i - 1] * normal;
+			}
+		}
+		if (xm_y.w > 0 and x_ym.w > 0)
+		{
+			Vector3f diff_x = (x_y - xm_y).toVector3();
+			Vector3f diff_y = (x_y - x_ym).toVector3();
+			if (ORUtils::length(diff_x) < i * 3 and ORUtils::length(diff_y) < i * 3)
+			{
+				weightSum += weights[i - 1];
+				Vector3f normal = -ORUtils::cross(diff_x, diff_y).normalised();
+				sum += weights[i - 1] * normal;
+			}
+		}
+		if (xp_y.w > 0 and x_ym.w > 0)
+		{
+			Vector3f diff_x = (xp_y - x_y).toVector3();
+			Vector3f diff_y = (x_y - x_ym).toVector3();
+			if (ORUtils::length(diff_x) < i * 3 and ORUtils::length(diff_y) < i * 3)
+			{
+				weightSum += weights[i - 1];
+				Vector3f normal = -ORUtils::cross(diff_x, diff_y).normalised();
+				sum += weights[i - 1] * normal;
+			}
+		}
+	}
+
+	if (weightSum < 1)
+	{
+		foundPoint = false;
+		return;
+	}
+
+	outNormal = (sum / weightSum).normalised();
+	if (flipNormals) outNormal = -outNormal;
 }
 
 _CPU_AND_GPU_CODE_ inline void drawPixelGrey(DEVICEPTR(Vector4u)& dest, const THREADPTR(float)& angle)
@@ -916,7 +954,7 @@ inline void findBestCluster(const float* distances, const float* confidences, co
 	float sumConfidences = 0;
 	for (uchar idx = 0; idx < N_DIRECTIONS and distancesSorted[idx] >= 0; idx++)
 	{
-		if (fabs(distancesSorted[idx] - lastDistance) > 2) // maximum distance in voxels
+		if (fabs(distancesSorted[idx] - lastDistance) > 8) // maximum distance in voxels
 		{
 			clusters[numClusters] = idx;
 			numClusters++;
@@ -966,11 +1004,13 @@ inline void findBestCluster(const float* distances, const float* confidences, co
 struct InputPointClouds
 {
 	Vector4f* pointCloud[N_DIRECTIONS];
+	Vector4f* pointCloudNormals[N_DIRECTIONS];
 };
 
 template<bool useSmoothing, bool flipNormals>
 _CPU_AND_GPU_CODE_ inline void combineDirectionalPointClouds(
 	DEVICEPTR(Vector4f)* outputPointCloud,
+	DEVICEPTR(Vector4f)* outputNormals,
 	const InputPointClouds& inputPointClouds,
 	DEVICEPTR(Vector6f)* directionalContribution,
 	const THREADPTR(Vector2i)& imgSize,
@@ -1009,8 +1049,10 @@ _CPU_AND_GPU_CODE_ inline void combineDirectionalPointClouds(
 		distance = length(cameraPos_world - point.toVector3());
 
 		float angle;
-		computeNormalAndAngle<useSmoothing, flipNormals>(foundPoint, x, y, inputPointClouds.pointCloud[directionIdx],
-		                                                 cameraPos_world, voxelSize, imgSize, normal, angle);
+		computeNormalAndAngle<useSmoothing, flipNormals>(inputPointClouds.pointCloud[directionIdx],
+		                                                 inputPointClouds.pointCloudNormals[directionIdx],
+		                                                 cameraPos_world, imgSize, x, y,
+		                                                 foundPoint, normal, angle);
 
 		if (not foundPoint or DirectionWeight(normal, TSDFDirection(directionIdx)) < direction_weight_threshold)
 		{
@@ -1044,6 +1086,7 @@ _CPU_AND_GPU_CODE_ inline void combineDirectionalPointClouds(
 
 	float sumWeights = 0;
 	Vector4f sumPoints(0, 0, 0, 0);
+	Vector3f sumNormals(0, 0, 0);
 	for (uchar idx = 0; idx < N_DIRECTIONS and cluster[idx] >= 0; idx++)
 	{
 		TSDFDirection_type directionIdx = cluster[idx];
@@ -1068,16 +1111,19 @@ _CPU_AND_GPU_CODE_ inline void combineDirectionalPointClouds(
 		directionalContribution[locId].v[directionIdx] = weight;
 		sumWeights += weight;
 		sumPoints += weight * point;
+		sumNormals += weight * normal;
 	}
 	float oneOverWeight = 1 / sumWeights;
 
 	outputPointCloud[locId] = sumPoints * oneOverWeight;
+	outputNormals[locId] = Vector4f(sumNormals * oneOverWeight, 1);
 	directionalContribution[locId] *= oneOverWeight;
 }
 
 template<bool useSmoothing, bool flipNormals>
 _CPU_AND_GPU_CODE_ inline void processPixelICP(DEVICEPTR(Vector4f)* pointsMap, DEVICEPTR(Vector4f)* normalsMap,
-                                               const CONSTPTR(Vector4f)* pointsRay, const THREADPTR(Vector2i)& imgSize,
+                                               const CONSTPTR(Vector4f)* pointsRay, const CONSTPTR(Vector4f)* normalsRay,
+                                               const THREADPTR(Vector2i)& imgSize,
                                                const THREADPTR(int)& x, const THREADPTR(int)& y, float voxelSize,
                                                const THREADPTR(Vector3f)& lightSource)
 {
@@ -1089,8 +1135,7 @@ _CPU_AND_GPU_CODE_ inline void processPixelICP(DEVICEPTR(Vector4f)* pointsMap, D
 
 	bool foundPoint = point.w > 0.0f;
 
-	computeNormalAndAngle<useSmoothing, flipNormals>(foundPoint, x, y, pointsRay, lightSource, voxelSize, imgSize,
-	                                                 outNormal, angle);
+	computeNormalAndAngle<useSmoothing, flipNormals>(pointsRay, normalsRay, lightSource, imgSize, x, y, foundPoint, outNormal, angle);
 
 	if (foundPoint)
 	{
@@ -1122,7 +1167,8 @@ _CPU_AND_GPU_CODE_ inline void processPixelICP(DEVICEPTR(Vector4f)* pointsMap, D
 
 template<bool useSmoothing, bool flipNormals>
 _CPU_AND_GPU_CODE_ inline void
-processPixelGrey_ImageNormals(DEVICEPTR(Vector4u)* outRendering, const CONSTPTR(Vector4f)* pointsRay,
+processPixelGrey_ImageNormals(DEVICEPTR(Vector4u)* outRendering,
+                              const CONSTPTR(Vector4f)* pointsRay, const CONSTPTR(Vector4f)* normalsRay,
                               const THREADPTR(Vector2i)& imgSize, const THREADPTR(int)& x, const THREADPTR(int)& y,
                               float voxelSize, const THREADPTR(Vector3f)& lightSource)
 {
@@ -1133,8 +1179,8 @@ processPixelGrey_ImageNormals(DEVICEPTR(Vector4u)* outRendering, const CONSTPTR(
 	Vector4f point = pointsRay[locId];
 
 	bool foundPoint = point.w > 0.0f;
-	computeNormalAndAngle<useSmoothing, flipNormals>(foundPoint, x, y, pointsRay, lightSource, voxelSize, imgSize,
-	                                                 outNormal, angle);
+	computeNormalAndAngle<useSmoothing, flipNormals>(pointsRay, normalsRay, lightSource, imgSize,
+		x, y, foundPoint, outNormal, angle);
 
 	if (foundPoint) drawPixelGrey(outRendering[locId], angle);
 	else outRendering[locId] = Vector4u((uchar) 0);
@@ -1142,7 +1188,7 @@ processPixelGrey_ImageNormals(DEVICEPTR(Vector4u)* outRendering, const CONSTPTR(
 
 template<bool useSmoothing, bool flipNormals>
 _CPU_AND_GPU_CODE_ inline void
-processPixelNormals_ImageNormals(DEVICEPTR(Vector4u)* outRendering, const CONSTPTR(Vector4f)* pointsRay,
+processPixelNormals_ImageNormals(DEVICEPTR(Vector4u)* outRendering, const CONSTPTR(Vector4f)* pointsRay, const CONSTPTR(Vector4f)* normalsRay,
                                  const THREADPTR(Vector2i)& imgSize, const THREADPTR(int)& x, const THREADPTR(int)& y,
                                  float voxelSize, Vector3f lightSource)
 {
@@ -1153,8 +1199,8 @@ processPixelNormals_ImageNormals(DEVICEPTR(Vector4u)* outRendering, const CONSTP
 	Vector4f point = pointsRay[locId];
 
 	bool foundPoint = point.w > 0.0f;
-	computeNormalAndAngle<useSmoothing, flipNormals>(foundPoint, x, y, pointsRay, lightSource, voxelSize, imgSize,
-	                                                 outNormal, angle);
+	computeNormalAndAngle<useSmoothing, flipNormals>(pointsRay, normalsRay, lightSource, imgSize,
+	                                                 x, y, foundPoint, outNormal, angle);
 
 	if (foundPoint) drawPixelNormal(outRendering[locId], outNormal);
 	else outRendering[locId] = Vector4u((uchar) 0);
@@ -1163,6 +1209,7 @@ processPixelNormals_ImageNormals(DEVICEPTR(Vector4u)* outRendering, const CONSTP
 template<bool useSmoothing, bool flipNormals>
 _CPU_AND_GPU_CODE_ inline void
 processPixelConfidence_ImageNormals(DEVICEPTR(Vector4u)* outRendering, const CONSTPTR(Vector4f)* pointsRay,
+                                    const CONSTPTR(Vector4f)* normalsRay,
                                     const THREADPTR(Vector2i)& imgSize, const THREADPTR(int)& x,
                                     const THREADPTR(int)& y, const ITMSceneParams& sceneParams, Vector3f lightSource)
 {
@@ -1173,8 +1220,8 @@ processPixelConfidence_ImageNormals(DEVICEPTR(Vector4u)* outRendering, const CON
 	Vector4f point = pointsRay[locId];
 
 	bool foundPoint = point.w > 0.0f;
-	computeNormalAndAngle<useSmoothing, flipNormals>(foundPoint, x, y, pointsRay, lightSource, sceneParams.voxelSize,
-	                                                 imgSize, outNormal, angle);
+	computeNormalAndAngle<useSmoothing, flipNormals>(pointsRay, normalsRay, lightSource, imgSize,
+	                                                 x, y, foundPoint, outNormal, angle);
 
 	if (foundPoint)
 		drawPixelConfidence(outRendering[locId], angle,
@@ -1183,11 +1230,11 @@ processPixelConfidence_ImageNormals(DEVICEPTR(Vector4u)* outRendering, const CON
 }
 
 template<class TVoxel, class TIndex>
-_CPU_AND_GPU_CODE_ inline void processPixelGrey(DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point,
-                                                const Vector6f* directionalContribution,
-                                                bool foundPoint, const CONSTPTR(TVoxel)* voxelData,
-                                                const CONSTPTR(typename TIndex::IndexData)* voxelIndex,
-                                                Vector3f lightSource)
+_CPU_AND_GPU_CODE_ inline void processPixelGrey_SDFNormals(DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point,
+                                                           const Vector6f* directionalContribution,
+                                                           bool foundPoint, const CONSTPTR(TVoxel)* voxelData,
+                                                           const CONSTPTR(typename TIndex::IndexData)* voxelIndex,
+                                                           Vector3f lightSource)
 {
 	Vector3f outNormal;
 	float angle;
@@ -1200,16 +1247,6 @@ _CPU_AND_GPU_CODE_ inline void processPixelGrey(DEVICEPTR(Vector4u)& outRenderin
 }
 
 template<class TVoxel, class TIndex>
-_CPU_AND_GPU_CODE_ inline void processPixelColourDirectional(
-	DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point, const Vector6f& directionalContribution,
-	bool foundPoint, const CONSTPTR(TVoxel)* voxelData, const CONSTPTR(typename TIndex::IndexData)* voxelIndex)
-{
-	if (foundPoint)
-		drawPixelColourDirectional<TVoxel, TIndex>(outRendering, point, directionalContribution, voxelData, voxelIndex);
-	else outRendering = Vector4u((uchar) 0);
-}
-
-template<class TVoxel, class TIndex>
 _CPU_AND_GPU_CODE_ inline void processPixelColour(
 	DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point,
 	const Vector6f* directionalContribution, bool foundPoint, const CONSTPTR(TVoxel)* voxelData,
@@ -1218,18 +1255,19 @@ _CPU_AND_GPU_CODE_ inline void processPixelColour(
 	if (foundPoint)
 	{
 		if (directionalContribution)
-			drawPixelColourDirectional<TVoxel, TIndex>(outRendering, point, *directionalContribution, voxelData, voxelIndex);
+			drawPixelColourDirectional<TVoxel, TIndex>(outRendering, point, *directionalContribution, voxelData,
+			                                           voxelIndex);
 		else
 			drawPixelColourDefault<TVoxel, TIndex>(outRendering, point, voxelData, voxelIndex);
 	} else outRendering = Vector4u((uchar) 0);
 }
 
 template<class TVoxel, class TIndex>
-_CPU_AND_GPU_CODE_ inline void processPixelNormal(DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point,
-                                                  const Vector6f* directionalContribution,
-                                                  bool foundPoint, const CONSTPTR(TVoxel)* voxelData,
-                                                  const CONSTPTR(typename TIndex::IndexData)* voxelIndex,
-                                                  Vector3f lightSource)
+_CPU_AND_GPU_CODE_ inline void processPixelNormal_SDFNormals(DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point,
+                                                             const Vector6f* directionalContribution,
+                                                             bool foundPoint, const CONSTPTR(TVoxel)* voxelData,
+                                                             const CONSTPTR(typename TIndex::IndexData)* voxelIndex,
+                                                             Vector3f lightSource)
 {
 	Vector3f outNormal;
 	float angle;
@@ -1243,11 +1281,11 @@ _CPU_AND_GPU_CODE_ inline void processPixelNormal(DEVICEPTR(Vector4u)& outRender
 
 template<class TVoxel, class TIndex>
 _CPU_AND_GPU_CODE_ inline void
-processPixelConfidence(DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector4f)& point,
-                       const Vector6f* directionalContribution,
-                       bool foundPoint, const CONSTPTR(TVoxel)* voxelData,
-                       const CONSTPTR(typename TIndex::IndexData)* voxelIndex,
-                       const ITMSceneParams& sceneParams, Vector3f lightSource)
+processPixelConfidence_SDFNormals(DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector4f)& point,
+                                  const Vector6f* directionalContribution,
+                                  bool foundPoint, const CONSTPTR(TVoxel)* voxelData,
+                                  const CONSTPTR(typename TIndex::IndexData)* voxelIndex,
+                                  const ITMSceneParams& sceneParams, Vector3f lightSource)
 {
 	Vector3f outNormal;
 	float angle;
