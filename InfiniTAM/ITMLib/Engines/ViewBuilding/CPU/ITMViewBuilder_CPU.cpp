@@ -13,21 +13,6 @@ using namespace ORUtils;
 ITMViewBuilder_CPU::ITMViewBuilder_CPU(const ITMRGBDCalib& calib):ITMViewBuilder(calib) { }
 ITMViewBuilder_CPU::~ITMViewBuilder_CPU(void) { }
 
-void saveNormalImage(ITMView *view, const std::string &path)
-{
-	ITMUChar4Image *normalImage = new ITMUChar4Image(view->rgb->noDims, true, false);
-	Vector4u *data_to =  normalImage->GetData(MEMORYDEVICE_CPU);
-	const Vector4f *data_from =  view->depthNormal->GetData(MEMORYDEVICE_CPU);
-	for (int i=0; i < view->depthNormal->noDims[0] * view->depthNormal->noDims[1]; i++)
-	{
-		data_to[i].x = static_cast<uchar>(abs(data_from[i].x) * 255);
-		data_to[i].y = static_cast<uchar>(abs(data_from[i].y) * 255);
-		data_to[i].z = static_cast<uchar>(abs(data_from[i].z) * 255);
-		data_to[i].w = 255;
-	}
-	SaveImageToFile(normalImage, path.c_str());
-}
-
 void ITMViewBuilder_CPU::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, bool useBilateralFilter, bool modelSensorNoise, bool storePreviousImage)
 {
 	timeStats.Reset();
@@ -93,7 +78,6 @@ void ITMViewBuilder_CPU::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage
 		this->ComputeNormalAndWeights(this->normals, view->depthUncertainty, view->depth, view->calib.intrinsics_d.projectionParamsSimple.all);
 		this->NormalFiltering(view->depthNormal, this->normals);
 		timeStats.normalEstimation = timer.Tock();
-		saveNormalImage(view, "/tmp/normals.png");
 	}
 }
 

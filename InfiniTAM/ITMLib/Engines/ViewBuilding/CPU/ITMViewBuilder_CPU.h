@@ -9,7 +9,7 @@ namespace ITMLib
 	class ITMViewBuilder_CPU : public ITMViewBuilder
 	{
 	public:
-		void ConvertDisparityToDepth(ITMFloatImage *depth_out, const ITMShortImage *disp_in, const ITMIntrinsics *depthIntrinsics, 
+		void ConvertDisparityToDepth(ITMFloatImage *depth_out, const ITMShortImage *disp_in, const ITMIntrinsics *depthIntrinsics,
 			Vector2f disparityCalibParams);
 		void ConvertDepthAffineToFloat(ITMFloatImage *depth_out, const ITMShortImage *depth_in, Vector2f depthCalibParams);
 

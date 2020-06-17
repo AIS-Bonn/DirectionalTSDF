@@ -755,6 +755,77 @@ void UIEngine::GetScreenshot(ITMUChar4Image *dest) const
 	glReadPixels(0, 0, dest->noDims.x, dest->noDims.y, GL_RGBA, GL_UNSIGNED_BYTE, dest->GetData(MEMORYDEVICE_CPU));
 }
 
+void SaveNormalImage(const ITMView *view, const std::string& path, ITMLibSettings::DeviceType deviceType)
+{
+	if (deviceType == ITMLibSettings::DEVICE_CUDA)
+	{
+		view->depthNormal->UpdateHostFromDevice();
+	}
+
+	ITMUChar4Image *normalImage = new ITMUChar4Image(view->rgb->noDims, true, false);
+	Vector4u *data_to = normalImage->GetData(MEMORYDEVICE_CPU);
+	const Vector4f *data_from = view->depthNormal->GetData(MEMORYDEVICE_CPU);
+
+	for (int i=0; i < view->depthNormal->noDims[0] * view->depthNormal->noDims[1]; i++)
+	{
+		data_to[i].x = static_cast<uchar>(abs(data_from[i].x) * 255);
+		data_to[i].y = static_cast<uchar>(abs(data_from[i].y) * 255);
+		data_to[i].z = static_cast<uchar>(abs(data_from[i].z) * 255);
+		data_to[i].w = 255;
+	}
+	SaveImageToFile(normalImage, path.c_str());
+	free(normalImage);
+}
+
+void SaveNormalDirectionImage(const ITMView *view, const std::string& path, const Matrix4f& invM_d, ITMLibSettings::DeviceType deviceType)
+{
+	if (deviceType == ITMLibSettings::DEVICE_CUDA)
+	{
+		view->depthNormal->UpdateHostFromDevice();
+	}
+
+	ITMUChar4Image *normalImage = new ITMUChar4Image(view->rgb->noDims, true, false);
+	Vector4u *data_to = normalImage->GetData(MEMORYDEVICE_CPU);
+	const Vector4f *data_from = view->depthNormal->GetData(MEMORYDEVICE_CPU);
+
+	for (int i=0; i < view->depthNormal->noDims[0] * view->depthNormal->noDims[1]; i++)
+	{
+		Vector4f normal_camera = data_from[i];
+		normal_camera.w = 0;
+		Vector4f normal_world = invM_d * normal_camera;
+
+		float weights[N_DIRECTIONS];
+		ComputeDirectionWeights(-normal_world.toVector3(), weights);
+
+		const Vector3f directionColors[6] = {
+			Vector3f(1, 0, 0),
+			Vector3f(0, 1, 0),
+			Vector3f(1, 1, 0),
+			Vector3f(0, 0, 1),
+			Vector3f(1, 0, 1),
+			Vector3f(0, 1, 1)
+		};
+
+		float sumWeights = 0;
+		Vector3f colorCombined(0, 0, 0);
+		for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
+		{
+			if (weights[direction] < direction_weight_threshold) continue;
+
+			colorCombined += weights[direction] * directionColors[direction];
+			sumWeights += weights[direction];
+		}
+		colorCombined /= sumWeights;
+		data_to[i].x = static_cast<uchar>(abs(colorCombined.x) * 255);
+		data_to[i].y = static_cast<uchar>(abs(colorCombined.y) * 255);
+		data_to[i].z = static_cast<uchar>(abs(colorCombined.z) * 255);
+		data_to[i].w = 255;
+
+	}
+	SaveImageToFile(normalImage, path.c_str());
+	free(normalImage);
+}
+
 void UIEngine::ProcessFrame()
 {
 	if (!appData->imageSource->hasMoreImages()) return;
@@ -799,6 +870,12 @@ void UIEngine::ProcessFrame()
 
 		sprintf(str, "%s/recording/render%04d.ppm", outFolder, currentFrameNo);
 		SaveImageToFile(outImage[0], str);
+
+		sprintf(str, "%s/recording/normal_%04d.ppm", outFolder, currentFrameNo);
+		SaveNormalImage(mainEngine->GetView(), str, appData->internalSettings->deviceType);
+
+		sprintf(str, "%s/recording/normal_direction_%04d.ppm", outFolder, currentFrameNo);
+		SaveNormalDirectionImage(mainEngine->GetView(), str, mainEngine->GetTrackingState()->pose_d->GetInvM(), appData->internalSettings->deviceType);
 	}
 	if ((rgbVideoWriter != nullptr) && (inputRGBImage->noDims.x != 0)) {
 		if (!rgbVideoWriter->isOpen()) rgbVideoWriter->open("out_rgb.avi", inputRGBImage->noDims.x, inputRGBImage->noDims.y, false, 30);
