@@ -18,7 +18,7 @@ static const CONSTPTR(int) MAX_RENDERING_BLOCKS = 65536 * 4;
 static const CONSTPTR(int) minmaximg_subsample = 8;
 
 static const float bilateralFilterSigmaD = 2.0;
-static const float bilateralFilterSigmaR = 0.3;
+static const float bilateralFilterSigmaR = 0.1;
 static const int bilateralFilterRadius = 3;
 
 #if !(defined __METALC__)
@@ -295,6 +295,40 @@ _CPU_AND_GPU_CODE_ inline float baseCol(float val)
 }
 
 /**
+ * @param h in [0, 360]
+ * @param s in [0, 1]
+ * @param v in [0, 1]
+ * @return
+ */
+_CPU_AND_GPU_CODE_ inline
+Vector3f HSVtoRGB(const float h, const float s, const float v)
+{
+	int sector = static_cast<int>(floor(h / 60));
+	float f = (h / 60 - sector);
+	float p = v * (1 - s);
+	float q = v * (1 - s * f);
+	float t = v * (1 - s * (1 - f));
+	switch(sector)
+	{
+		case 0:
+		case 6:
+			return Vector3f(v, t, p);
+		case 1:
+			return Vector3f(q, v, p);
+		case 2:
+			return Vector3f(p, v, t);
+		case 3:
+			return Vector3f(p, q, v);
+		case 4:
+			return Vector3f(t, p, v);
+		case 5:
+			return Vector3f(v, p, q);
+	}
+
+	return Vector3f(0, 0, 0);
+}
+
+/**
  * Paint the pixel wrt. the given normalized confidence (in [0, 1])
  * @param dest
  * @param angle
@@ -307,10 +341,7 @@ drawPixelConfidence(DEVICEPTR(Vector4u)& dest, const THREADPTR(float)& angle,
 	float confidenceNorm = CLAMP(normalizedConfidence, 0, 1.0f);
 
 	Vector4f color;
-	color.r = (uchar) (baseCol(confidenceNorm) * 255.0f);
-	color.g = (uchar) (baseCol(confidenceNorm - 0.5f) * 255.0f);
-	color.b = (uchar) (baseCol(confidenceNorm + 0.5f) * 255.0f);
-	color.a = 255;
+	color = Vector4f(HSVtoRGB(confidenceNorm * 120, 1, 1) * 255, 255);
 
 	Vector4f outRes = (0.8f * angle + 0.2f) * color;
 	dest = TO_UCHAR4(outRes);
@@ -494,7 +525,7 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 
 	distance_out = totalLength / sceneParams.oneOverVoxelSize;
 	// multiply by transition: negative transition <=> negative confidence!
-	pt_out = Vector4f(pt_result, confidence + 1.0f);
+	pt_out = Vector4f(pt_result, confidence);
 
 	return true;
 }
@@ -711,7 +742,7 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional2(DEVICEPTR(Vector4f)& pt_out, 
 		}
 	}
 
-	pt_out = Vector4f(pt_result, weightSum + 1.0f);
+	pt_out = Vector4f(pt_result, weightSum);
 	return true;
 }
 
@@ -783,12 +814,12 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional(DEVICEPTR(Vector4f)& pt_out, V
 			{
 				directionIntersectionPoint[directionIdx] = point.toVector3();
 				directionIntersectionLength[directionIdx] = distance;
-				directionIntersectionWeight[directionIdx] = point.w - 1;
+				directionIntersectionWeight[directionIdx] = point.w;
 			}
 #else
 			directionIntersectionPoint[directionIdx] = point.toVector3();
 			directionIntersectionLength[directionIdx] = distance;
-			directionIntersectionWeight[directionIdx] = point.w - 1;
+			directionIntersectionWeight[directionIdx] = point.w;
 #endif
 		}
 	}
@@ -836,7 +867,7 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional(DEVICEPTR(Vector4f)& pt_out, V
 	float oneOverWeightSum = 1 / weightSum;
 
 	pt_out *= oneOverWeightSum;
-	pt_out.w = weightSum + 1.0f;
+	pt_out.w = weightSum;
 
 	if (currentIntersectionIdx < 0 or weightSum <= 0)
 	{
@@ -1019,6 +1050,9 @@ _CPU_AND_GPU_CODE_ inline void combineDirectionalPointClouds(
 {
 	int locId = x + y * imgSize.x;
 
+	outputPointCloud[locId] = Vector4f(0, 0, 0, 0);
+	outputNormals[locId] = Vector4f(0, 0, 0, 0);
+
 	Vector4f points[N_DIRECTIONS];
 	Vector3f normals[N_DIRECTIONS];
 	float confidences[N_DIRECTIONS] = {0, 0, 0, 0, 0, 0};
@@ -1069,20 +1103,41 @@ _CPU_AND_GPU_CODE_ inline void combineDirectionalPointClouds(
 	}
 
 	if (sumConfidences <= 0)
-	{
-		outputPointCloud[locId] = Vector4f(0, 0, 0, 0);
 		return;
-	}
 
 	int cluster[N_DIRECTIONS];
 	Vector3f clusterNormal;
 	findBestCluster(distances, confidences, normals, cluster, clusterNormal);
 
 	if (cluster[0] < 0)
-	{
-		outputPointCloud[locId] = Vector4f(0, 0, 0, 0);
 		return;
-	}
+//
+//	 /// Combine cluster to surface point
+//	 bool clusterHasGoodDirection = false;
+//	 int bestDirection = -1;
+//	 float bestDirectionConfidence = 0;
+//	 for (uchar idx = 0; idx < N_DIRECTIONS and cluster[idx] >= 0; idx++)
+//	 {
+//					 TSDFDirection_type directionIdx = cluster[idx];
+////           if (DirectionWeight(-viewRay, TSDFDirection(directionIdx)) >= direction_weight_threshold)
+//					 if (DirectionWeight(clusterNormal, TSDFDirection(directionIdx)) >= direction_weight_threshold)
+//					 {
+//									 clusterHasGoodDirection = true;
+//									 float confidence = confidences[directionIdx] * DirectionWeight(normals[directionIdx], TSDFDirection(directionIdx));
+//									 if (confidences[directionIdx] > 0 and confidence > bestDirectionConfidence)
+//									 {
+//													 bestDirectionConfidence = confidence;
+//													 bestDirection = directionIdx;
+//									 }
+//					 }
+//	 }
+//	 if (bestDirection >= 0)
+//	 {
+//					 outputPointCloud[locId] = points[bestDirection];
+//					 outputNormals[locId] = Vector4f(normals[bestDirection], 1);
+//					 directionalContribution[locId][bestDirection] = 1.0;
+//					 return;
+//	 }
 
 	float sumWeights = 0;
 	Vector4f sumPoints(0, 0, 0, 0);
@@ -1113,6 +1168,7 @@ _CPU_AND_GPU_CODE_ inline void combineDirectionalPointClouds(
 		sumPoints += weight * point;
 		sumNormals += weight * normal;
 	}
+
 	float oneOverWeight = 1 / sumWeights;
 
 	outputPointCloud[locId] = sumPoints * oneOverWeight;
@@ -1225,7 +1281,7 @@ processPixelConfidence_ImageNormals(DEVICEPTR(Vector4u)* outRendering, const CON
 
 	if (foundPoint)
 		drawPixelConfidence(outRendering[locId], angle,
-		                    (point.w - 1.0f) / static_cast<float>(sceneParams.maxW));
+		                    point.w / static_cast<float>(sceneParams.maxW));
 	else outRendering[locId] = Vector4u((uchar) 0);
 }
 
@@ -1295,7 +1351,7 @@ processPixelConfidence_SDFNormals(DEVICEPTR(Vector4u)& outRendering, const CONST
 
 	if (foundPoint)
 		drawPixelConfidence(outRendering, angle,
-		                    (point.w - 1.0f) / static_cast<float>(sceneParams.maxW));
+		                    point.w / static_cast<float>(sceneParams.maxW));
 	else outRendering = Vector4u((uchar) 0);
 }
 
