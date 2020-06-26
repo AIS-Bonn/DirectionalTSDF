@@ -137,7 +137,7 @@ void ITMMultiVisualisationEngine_CUDA<TVoxel, TIndex>::RenderImage(const ORUtils
 		renderColour_device<ITMMultiVoxel<TVoxel>, ITMMultiIndex<TIndex> > << <gridSize, cudaBlockSize >> >(outRendering, pointsRay,
 			useDirectional ? directionalContribution : nullptr,
 			renderState->voxelData_device,
-			renderState->indexData_device, imgSize);
+			renderState->indexData_device, imgSize, lightSource);
 		ORcudaKernelCheck;
 		break;
 	case IITMVisualisationEngine::RENDER_COLOUR_FROM_SDFNORMAL:

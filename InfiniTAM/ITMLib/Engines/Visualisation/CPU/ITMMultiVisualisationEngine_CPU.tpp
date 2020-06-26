@@ -185,7 +185,7 @@ void ITMMultiVisualisationEngine_CPU<TVoxel, TIndex>::RenderImage(const ORUtils:
 					outRendering[locId], ptRay.toVector3(),
 					useDirectioal ? &directionalContribution[locId] : nullptr,
 					ptRay.w > 0, &(renderState->voxelData_host),
-					&(renderState->indexData_host));
+					&(renderState->indexData_host), lightSource);
 			}
 			break;
 		case IITMVisualisationEngine::RENDER_COLOUR_FROM_SDFNORMAL:

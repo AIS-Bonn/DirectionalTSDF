@@ -357,12 +357,8 @@ _CPU_AND_GPU_CODE_ inline void drawPixelNormal(DEVICEPTR(Vector4u)& dest, const 
 template<class TVoxel, class TIndex>
 _CPU_AND_GPU_CODE_ inline void drawPixelColourDirectional(
 	DEVICEPTR(Vector4u)& dest, const CONSTPTR(Vector3f)& point, const Vector6f& directionalContribution,
-	const CONSTPTR(TVoxel)* voxelBlockData, const CONSTPTR(typename TIndex::IndexData)* indexData)
+	const float angle, const CONSTPTR(TVoxel)* voxelBlockData, const CONSTPTR(typename TIndex::IndexData)* indexData)
 {
-	dest.x = 0;
-	dest.y = 0;
-	dest.z = 0;
-
 	const Vector3f directionColors[6] = {
 		Vector3f(1, 0, 0),
 		Vector3f(0, 1, 0),
@@ -372,13 +368,15 @@ _CPU_AND_GPU_CODE_ inline void drawPixelColourDirectional(
 		Vector3f(0, 1, 1)
 	};
 
+	Vector4f color (0, 0, 0, 255);
+
 	// Debugging: color in contributing directions
 	for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
 	{
 		const Vector3f& clr = directionColors[direction];
-		dest.x += (uchar) MIN(clr.x * 255.0f * directionalContribution[direction], 255.0f);
-		dest.y += (uchar) MIN(clr.y * 255.0f * directionalContribution[direction], 255.0f);
-		dest.z += (uchar) MIN(clr.z * 255.0f * directionalContribution[direction], 255.0f);
+		color.x += MIN(clr.x * 255.0f * directionalContribution[direction], 255.0f);
+		color.y += MIN(clr.y * 255.0f * directionalContribution[direction], 255.0f);
+		color.z += MIN(clr.z * 255.0f * directionalContribution[direction], 255.0f);
 	}
 
 	// Debugging: color in strongest contributing direction
@@ -405,12 +403,14 @@ _CPU_AND_GPU_CODE_ inline void drawPixelColourDirectional(
 //		dest.y += (uchar) (clr.y * 255.0f * directionalContribution[direction]);
 //		dest.z += (uchar) (clr.z * 255.0f * directionalContribution[direction]);
 //	}
-	dest.w = 255;
+
+	Vector4f outRes = (0.8f * angle + 0.2f) * color;
+	dest = TO_UCHAR4(outRes);
 }
 
 template<class TVoxel, class TIndex>
 _CPU_AND_GPU_CODE_ inline void drawPixelColourDefault(DEVICEPTR(Vector4u)& dest, const CONSTPTR(Vector3f)& point,
-                                                      const CONSTPTR(TVoxel)* voxelBlockData,
+                                                      const float angle, const CONSTPTR(TVoxel)* voxelBlockData,
                                                       const CONSTPTR(typename TIndex::IndexData)* indexData)
 {
 	Vector4f clr = VoxelColorReader<TVoxel::hasColorInformation, TVoxel, TIndex>::interpolate(voxelBlockData, indexData,
@@ -1074,7 +1074,7 @@ _CPU_AND_GPU_CODE_ inline void combineDirectionalPointClouds(
 		directionalContribution[locId].v[directionIdx] = 0;
 
 		point = inputPointClouds.pointCloud[directionIdx][locId];
-		confidence = point.w;
+		confidence = point.w ;//- 1;
 
 		bool foundPoint = confidence > 0.0f;
 		if (not foundPoint)
@@ -1306,15 +1306,20 @@ template<class TVoxel, class TIndex>
 _CPU_AND_GPU_CODE_ inline void processPixelColour(
 	DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point,
 	const Vector6f* directionalContribution, bool foundPoint, const CONSTPTR(TVoxel)* voxelData,
-	const CONSTPTR(typename TIndex::IndexData)* voxelIndex)
+	const CONSTPTR(typename TIndex::IndexData)* voxelIndex, const Vector3f lightSource)
 {
+	float angle;
+	Vector3f outNormal;
+	computeNormalAndAngle<TVoxel, TIndex>(foundPoint, point, directionalContribution, voxelData, voxelIndex,
+	                                      lightSource, outNormal, angle);
+
 	if (foundPoint)
 	{
 		if (directionalContribution)
-			drawPixelColourDirectional<TVoxel, TIndex>(outRendering, point, *directionalContribution, voxelData,
+			drawPixelColourDirectional<TVoxel, TIndex>(outRendering, point, *directionalContribution, angle, voxelData,
 			                                           voxelIndex);
 		else
-			drawPixelColourDefault<TVoxel, TIndex>(outRendering, point, voxelData, voxelIndex);
+			drawPixelColourDefault<TVoxel, TIndex>(outRendering, point, angle, voxelData, voxelIndex);
 	} else outRendering = Vector4u((uchar) 0);
 }
 

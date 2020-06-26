@@ -278,7 +278,7 @@ __global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, Vecto
 
 	template<class TVoxel, class TIndex>
 	__global__ void renderColour_device(Vector4u *outRendering, const Vector4f *ptsRay, const Vector6f *directionalContribution,
-		const TVoxel *voxelData, const typename TIndex::IndexData *voxelIndex, Vector2i imgSize)
+		const TVoxel *voxelData, const typename TIndex::IndexData *voxelIndex, Vector2i imgSize, const Vector3f lightSource)
 	{
 		int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
 
@@ -290,10 +290,10 @@ __global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, Vecto
 
 		if (directionalContribution)
 			processPixelColour<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
-			                                   &directionalContribution[locId], ptRay.w > 1, voxelData, voxelIndex);
+			                                   &directionalContribution[locId], ptRay.w > 0, voxelData, voxelIndex, lightSource);
 		else
-			processPixelColour<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(), nullptr, ptRay.w > 1,
-			                                   voxelData, voxelIndex);
+			processPixelColour<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(), nullptr, ptRay.w > 0,
+			                                   voxelData, voxelIndex, lightSource);
 	}
 
 template<class TVoxel, class TIndex>

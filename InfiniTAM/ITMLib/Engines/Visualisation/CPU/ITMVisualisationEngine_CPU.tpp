@@ -269,7 +269,7 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::RenderImage(const ITMSce
 			processPixelColour<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
 			                                   useDirectial ? &directionalContribution[locId] : nullptr,
 			                                   ptRay.w > 0,
-			                                   voxelData, voxelIndex);
+			                                   voxelData, voxelIndex, lightSource);
 		}
 		break;
 	case IITMVisualisationEngine::RENDER_COLOUR_FROM_SDFNORMAL:

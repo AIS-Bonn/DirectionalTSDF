@@ -310,7 +310,7 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::RenderImage(const ITMSc
 			renderColour_device<TVoxel, TIndex> <<<gridSize, cudaBlockSize>>>(outRendering, pointsRay,
 				useDirectional ? directionalContribution : nullptr,
 				scene->localVBA.GetVoxelBlocks(),
-				scene->index.getIndexData(), imgSize);
+				scene->index.getIndexData(), imgSize, lightSource);
 			ORcudaKernelCheck;
 			break;
 		case IITMVisualisationEngine::RENDER_COLOUR_FROM_SDFNORMAL:
