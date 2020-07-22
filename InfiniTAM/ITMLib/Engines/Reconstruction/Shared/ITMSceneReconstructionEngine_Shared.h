@@ -42,7 +42,7 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 {
 	Vector4f voxel_camera;
 	Vector2f voxel_image;
-	float depth_measure, eta, oldF, newF;
+	float depth_measure, oldF, newF;
 	float oldW, newW;
 
 	// project point into image
@@ -57,39 +57,28 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 	// get measured depth from image
 	int idx = (int) (voxel_image.x + 0.5f) + (int) (voxel_image.y + 0.5f) * imgSize.x;
 	depth_measure = depth[idx];
-	if (depth_measure <= 0.0f) return -1;
+	Vector4f normal_camera = depthNormals[idx];
+	if (depth_measure <= 0.0f or normal_camera.w != 1) return -1;
 
 	// check whether voxel needs updating
-	eta = depth_measure - voxel_camera.z;
-	if (eta < -sceneParams.mu) return eta;
+	float voxelSurfaceOffset = depth_measure - voxel_camera.z;
+	if (voxelSurfaceOffset < -sceneParams.mu) return voxelSurfaceOffset;
 
-	// compute updated SDF value and reliability
-	oldF = TVoxel::valueToFloat(voxel.sdf);
-	oldW = TVoxel::weightToFloat(voxel.w_depth, sceneParams.maxW);
+	Matrix4f invM_d;
+	M_d.inv(invM_d);
+	Vector3f pt_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, depth_measure,
+	                                         invertProjectionParams(projParams_d));
+	Vector3f pt_world = (invM_d * Vector4f(pt_camera, 1)).toVector3();
+	Vector3f normal_world = normalCameraToWorld(normal_camera, invM_d);
+	Vector3f pixelRay_world = (invM_d * Vector4f(pt_camera, 0)).toVector3().normalised();
 
-	float distance = eta;
+	float distance;
 	if (fusionParams.fusionMetric == FusionMetric::FUSIONMETRIC_POINT_TO_PLANE)
 	{
-		Matrix4f invM_d;
-		M_d.inv(invM_d);
-		Vector3f pt_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, depth_measure,
-		                                         invertProjectionParams(projParams_d));
-		Vector3f pt_world = (invM_d * Vector4f(pt_camera, 1)).toVector3();
-		Vector4f normal_camera = depthNormals[idx];
-		if (normal_camera.w != 1)
-			return -1;
-		Vector3f normal_world = normalCameraToWorld(normal_camera, invM_d);
 		distance = ORUtils::dot(voxel_world.toVector3() - pt_world, normal_world);
 	} else
 	{
-		Matrix4f invM_d;
-		M_d.inv(invM_d);
-		Vector3f pt_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, depth_measure,
-		                                         invertProjectionParams(projParams_d));
-		Vector3f pt_world = (invM_d * Vector4f(pt_camera, 1)).toVector3();
-
 		// True point-to-point (euclidean distance)
-		Vector3f pixelRay_world = (invM_d * Vector4f(pt_camera, 0)).toVector3().normalised();
 		distance = ORUtils::dot(voxel_world.toVector3() - pt_world, -pixelRay_world);
 
 		// Original InfiniTAM: assumption is, all surface normals equal the inverse camera Z-axis
@@ -97,26 +86,39 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 //		distance = ORUtils::dot(voxel_world.toVector3() - pt_world, cameraRay_world);
 	}
 
+	// compute updated SDF value and reliability
+	oldF = TVoxel::valueToFloat(voxel.sdf);
+	oldW = TVoxel::weightToFloat(voxel.w_depth, sceneParams.maxW);
 	newF = MIN(1.0f, distance / sceneParams.mu);
 	newW = 1;
-	if (fusionParams.useWeighting)
+
+	if (fusionParams.useWeighting) //and distance < carveSurfaceOffset)
 	{
-		Vector4f normal_camera = depthNormals[idx];
-		if (normal_camera.w != 1)
-			return -1;
-		Vector3f viewRay_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, 1,
-		                                              invertProjectionParams(projParams_d)).normalised();
-		float directionWeight = 1;
-		if (direction != TSDFDirection::NONE)
-		{
-			Matrix4f invM_d;
-			M_d.inv(invM_d);
-			Vector3f normal_world = normalCameraToWorld(normal_camera, invM_d);
-			directionWeight = DirectionWeight(normal_world, direction);
-			if (directionWeight < direction_weight_threshold)
+		if (distance >= sceneParams.mu)
+		{ // space carving region
+			Vector3f viewRay_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, 1,
+			                                              invertProjectionParams(projParams_d)).normalised();
+			newW = 0.01f * weightNormal(normal_camera.toVector3(), viewRay_camera);
+		} else
+		{ // truncation region
+			Vector4f normal_camera = depthNormals[idx];
+			if (normal_camera.w != 1)
 				return -1;
+			Vector3f viewRay_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, 1,
+			                                              invertProjectionParams(projParams_d)).normalised();
+			float directionWeight = 1;
+			if (direction != TSDFDirection::NONE)
+			{
+				Matrix4f invM_d;
+				M_d.inv(invM_d);
+				Vector3f normal_world = normalCameraToWorld(normal_camera, invM_d);
+				directionWeight = DirectionWeight(normal_world, direction);
+
+				if (directionWeight < direction_weight_threshold)
+					return -1;
+			}
+			newW = depthWeight(depth_measure, normal_camera.toVector3(), viewRay_camera, directionWeight, sceneParams);
 		}
-		newW = depthWeight(depth_measure, normal_camera.toVector3(), viewRay_camera, directionWeight, sceneParams);
 	}
 
 	newF = oldW * oldF + newW * newF;
@@ -127,111 +129,6 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 	// write back
 	voxel.sdf = TVoxel::floatToValue(newF);
 	voxel.w_depth = TVoxel::floatToWeight(newW, sceneParams.maxW);
-
-	return distance;
-}
-
-template<class TVoxel>
-_CPU_AND_GPU_CODE_ inline float
-computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direction,
-                             const THREADPTR(Vector4f)& voxel_world,
-                             const CONSTPTR(Matrix4f)& M_d,
-                             const CONSTPTR(Vector4f)& projParams_d,
-                             const CONSTPTR(ITMFusionParams)& fusionParams,
-                             const CONSTPTR(ITMSceneParams)& sceneParams,
-                             const CONSTPTR(float)* depth,
-                             const CONSTPTR(Vector4f)* depthNormals,
-                             const CONSTPTR(float)* confidence, const CONSTPTR(Vector2i)& imgSize)
-{
-	Vector4f voxel_camera;
-	Vector2f voxel_image;
-	float depth_measure, eta, oldF, newF;
-	int idx;
-	float oldW, newW;
-
-	// project point into image
-	voxel_camera = M_d * voxel_world;
-	if (voxel_camera.z <= 0) return -1;
-
-	voxel_image = project(voxel_camera.toVector3(), projParams_d);
-	if ((voxel_image.x < 1) || (voxel_image.x > imgSize.x - 2) || (voxel_image.y < 1) ||
-	    (voxel_image.y > imgSize.y - 2))
-		return -1;
-
-	idx = (int) (voxel_image.x + 0.5f) + (int) (voxel_image.y + 0.5f) * imgSize.x;
-	// get measured depth from image
-	depth_measure = depth[idx];
-	if (depth_measure <= 0.0) return -1;
-
-	// check whether voxel needs updating
-	eta = depth_measure - voxel_camera.z;
-	if (eta < -sceneParams.mu) return eta;
-
-	// compute updated SDF value and reliability
-	oldF = TVoxel::valueToFloat(voxel.sdf);
-	oldW = TVoxel::weightToFloat(voxel.w_depth, sceneParams.maxW);
-
-	float distance = eta;
-	if (fusionParams.fusionMetric == FusionMetric::FUSIONMETRIC_POINT_TO_PLANE)
-	{
-		Matrix4f invM_d;
-		M_d.inv(invM_d);
-		Vector3f pt_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, depth_measure,
-		                                         invertProjectionParams(projParams_d));
-		Vector3f pt_world = (invM_d * Vector4f(pt_camera, 1)).toVector3();
-		Vector4f normal_camera = depthNormals[idx];
-		if (normal_camera.w != 1)
-			return -1;
-		Vector3f normal_world = normalCameraToWorld(normal_camera, invM_d);
-		distance = ORUtils::dot(voxel_world.toVector3() - pt_world, normal_world);
-	} else
-	{
-		Matrix4f invM_d;
-		M_d.inv(invM_d);
-		Vector3f pt_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, depth_measure,
-		                                         invertProjectionParams(projParams_d));
-		Vector3f pt_world = (invM_d * Vector4f(pt_camera, 1)).toVector3();
-
-		// True point-to-point (euclidean distance)
-		Vector3f pixelRay_world = (invM_d * Vector4f(pt_camera, 0)).toVector3().normalised();
-		distance = ORUtils::dot(voxel_world.toVector3() - pt_world, -pixelRay_world);
-
-		// Original InfiniTAM: assumption is, all surface normals equal the inverse camera Z-axis
-//		Vector3f cameraRay_world = (invM_d * Vector4f(0, 0, -1, 0)).toVector3();
-//		distance = ORUtils::dot(voxel_world.toVector3() - pt_world, cameraRay_world);
-	}
-
-	newF = MIN(1.0f, distance / sceneParams.mu);
-	newW = 1;
-	if (fusionParams.useWeighting)
-	{
-		Vector4f normal_camera = depthNormals[idx];
-		if (normal_camera.w != 1)
-			return -1;
-		Vector3f viewRay_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, 1,
-		                                              invertProjectionParams(projParams_d)).normalised();
-		float directionWeight = 1;
-		if (direction != TSDFDirection::NONE)
-		{
-			Matrix4f invM_d;
-			M_d.inv(invM_d);
-			Vector3f normal_world = normalCameraToWorld(normal_camera, invM_d);
-			directionWeight = DirectionWeight(normal_world, direction);
-			if (directionWeight < direction_weight_threshold)
-				return -1;
-		}
-		newW = depthWeight(depth_measure, normal_camera.toVector3(), viewRay_camera, directionWeight, sceneParams);
-	}
-
-	newF = oldW * oldF + newW * newF;
-	newW = oldW + newW;
-	newF /= newW;
-	newW = MIN(newW, sceneParams.maxW);
-
-	// write back^
-	voxel.sdf = TVoxel::floatToValue(newF);
-	voxel.w_depth = TVoxel::floatToWeight(newW, sceneParams.maxW);
-	voxel.confidence += TVoxel::floatToValue(confidence[idx]);
 
 	return distance;
 }
@@ -411,10 +308,9 @@ _CPU_AND_GPU_CODE_ static void voxelProjectionCarveSpace(const TVoxel& voxel,
 	int y_max = MIN(static_cast<int>(voxelBR_image.y + 0.5f), imgSize.y - 2);
 
 	/// Check area and carve voxel, if necessary
-	float sdf = TVoxel::valueToFloat(voxel.sdf);
 
 	// skip positive sdf values (because they either mean free space or are values required to estimate the 0-transition)
-	if (sdf >= 0)
+	if (TVoxel::valueToFloat(voxel.sdf) >= 0 or TVoxel::weightToFloat(voxel.w_depth, sceneParams.maxW) <= 0)
 		return;
 
 	Matrix4f invM_d;
@@ -422,6 +318,7 @@ _CPU_AND_GPU_CODE_ static void voxelProjectionCarveSpace(const TVoxel& voxel,
 	Vector4f invProjParams_d = invertProjectionParams(projParams_d);
 
 	float carveWeight = 0;
+	int count = 0;
 	for (int x = x_min; x <= x_max; x++)
 		for (int y = y_min; y <= y_max; y++)
 		{
@@ -431,22 +328,28 @@ _CPU_AND_GPU_CODE_ static void voxelProjectionCarveSpace(const TVoxel& voxel,
 			Vector4f normal_camera = depthNormals[idx];
 			if (depthValue <= 0.0 or normal_camera.w != 1) continue;
 
+			// Normal too steep -> don't carve (because unreliable)
+			// discard voxel (return) completely because neighboring normals not reliable
+			if (ORUtils::dot(normal_camera.toVector3(), Vector3f(0, 0, -1)) < 0.337)
+				return;
+
 			Vector3f normal_world = normalCameraToWorld(normal_camera, invM_d);
 			Vector3f rayDirection_camera = reprojectImagePoint(x, y, depthValue, invProjParams_d).normalised();
 			Vector3f rayDirection_world = normalCameraToWorld(Vector4f(rayDirection_camera, 0), invM_d);
-			float carveSurfaceOffset = sceneParams.mu + fabs(1.0 / dot(normal_world, rayDirection_world)) * sceneParams.mu;
+			float carveSurfaceOffset = fabs(1.0 / dot(normal_world, rayDirection_world)) * sceneParams.mu;
 
 			// check whether voxel needs updating
 			float eta = depthValue - pt_camera.z;
 			if (eta < carveSurfaceOffset) // Within truncation range -> don't carve
 				return;
 
-			carveWeight += 1;
+			carveWeight += 0.01f * weightNormal(normal_camera.toVector3(), rayDirection_camera);
+			count++;
 		}
 	if (carveWeight <= 0)
 		return;
 
-	voxelRayCastingSum.update(1, carveWeight);
+	voxelRayCastingSum.update(1, carveWeight / count);
 }
 
 _CPU_AND_GPU_CODE_
@@ -477,7 +380,7 @@ inline void SetBlockVisibleType(const CONSTPTR(ITMHashEntry)* hashTable,
 	if (!isFound)
 	{
 		bool isExcess = false;
-		if (hashEntry.ptr >= -1) //seach excess list only if there is no room in ordered part
+		if (hashEntry.ptr >= -1) //search excess list only if there is no room in ordered part
 		{
 			while (hashEntry.offset >= 1)
 			{
@@ -620,12 +523,8 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* d
 		ushort linearIdx;
 		voxelToBlockPosAndOffset(voxelIdx, blockPos, linearIdx);
 
-		/// Fixed values for distance and weight
-		float distance = 1;
-
-		float weight = 1;
-		// TODO: down weight, if close to surface
-//		weight *= weightDepth(depthValue, sceneParams);
+		Vector3f viewRay_camera = reprojectImagePoint(x, y, 1, invProjParams_d).normalised();
+		float weight = 0.01f * weightNormal(normal_camera.toVector3(), viewRay_camera);
 
 		/// find and update voxels
 		if (fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL)
@@ -639,7 +538,7 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* d
 					continue;
 
 				// skip positive sdf values (because they either mean free space or are values required to estimate the 0-transition)
-				if (voxelArray[index].sdf >= 0)
+				if (voxelArray[index].sdf >= 0 or TVoxel::weightToFloat(voxelArray[index].w_depth, sceneParams.maxW) <= 0)
 					continue;
 
 				VoxelRayCastingSum& voxelRayCastingSum = entriesRayCasting[index];
@@ -649,7 +548,7 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* d
 				if (voxelRayCastingSum.weightSum > 0)
 					continue;
 
-				voxelRayCastingSum.update(distance, weight);
+				voxelRayCastingSum.update(1, weight);
 			}
 		} else
 		{
@@ -669,7 +568,7 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* d
 			if (voxelRayCastingSum.weightSum > 0)
 				continue;
 
-			voxelRayCastingSum.update(distance, weight);
+			voxelRayCastingSum.update(1, weight);
 		}
 	}
 }
@@ -780,8 +679,7 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 					float directionWeight = DirectionWeight(normal_world, TSDFDirection(direction));
 					float voxelDistanceWeight = 1 - MIN(length(voxelSurfaceOffset) / mu, 1);
 
-					weight = depthWeight(depthValue, normal_camera.toVector3(), viewRay_camera, directionWeight, sceneParams)
-					         / powf(voxelSize * 100, 3) * voxelDistanceWeight;
+					weight = depthWeight(depthValue, normal_camera.toVector3(), viewRay_camera, directionWeight, sceneParams) * voxelDistanceWeight;
 
 					// Normalize by voxel size in camera image (max num rays to hit), so comparable to voxelProjection fusion
 					weight *= 1 / (voxelSideLengthCamera * voxelSideLengthCamera);
@@ -872,8 +770,7 @@ buildSpaceCarvingVisibleType(DEVICEPTR(HashEntryVisibilityType)* entriesVisibleT
 )
 {
 	float depth_measure = depth[x + y * imgSize.x];
-	if (depth_measure <= 0 or (depth_measure - mu) < 0 or (depth_measure - mu) < viewFrustum_min or
-	    (depth_measure + mu) > viewFrustum_max)
+	if ((depth_measure - mu) <  viewFrustum_min or (depth_measure + mu) > viewFrustum_max)
 		return;
 
 	Vector3f pt_camera = reprojectImagePoint(x, y, depth_measure, projParams_d);
