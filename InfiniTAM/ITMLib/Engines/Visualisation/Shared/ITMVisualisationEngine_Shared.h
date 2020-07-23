@@ -3,6 +3,7 @@
 #pragma once
 
 #include <math_constants.h>
+#include <ITMLib/Trackers/Shared/ITMDepthTracker_Shared.h>
 #include "ITMLib/Objects/Scene/ITMDirectional.h"
 #include "ITMLib/Objects/Scene/ITMMultiSceneAccess.h"
 #include "ITMLib/Objects/Scene/ITMRepresentationAccess.h"
@@ -1358,6 +1359,35 @@ processPixelConfidence_SDFNormals(DEVICEPTR(Vector4u)& outRendering, const CONST
 		drawPixelConfidence(outRendering, angle,
 		                    point.w / static_cast<float>(sceneParams.maxW));
 	else outRendering = Vector4u((uchar) 0);
+}
+
+_CPU_AND_GPU_CODE_ inline void
+processPixelError(Vector4u* outRendering, const Vector4f* pointsRay, const Vector4f* normalsRay,
+                  const float* depth,
+                  const Matrix4f& depthImageInvPose, const Matrix4f& sceneRenderingPose,
+                  const Vector4f& intrinsics, const Vector2i& imgSize,
+                  const int x, const int y)
+{
+	int locId = x + y * imgSize.width;
+
+	float A[6];
+	float b;
+	bool isValidPoint = computePerPointGH_Depth_Ab<false, false>(A, b, x, y, depth[locId], imgSize, intrinsics, imgSize,
+	                                                             intrinsics, depthImageInvPose, sceneRenderingPose,
+	                                                             pointsRay, normalsRay, 100.0);
+	float angle = -(sceneRenderingPose * normalsRay[locId]).z;
+
+	if (!isValidPoint or angle <= 0.0) {
+		outRendering[locId] = Vector4u(0, 0, 0, 0);
+		return;
+	}
+
+	double upperBound = 1e-1;
+	b = MIN(fabs(b / upperBound), 1); // normalize
+
+	Vector4f color = Vector4f(HSVtoRGB((1 - b) * 240, 1, 1) * 255, 255);
+	color = (0.8f * angle + 0.2f) * color;
+	outRendering[locId] = color.toUChar();
 }
 
 } // namespace ITMLib

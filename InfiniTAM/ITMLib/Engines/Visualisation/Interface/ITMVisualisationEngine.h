@@ -119,6 +119,9 @@ namespace ITMLib
 		virtual void ForwardRender(const ITMScene<TVoxel,TIndex> *scene, const ITMView *view, ITMTrackingState *trackingState,
 			ITMRenderState *renderState) const = 0;
 
+		virtual void RenderTrackingError(ITMUChar4Image* outRendering, const ITMTrackingState* trackingState,
+		                                 const ITMView* view) const = 0;
+
 	protected:
 		std::shared_ptr<const ITMLibSettings> settings;
 	};

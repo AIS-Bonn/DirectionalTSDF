@@ -428,7 +428,7 @@ void ITMBasicEngine<TVoxel,TIndex>::GetImage(ITMUChar4Image *out, GetImageType g
 
 		visualisationEngine->RenderImage(scene, trackingState->pose_d, &view->calib.intrinsics_d, renderState_live, renderState_live->raycastImage, imageType, raycastType);
 
-		ORUtils::Image<Vector4u> *srcImage = NULL;
+		ORUtils::Image<Vector4u> *srcImage = nullptr;
 		if (relocalisationCount != 0) srcImage = kfRaycast;
 		else srcImage = renderState_live->raycastImage;
 
@@ -439,6 +439,15 @@ void ITMBasicEngine<TVoxel,TIndex>::GetImage(ITMUChar4Image *out, GetImageType g
 
 		break;
 		}
+	case ITMBasicEngine::InfiniTAM_IMAGE_COLOUR_FROM_ICP_ERROR:
+	{
+		visualisationEngine->RenderTrackingError(renderState_live->raycastImage, trackingState, view);
+		out->ChangeDims(renderState_live->raycastImage->noDims);
+		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA)
+			out->SetFrom(renderState_live->raycastImage, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);
+		else out->SetFrom(renderState_live->raycastImage, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);
+		break;
+	}
 	case ITMBasicEngine::InfiniTAM_IMAGE_FREECAMERA_SHADED:
 	case ITMBasicEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME:
 	case ITMBasicEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL:

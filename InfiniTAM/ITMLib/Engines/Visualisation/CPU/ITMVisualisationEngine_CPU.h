@@ -36,6 +36,9 @@ public:
 	void ForwardRender(const ITMScene <TVoxel, ITMVoxelBlockHash>* scene, const ITMView* view,
 	                   ITMTrackingState* trackingState, ITMRenderState* renderState) const override;
 
+	void RenderTrackingError(ITMUChar4Image* outRendering, const ITMTrackingState* trackingState,
+	                         const ITMView* view) const override;
+
 protected:
 	void GenericRaycast(const ITMScene <TVoxel, TIndex>* scene, const Vector2i& imgSize, const Matrix4f& invM,
 	                    const Vector4f& projParams, const ITMRenderState* renderState, bool updateVisibleList) const;

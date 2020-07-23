@@ -518,4 +518,26 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::CreateICPMaps(const ITM
 	ORcudaKernelCheck;
 }
 
+template<class TVoxel, class TIndex>
+void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::RenderTrackingError(ITMUChar4Image* outRendering,
+                                                                             const ITMTrackingState* trackingState,
+                                                                             const ITMView* view) const
+{
+
+	Vector4u* data = outRendering->GetData(MEMORYDEVICE_CUDA);
+	const Vector4f* pointsRay = trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CUDA);
+	const Vector4f* normalsRay = trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CUDA);
+	const float* depthImage = view->depth->GetData(MEMORYDEVICE_CUDA);
+	const Matrix4f& depthImageInvPose = trackingState->pose_d->GetInvM();
+	const Matrix4f& sceneRenderingPose = trackingState->pose_pointCloud->GetM();
+	Vector2i imgSize = view->calib.intrinsics_d.imgSize;
+
+	dim3 cudaBlockSize(16, 12);
+	dim3 gridSize((int) ceil((float) imgSize.x / (float) cudaBlockSize.x),
+	              (int) ceil((float) imgSize.y / (float) cudaBlockSize.y));
+	renderPixelError_device<TVoxel, TIndex> << < gridSize, cudaBlockSize >> > (
+		data, pointsRay, normalsRay, depthImage, depthImageInvPose, sceneRenderingPose,
+			view->calib.intrinsics_d.projectionParamsSimple.all, imgSize);
+}
+
 } // namespace ITMLib

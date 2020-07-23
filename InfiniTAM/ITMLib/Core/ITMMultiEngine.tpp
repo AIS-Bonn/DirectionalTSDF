@@ -395,6 +395,15 @@ void ITMMultiEngine<TVoxel, TIndex>::GetImage(ITMUChar4Image *out, GetImageType 
 		else out->SetFrom(srcImage, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);
 		break;
 	}
+	case ITMMultiEngine::InfiniTAM_IMAGE_COLOUR_FROM_ICP_ERROR:
+	{
+		visualisationEngine->RenderTrackingError(renderState_multiscene->raycastImage, GetTrackingState(), view);
+		out->ChangeDims(renderState_multiscene->raycastImage->noDims);
+		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA)
+			out->SetFrom(renderState_multiscene->raycastImage, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);
+		else out->SetFrom(renderState_multiscene->raycastImage, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);
+		break;
+	}
 	case ITMMultiEngine::InfiniTAM_IMAGE_FREECAMERA_SHADED:
 	case ITMMultiEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME:
 	case ITMMultiEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL:

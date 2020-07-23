@@ -647,3 +647,24 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::FindSurface(const ITMSce
 {
 	GenericRaycast(scene, renderState->raycastResult->noDims, pose->GetInvM(), intrinsics->projectionParamsSimple.all, renderState, false);
 }
+
+template<class TVoxel, class TIndex>
+void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::RenderTrackingError(ITMUChar4Image* outRendering,
+                                                                            const ITMTrackingState* trackingState,
+                                                                            const ITMView* view) const
+{
+	Vector4u* data = outRendering->GetData(MEMORYDEVICE_CPU);
+	const Vector4f* pointsRay = trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CPU);
+	const Vector4f* normalsRay = trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CPU);
+	const float* depthImage = view->depth->GetData(MEMORYDEVICE_CPU);
+	const Matrix4f& depthImagePose = trackingState->pose_d->GetInvM();
+	const Matrix4f& sceneRenderingPose = trackingState->pose_pointCloud->GetInvM();
+	Vector2i imgSize = view->calib.intrinsics_d.imgSize;
+
+	for (int y = 0; y < view->calib.intrinsics_rgb.imgSize.height; y++)
+		for (int x = 0; x < view->calib.intrinsics_rgb.imgSize.width; x++)
+		{
+			processPixelError(data, pointsRay, normalsRay, depthImage, depthImagePose, sceneRenderingPose,
+			                  view->calib.intrinsics_d.projectionParamsSimple.all, imgSize, x, y);
+		}
+}

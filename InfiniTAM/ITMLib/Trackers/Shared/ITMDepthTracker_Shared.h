@@ -47,26 +47,26 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_Depth_Ab(THREADPTR(float) *A, T
 	corr3Dnormal = interpolateBilinear_withHoles(normalsMap, tmp2Dpoint, sceneImageSize);
 //	if (corr3Dnormal.w < 0.0f) return false;
 
-	b = corr3Dnormal.x * ptDiff.x + corr3Dnormal.y * ptDiff.y + corr3Dnormal.z * ptDiff.z;
+	b = ORUtils::dot(corr3Dnormal.toVector3(), ptDiff);
 
 	// TODO check whether normal matches normal from image, done in the original paper, but does not seem to be required
 	if (shortIteration)
 	{
 		if (rotationOnly)
 		{
-			// cross(corr3Dnormal, tmp3Dpoint)
-			A[0] = +tmp3Dpoint.z * corr3Dnormal.y - tmp3Dpoint.y * corr3Dnormal.z;
-			A[1] = -tmp3Dpoint.z * corr3Dnormal.x + tmp3Dpoint.x * corr3Dnormal.z;
-			A[2] = +tmp3Dpoint.y * corr3Dnormal.x - tmp3Dpoint.x * corr3Dnormal.y;
+			Vector3f XP = ORUtils::cross(corr3Dnormal.toVector3(), tmp3Dpoint.toVector3());
+			A[0] = XP.x;
+			A[1] = XP.y;
+			A[2] = XP.z;
 		}
 		else { A[0] = corr3Dnormal.x; A[1] = corr3Dnormal.y; A[2] = corr3Dnormal.z; }
 	}
 	else
 	{
-		// cross(corr3Dnormal, tmp3Dpoint)
-		A[0] = +tmp3Dpoint.z * corr3Dnormal.y - tmp3Dpoint.y * corr3Dnormal.z;
-		A[1] = -tmp3Dpoint.z * corr3Dnormal.x + tmp3Dpoint.x * corr3Dnormal.z;
-		A[2] = +tmp3Dpoint.y * corr3Dnormal.x - tmp3Dpoint.x * corr3Dnormal.y;
+		Vector3f XP = ORUtils::cross(corr3Dnormal.toVector3(), tmp3Dpoint.toVector3());
+		A[0] = XP.x;
+		A[1] = XP.y;
+		A[2] = XP.z;
 		A[!shortIteration ? 3 : 0] = corr3Dnormal.x; A[!shortIteration ? 4 : 1] = corr3Dnormal.y; A[!shortIteration ? 5 : 2] = corr3Dnormal.z;
 	}
 

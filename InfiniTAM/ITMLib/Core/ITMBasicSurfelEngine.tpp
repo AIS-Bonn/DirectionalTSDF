@@ -349,6 +349,11 @@ void ITMBasicSurfelEngine<TSurfel>::GetImage(ITMUChar4Image *out, GetImageType g
 			out->UpdateHostFromDevice();
 			break;
 		}
+	case ITMBasicSurfelEngine::InfiniTAM_IMAGE_COLOUR_FROM_ICP_ERROR:
+		{
+			printf("InfiniTAM_IMAGE_COLOUR_FROM_ICP_ERROR not implemented\n");
+			break;
+		}
 	case ITMBasicSurfelEngine::InfiniTAM_IMAGE_FREECAMERA_SHADED:
 	case ITMBasicSurfelEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME:
 	case ITMBasicSurfelEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL:

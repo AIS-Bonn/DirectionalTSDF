@@ -11,6 +11,7 @@
 
 #ifdef FREEGLUT
 #include <GL/freeglut.h>
+
 #else
 #if (!defined USING_CMAKE) && (defined _MSC_VER)
 #pragma comment(lib, "glut64")
@@ -237,7 +238,7 @@ void UIEngine::glutDisplayFunction()
 		sprintf(str,
 		        "Esc: exit \t h/?: help \t free view: %s \t colour mode: %s \t fusion: %s",
 		        uiEngine->freeviewActive ?  "on" : "off",
-		        uiEngine->colourModes_freeview[uiEngine->currentColourMode].name,
+		        uiEngine->colourModes_main[uiEngine->currentColourMode].name,
 		        uiEngine->integrationActive ? "on" : "off");
 		safe_glutBitmapString(GLUT_BITMAP_HELVETICA_18, (const char*) str);
 	}
@@ -647,6 +648,7 @@ void UIEngine::Initialise(int & argc, char** argv, AppData* appData, ITMMainEngi
 	this->colourModes_main.push_back(UIColourMode("integrated colours", ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_VOLUME));
 	this->colourModes_main.push_back(UIColourMode("surface normals", ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_NORMAL));
 	this->colourModes_main.push_back(UIColourMode("confidence", ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_CONFIDENCE));
+	this->colourModes_main.push_back(UIColourMode("icp error", ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_ICP_ERROR));
 	this->colourModes_freeview.push_back(UIColourMode("shaded greyscale", ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_SHADED));
 	this->colourModes_freeview.push_back(UIColourMode("integrated colours", ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME));
 	this->colourModes_freeview.push_back(UIColourMode("surface normals", ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL));
@@ -826,6 +828,18 @@ void SaveNormalDirectionImage(const ITMView *view, const std::string& path, cons
 	free(normalImage);
 }
 
+void SaveErrorImage(const ITMView *view, const std::string& path, ITMLibSettings::DeviceType deviceType)
+{
+	if (deviceType == ITMLibSettings::DEVICE_CUDA)
+	{
+		view->depthNormal->UpdateHostFromDevice();
+	}
+
+	ITMUChar4Image *errorImage = new ITMUChar4Image(view->rgb->noDims, true, false);
+	SaveImageToFile(errorImage, path.c_str());
+	free(errorImage);
+}
+
 void UIEngine::ProcessFrame()
 {
 	if (!appData->imageSource->hasMoreImages()) return;
@@ -876,6 +890,11 @@ void UIEngine::ProcessFrame()
 
 		sprintf(str, "%s/recording/normal_direction_%04d.ppm", outFolder, currentFrameNo);
 		SaveNormalDirectionImage(mainEngine->GetView(), str, mainEngine->GetTrackingState()->pose_d->GetInvM(), appData->internalSettings->deviceType);
+
+		sprintf(str, "%s/recording/error_%04d.ppm", outFolder, currentFrameNo);
+//		mainEngine->GetTrackingState()
+//		mainEngine->GetView()
+//		SaveErrorImage()
 	}
 	if ((rgbVideoWriter != nullptr) && (inputRGBImage->noDims.x != 0)) {
 		if (!rgbVideoWriter->isOpen()) rgbVideoWriter->open("out_rgb.avi", inputRGBImage->noDims.x, inputRGBImage->noDims.y, false, 30);

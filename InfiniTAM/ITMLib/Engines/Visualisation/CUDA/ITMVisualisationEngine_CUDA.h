@@ -38,6 +38,9 @@ public:
 	CreateICPMaps(const ITMScene <TVoxel, ITMVoxelBlockHash>* scene, const ITMView* view, ITMTrackingState* trackingState,
 	              ITMRenderState* renderState) const override;
 
+	void RenderTrackingError(ITMUChar4Image* outRendering, const ITMTrackingState* trackingState,
+	                         const ITMView* view) const override;
+
 protected:
 	uint* noTotalPoints_device;
 
