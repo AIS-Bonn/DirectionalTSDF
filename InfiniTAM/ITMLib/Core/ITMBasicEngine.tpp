@@ -380,53 +380,38 @@ Vector2i ITMBasicEngine<TVoxel,TIndex>::GetImageSize(void) const
 }
 
 template <typename TVoxel, typename TIndex>
-void ITMBasicEngine<TVoxel,TIndex>::GetImage(ITMUChar4Image *out, GetImageType getImageType, ORUtils::SE3Pose *pose, ITMIntrinsics *intrinsics)
+void ITMBasicEngine<TVoxel,TIndex>::GetImage(ITMUChar4Image *out, GetImageType getImageType, ORUtils::SE3Pose *pose, ITMIntrinsics *intrinsics, bool normalsFromSDF)
 {
 	if (view == NULL) return;
 
 	out->Clear();
 
+	IITMVisualisationEngine::RenderImageType renderImageType = ImageTypeToRenderType(getImageType, normalsFromSDF);
+
 	switch (getImageType)
 	{
-	case ITMBasicEngine::InfiniTAM_IMAGE_ORIGINAL_RGB:
+	case ITMMainEngine::InfiniTAM_IMAGE_ORIGINAL_RGB:
 		out->ChangeDims(view->rgb->noDims);
 		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA)
 			out->SetFrom(view->rgb, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);
 		else out->SetFrom(view->rgb, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);
 		break;
-	case ITMBasicEngine::InfiniTAM_IMAGE_ORIGINAL_DEPTH:
+	case ITMMainEngine::InfiniTAM_IMAGE_ORIGINAL_DEPTH:
 		out->ChangeDims(view->depth->noDims);
 		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA) view->depth->UpdateHostFromDevice();
 		ITMVisualisationEngine<TVoxel, TIndex>::DepthToUchar4(out, view->depth);
-
 		break;
-	case ITMBasicEngine::InfiniTAM_IMAGE_SCENERAYCAST:
-	case ITMBasicEngine::InfiniTAM_IMAGE_COLOUR_FROM_VOLUME:
-	case ITMBasicEngine::InfiniTAM_IMAGE_COLOUR_FROM_NORMAL:
-	case ITMBasicEngine::InfiniTAM_IMAGE_COLOUR_FROM_CONFIDENCE:
+	case ITMMainEngine::InfiniTAM_IMAGE_SCENERAYCAST:
+	case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_VOLUME:
+	case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_NORMAL:
+	case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_CONFIDENCE:
 		{
 		// use current raycast or forward projection?
-		IITMVisualisationEngine::RenderRaycastSelection raycastType;
+		IITMVisualisationEngine::RenderRaycastSelection raycastType = IITMVisualisationEngine::RENDER_FROM_NEW_RAYCAST;
 		if (trackingState->age_pointCloud <= 0) raycastType = IITMVisualisationEngine::RENDER_FROM_OLD_RAYCAST;
 		else raycastType = IITMVisualisationEngine::RENDER_FROM_OLD_FORWARDPROJ;
 
-		// what sort of image is it?
-		IITMVisualisationEngine::RenderImageType imageType;
-		switch (getImageType) {
-		case ITMBasicEngine::InfiniTAM_IMAGE_COLOUR_FROM_CONFIDENCE:
-			imageType = IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE_IMAGENORMAL;
-			break;
-		case ITMBasicEngine::InfiniTAM_IMAGE_COLOUR_FROM_NORMAL:
-			imageType = IITMVisualisationEngine::RENDER_COLOUR_FROM_IMAGENORMAL;
-			break;
-		case ITMBasicEngine::InfiniTAM_IMAGE_COLOUR_FROM_VOLUME:
-			imageType = IITMVisualisationEngine::RENDER_COLOUR_FROM_VOLUME;
-			break;
-		default:
-			imageType = IITMVisualisationEngine::RENDER_SHADED_GREYSCALE_IMAGENORMALS;
-		}
-
-		visualisationEngine->RenderImage(scene, trackingState->pose_d, &view->calib.intrinsics_d, renderState_live, renderState_live->raycastImage, imageType, raycastType);
+		visualisationEngine->RenderImage(scene, trackingState->pose_d, &view->calib.intrinsics_d, renderState_live, renderState_live->raycastImage, renderImageType, raycastType);
 
 		ORUtils::Image<Vector4u> *srcImage = nullptr;
 		if (relocalisationCount != 0) srcImage = kfRaycast;
@@ -439,7 +424,7 @@ void ITMBasicEngine<TVoxel,TIndex>::GetImage(ITMUChar4Image *out, GetImageType g
 
 		break;
 		}
-	case ITMBasicEngine::InfiniTAM_IMAGE_COLOUR_FROM_ICP_ERROR:
+	case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_ICP_ERROR:
 	{
 		visualisationEngine->RenderTrackingError(renderState_live->raycastImage, trackingState, view);
 		out->ChangeDims(renderState_live->raycastImage->noDims);
@@ -448,16 +433,11 @@ void ITMBasicEngine<TVoxel,TIndex>::GetImage(ITMUChar4Image *out, GetImageType g
 		else out->SetFrom(renderState_live->raycastImage, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);
 		break;
 	}
-	case ITMBasicEngine::InfiniTAM_IMAGE_FREECAMERA_SHADED:
-	case ITMBasicEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME:
-	case ITMBasicEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL:
-	case ITMBasicEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_CONFIDENCE:
+	case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_SHADED:
+	case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME:
+	case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL:
+	case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_CONFIDENCE:
 	{
-		IITMVisualisationEngine::RenderImageType type = IITMVisualisationEngine::RENDER_SHADED_GREYSCALE;
-		if (getImageType == ITMBasicEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME) type = IITMVisualisationEngine::RENDER_COLOUR_FROM_VOLUME;
-		else if (getImageType == ITMBasicEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL) type = IITMVisualisationEngine::RENDER_COLOUR_FROM_SDFNORMAL;
-		else if (getImageType == ITMBasicEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_CONFIDENCE) type = IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE_SDFNORMAL;
-
 		if (renderState_freeview == NULL)
 		{
 			renderState_freeview = ITMRenderStateFactory<TIndex>::CreateRenderState(out->noDims, scene->sceneParams, settings->GetMemoryType());
@@ -465,7 +445,7 @@ void ITMBasicEngine<TVoxel,TIndex>::GetImage(ITMUChar4Image *out, GetImageType g
 
 		visualisationEngine->FindVisibleBlocks(scene, pose, intrinsics, renderState_freeview);
 		visualisationEngine->CreateExpectedDepths(scene, pose, intrinsics, renderState_freeview);
-		visualisationEngine->RenderImage(scene, pose, intrinsics, renderState_freeview, renderState_freeview->raycastImage, type);
+		visualisationEngine->RenderImage(scene, pose, intrinsics, renderState_freeview, renderState_freeview->raycastImage, renderImageType, IITMVisualisationEngine::RENDER_FROM_NEW_RAYCAST);
 
 		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA)
 			out->SetFrom(renderState_freeview->raycastImage, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);

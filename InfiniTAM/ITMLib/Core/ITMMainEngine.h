@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <ITMLib/Engines/Visualisation/Interface/ITMVisualisationEngine.h>
 #include "ITMLib/Objects/Misc/ITMIMUMeasurement.h"
 #include "ITMLib/Objects/Stats/ITMTimeStats.h"
 #include "ITMLib/Trackers/Interface/ITMTracker.h"
@@ -76,7 +77,7 @@ namespace ITMLib
 		/// Get a result image as output
 		virtual Vector2i GetImageSize(void) const = 0;
 
-		virtual void GetImage(ITMUChar4Image *out, GetImageType getImageType, ORUtils::SE3Pose *pose = nullptr, ITMIntrinsics *intrinsics = nullptr) = 0;
+		virtual void GetImage(ITMUChar4Image *out, GetImageType getImageType, ORUtils::SE3Pose *pose = nullptr, ITMIntrinsics *intrinsics = nullptr, bool normalsFromSDF=false) = 0;
 
 		/// Extracts a mesh from the current scene and saves it to the model file specified by the file name
 		virtual void SaveSceneToMesh(const char *fileName) { };
@@ -94,7 +95,50 @@ namespace ITMLib
 			return timeStats;
 		}
 
+
+	/**
+	 * Converts GetImageType to suitable RenderImageType to use with visualization engine.
+	 * @param getImageType
+	 * @param normalsFromSDF whether to use SDF or image points to interpolate normals
+	 * @return
+	 */
+		static IITMVisualisationEngine::RenderImageType ImageTypeToRenderType(GetImageType getImageType, bool normalsFromSDF)
+		{
+			if (normalsFromSDF)
+			{
+				switch(getImageType)
+				{
+					case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_VOLUME:
+					case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME:
+						return IITMVisualisationEngine::RENDER_COLOUR_FROM_VOLUME;
+					case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_NORMAL:
+					case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL:
+						return IITMVisualisationEngine::RENDER_COLOUR_FROM_SDFNORMAL;
+					case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_CONFIDENCE:
+					case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_CONFIDENCE:
+						return IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE_SDFNORMAL;
+					default:
+						return IITMVisualisationEngine::RENDER_SHADED_GREYSCALE;
+				}
+			}
+			switch(getImageType)
+			{
+				case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_VOLUME:
+				case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME:
+					return IITMVisualisationEngine::RENDER_COLOUR_FROM_VOLUME;
+				case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_NORMAL:
+				case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL:
+					return IITMVisualisationEngine::RENDER_COLOUR_FROM_IMAGENORMAL;
+				case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_CONFIDENCE:
+				case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_CONFIDENCE:
+					return IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE_IMAGENORMAL;
+				default:
+					return IITMVisualisationEngine::RENDER_SHADED_GREYSCALE_IMAGENORMALS;
+			}
+		}
+
 	protected:
 		ITMTimeStats timeStats;
 	};
+
 } // namespace ITMLib

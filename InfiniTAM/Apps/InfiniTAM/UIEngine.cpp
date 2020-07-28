@@ -69,13 +69,14 @@ void UIEngine::displayHelp()
 		                                          "f   - activate/deactivate free view\n"
 		                                          "]/[ - change local map (MultiEngine only)\n"
 		                                          "c   - change color mode\n"
+		                                          "x   - change normal interpolation (SDF/image points)\n"
 		                                          "o   - display/hide world coordinate axes\n"
 		                                          "h/? - display/hide help\n"
 		                                          "\n"
 		                                          "File Operations\n"
 		                                          "i   - start/stop image recording\n"
 		                                          "v   - start/stop video recording\n"
-		                                          "w   - save scene mesh\n"
+		                                          "m   - save scene mesh\n"
 		                                          "r   - reset scene\n"
 		                                          "k   - save scene to disk\n"
 		                                          "l   - load scene from disk\n";
@@ -161,9 +162,9 @@ void UIEngine::glutDisplayFunction()
 	UIEngine *uiEngine = UIEngine::Instance();
 
 	// get updated images from processing thread
-	uiEngine->mainEngine->GetImage(uiEngine->outImage[0], uiEngine->outImageType[0], &uiEngine->freeviewPose, &uiEngine->freeviewIntrinsics);
+	uiEngine->mainEngine->GetImage(uiEngine->outImage[0], uiEngine->outImageType[0], &uiEngine->freeviewPose, &uiEngine->freeviewIntrinsics, uiEngine->normalsFromSDF);
 
-	for (int w = 1; w < NUM_WIN; w++) uiEngine->mainEngine->GetImage(uiEngine->outImage[w], uiEngine->outImageType[w]);
+	for (int w = 1; w < NUM_WIN; w++) uiEngine->mainEngine->GetImage(uiEngine->outImage[w], uiEngine->outImageType[w], nullptr, nullptr, uiEngine->normalsFromSDF);
 
 	// do the actual drawing
 	glClear(GL_COLOR_BUFFER_BIT);
@@ -240,9 +241,10 @@ void UIEngine::glutDisplayFunction()
 		glRasterPos2f(-0.98f, -0.95f);
 
 		sprintf(str,
-		        "Esc: exit \t h/?: help \t free view: %s \t colour mode: %s \t fusion: %s",
+		        "Esc: exit \t h/?: help \t free view: %s \t colour mode: %s \t normals: %s \t fusion: %s",
 		        uiEngine->freeviewActive ?  "on" : "off",
 		        uiEngine->colourModes_main[uiEngine->currentColourMode].name,
+		        uiEngine->normalsFromSDF ? "from SDF" : "from points",
 		        uiEngine->integrationActive ? "on" : "off");
 		safe_glutBitmapString(GLUT_BITMAP_HELVETICA_18, (const char*) str);
 	}
@@ -334,25 +336,6 @@ void UIEngine::glutKeyFunction(unsigned char key, int x, int y)
 {
 	UIEngine* uiEngine = UIEngine::Instance();
 	uiEngine->keysPressed[key] = true;
-
-//	if (uiEngine->freeviewActive)
-//	{
-//		Vector3f translation(0, 0, 0);
-//		if (key == 'w')
-//			translation += Vector3f(0, 0, -1);
-//		if (key == 's')
-//			translation += Vector3f(0, 0, 1);
-//		if (key == 'a')
-//			translation += Vector3f(1, 0, 0);
-//		if (key == 'd')
-//			translation += Vector3f(-1, 0, 0);
-//		if (ORUtils::length(translation) > 0)
-//		{
-//			printf("%f, %f, %f", translation.x, translation.y, translation.z);
-//			uiEngine->freeviewPose.SetT(uiEngine->freeviewPose.GetT() + 0.01 * translation);
-//			uiEngine->needsRefresh = true;
-//		}
-//	}
 }
 
 void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
@@ -443,6 +426,10 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 			uiEngine->currentColourMode = 0;
 		uiEngine->needsRefresh = true;
 		break;
+	case 'x':
+		uiEngine->normalsFromSDF = !uiEngine->normalsFromSDF;
+		uiEngine->needsRefresh = true;
+		break;
 	case 't':
 	{
 		uiEngine->integrationActive = !uiEngine->integrationActive;
@@ -462,7 +449,7 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 		}
 	}
 	break;
-	case 'w':
+	case 'm':
 	{
 		printf("saving scene to model ... ");
 		uiEngine->mainEngine->SaveSceneToMesh("mesh.stl");
@@ -698,6 +685,7 @@ void UIEngine::Initialise(int & argc, char** argv, AppData* appData, ITMMainEngi
 	this->helpActive = false;
 	this->renderAxesActive = true;
 	this->currentColourMode = 0;
+	this->normalsFromSDF = false;
 	std::cout << sizeof(keysPressed) << std::endl;
 	memset(keysPressed, false, sizeof(keysPressed));
 	this->colourModes_main.push_back(UIColourMode("shaded greyscale", ITMMainEngine::InfiniTAM_IMAGE_SCENERAYCAST));

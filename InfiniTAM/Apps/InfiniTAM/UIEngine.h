@@ -39,6 +39,7 @@ namespace InfiniTAM
 			};
 			std::vector<UIColourMode> colourModes_main, colourModes_freeview;
 			int currentColourMode;
+			bool normalsFromSDF;
 
 			AppData *appData;
 			ITMLib::ITMMainEngine *mainEngine;
