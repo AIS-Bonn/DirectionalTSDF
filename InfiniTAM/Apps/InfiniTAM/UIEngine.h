@@ -11,8 +11,11 @@
 #include "ORUtils/FileUtils.h"
 #include "ORUtils/NVTimer.h"
 
+#include <chrono>
 #include <vector>
 #include <Apps/Utils/CLIUtils.h>
+
+typedef std::chrono::system_clock Clock;
 
 namespace InfiniTAM
 {
@@ -78,6 +81,7 @@ namespace InfiniTAM
 			static void glutDisplayFunction();
 			static void glutReshape(int w, int h);
 			static void glutIdleFunction();
+			static void glutKeyFunction(unsigned char key, int x, int y);
 			static void glutKeyUpFunction(unsigned char key, int x, int y);
 			static void glutMouseButtonFunction(int button, int state, int x, int y);
 			static void glutMouseMoveFunction(int x, int y);
@@ -95,6 +99,9 @@ namespace InfiniTAM
 			char *outFolder;
 			bool needsRefresh;
 			ITMUChar4Image *saveImage;
+
+			bool keysPressed[256];
+			Clock::time_point lastUpdate;
 
 			void Initialise(int & argc, char** argv, AppData* appData, ITMLib::ITMMainEngine *mainEngine);
 			void Shutdown();

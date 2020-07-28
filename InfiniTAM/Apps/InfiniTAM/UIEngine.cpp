@@ -69,11 +69,11 @@ void UIEngine::displayHelp()
 		                                          "f   - activate/deactivate free view\n"
 		                                          "]/[ - change local map (MultiEngine only)\n"
 		                                          "c   - change color mode\n"
-		                                          "a   - display/hide world coordinate axes\n"
+		                                          "o   - display/hide world coordinate axes\n"
 		                                          "h/? - display/hide help\n"
 		                                          "\n"
 		                                          "File Operations\n"
-		                                          "s   - start/stop image recording\n"
+		                                          "i   - start/stop image recording\n"
 		                                          "v   - start/stop video recording\n"
 		                                          "w   - save scene mesh\n"
 		                                          "r   - reset scene\n"
@@ -102,6 +102,10 @@ void UIEngine::displayAxes()
 
 		/// Compute view matrix
 		Matrix4f T_CW = uiEngine->mainEngine->GetTrackingState()->pose_d->GetM();
+		if (uiEngine->freeviewActive)
+		{
+			T_CW = uiEngine->freeviewPose.GetM();
+		}
 		// GL matrices are column-major
 		GLfloat R_CW_gl[16] = {
 			T_CW.m00, T_CW.m01, T_CW.m02, 0, // first column
@@ -258,6 +262,9 @@ void UIEngine::glutIdleFunction()
 {
 	UIEngine *uiEngine = UIEngine::Instance();
 
+	Clock::time_point now = Clock::now();
+	double deltaT = std::chrono::duration<double>(now - uiEngine->lastUpdate).count();
+
 	switch (uiEngine->mainLoopAction)
 	{
 	case PROCESS_FRAME:
@@ -297,14 +304,61 @@ void UIEngine::glutIdleFunction()
 		break;
 	}
 
+	if (uiEngine->freeviewActive)
+	{
+		Vector3f translation(0, 0, 0);
+		if (uiEngine->keysPressed[static_cast<size_t>('w')])
+			translation += Vector3f(0, 0, -1);
+		if (uiEngine->keysPressed[static_cast<size_t>('s')])
+			translation += Vector3f(0, 0, 1);
+		if (uiEngine->keysPressed[static_cast<size_t>('a')])
+			translation += Vector3f(1, 0, 0);
+		if (uiEngine->keysPressed[static_cast<size_t>('d')])
+			translation += Vector3f(-1, 0, 0);
+		if (ORUtils::length(translation) > 0)
+		{
+			translation = translation.normalised();
+			uiEngine->freeviewPose.SetT(uiEngine->freeviewPose.GetT() + deltaT * translation);
+			uiEngine->needsRefresh = true;
+		}
+	}
+
+	uiEngine->lastUpdate = Clock::now();
+
 	if (uiEngine->needsRefresh) {
 		glutPostRedisplay();
 	}
 }
 
+void UIEngine::glutKeyFunction(unsigned char key, int x, int y)
+{
+	UIEngine* uiEngine = UIEngine::Instance();
+	uiEngine->keysPressed[key] = true;
+
+//	if (uiEngine->freeviewActive)
+//	{
+//		Vector3f translation(0, 0, 0);
+//		if (key == 'w')
+//			translation += Vector3f(0, 0, -1);
+//		if (key == 's')
+//			translation += Vector3f(0, 0, 1);
+//		if (key == 'a')
+//			translation += Vector3f(1, 0, 0);
+//		if (key == 'd')
+//			translation += Vector3f(-1, 0, 0);
+//		if (ORUtils::length(translation) > 0)
+//		{
+//			printf("%f, %f, %f", translation.x, translation.y, translation.z);
+//			uiEngine->freeviewPose.SetT(uiEngine->freeviewPose.GetT() + 0.01 * translation);
+//			uiEngine->needsRefresh = true;
+//		}
+//	}
+}
+
 void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 {
 	UIEngine *uiEngine = UIEngine::Instance();
+	uiEngine->keysPressed[key] = false;
 
 	switch (key)
 	{
@@ -316,7 +370,7 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 		printf("processing input source ...\n");
 		uiEngine->mainLoopAction = UIEngine::PROCESS_VIDEO;
 		break;
-	case 's':
+	case 'i':
 		if (uiEngine->isRecording)
 		{
 			printf("stopped recoding disk ...\n");
@@ -468,7 +522,7 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 		}
 	}
 	break;
-	case 'a':
+	case 'o':
 		uiEngine->renderAxesActive = !uiEngine->renderAxesActive;
 		glutPostRedisplay();
 	break;
@@ -644,6 +698,8 @@ void UIEngine::Initialise(int & argc, char** argv, AppData* appData, ITMMainEngi
 	this->helpActive = false;
 	this->renderAxesActive = true;
 	this->currentColourMode = 0;
+	std::cout << sizeof(keysPressed) << std::endl;
+	memset(keysPressed, false, sizeof(keysPressed));
 	this->colourModes_main.push_back(UIColourMode("shaded greyscale", ITMMainEngine::InfiniTAM_IMAGE_SCENERAYCAST));
 	this->colourModes_main.push_back(UIColourMode("integrated colours", ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_VOLUME));
 	this->colourModes_main.push_back(UIColourMode("surface normals", ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_NORMAL));
@@ -695,9 +751,11 @@ void UIEngine::Initialise(int & argc, char** argv, AppData* appData, ITMMainEngi
 	glutCreateWindow("InfiniTAM");
 	glGenTextures(NUM_WIN, textureId);
 
+	glutIgnoreKeyRepeat(true);
 	glutDisplayFunc(UIEngine::glutDisplayFunction);
 	glutReshapeFunc(UIEngine::glutReshape);
 	glutKeyboardUpFunc(UIEngine::glutKeyUpFunction);
+	glutKeyboardFunc(UIEngine::glutKeyFunction);
 	glutMouseFunc(UIEngine::glutMouseButtonFunction);
 	glutMotionFunc(UIEngine::glutMouseMoveFunction);
 	glutIdleFunc(UIEngine::glutIdleFunction);
@@ -923,7 +981,7 @@ void UIEngine::ProcessFrame()
 void UIEngine::Run() { glutMainLoop(); }
 void UIEngine::Shutdown()
 {
-	sdkDeleteTimer(&timer_instant);
+//	sdkDeleteTimer(&timer_instant);
 	sdkDeleteTimer(&timer_average);
 
 	statisticsEngine.CloseAll();
