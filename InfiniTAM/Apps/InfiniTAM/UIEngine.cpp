@@ -11,6 +11,7 @@
 
 #ifdef FREEGLUT
 #include <GL/freeglut.h>
+#include <ITMLib/Engines/ViewBuilding/ITMViewBuilderFactory.h>
 
 #else
 #if (!defined USING_CMAKE) && (defined _MSC_VER)
@@ -63,6 +64,7 @@ void UIEngine::displayHelp()
 		                                          "n   - process single frame\n"
 		                                          "b   - process continuously\n"
 		                                          "t   - activate/deactivate integration\n"
+		                                          "r   - reset scene\n"
 		                                          "Esc - exit\n"
 		                                          "\n"
 		                                          "Display Options\n"
@@ -76,6 +78,7 @@ void UIEngine::displayHelp()
 		                                          "File Operations\n"
 		                                          "i   - start/stop image recording\n"
 		                                          "v   - start/stop video recording\n"
+		                                          "e   - render and store per-pose error images\n"
 		                                          "m   - save scene mesh\n"
 		                                          "r   - reset scene\n"
 		                                          "k   - save scene to disk\n"
@@ -382,7 +385,6 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 			uiEngine->depthVideoWriter = new FFMPEGWriter();
 		}
 		break;
-	case 'e':
 	case 27: // esc key
 		printf("exiting ...\n");
 		uiEngine->mainLoopAction = UIEngine::EXIT;
@@ -419,6 +421,10 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 		}
 		uiEngine->needsRefresh = true;
 		break;
+	case '1': case '2': case '3': case '4': case '5':
+		uiEngine->currentColourMode = (key - '1') % (uiEngine->freeviewActive ? 4 : 5);
+		uiEngine->needsRefresh = true;
+		break;
 	case 'c':
 		uiEngine->currentColourMode++;
 		if (((uiEngine->freeviewActive) && ((unsigned)uiEngine->currentColourMode >= uiEngine->colourModes_freeview.size())) ||
@@ -449,6 +455,11 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 		}
 	}
 	break;
+	case 'e':
+		printf("Collecting ICP Error Images ... ");
+		uiEngine->CollectICPErrorImages();
+		printf("done\n");
+		break;
 	case 'm':
 	{
 		printf("saving scene to model ... ");
@@ -640,7 +651,7 @@ void UIEngine::glutMouseMoveFunction(int x, int y)
 	{
 	case 1:
 	{
-		// left button: rotation
+		// middle button: pitch and yaw rotation
 		Vector3f axis((float)-movement.y, (float)-movement.x, 0.0f);
 		float angle = scale_rotation * sqrt((float)(movement.x * movement.x + movement.y*movement.y));
 		Matrix3f rot = createRotation(axis, angle);
@@ -658,8 +669,12 @@ void UIEngine::glutMouseMoveFunction(int x, int y)
 	}
 	case 3:
 	{
-		// middle button: translation along z axis
-		uiEngine->freeviewPose.SetT(uiEngine->freeviewPose.GetT() + scale_translation * Vector3f(0.0f, 0.0f, (float)movement.y));
+		// middle button: pitch and roll rotation
+		Vector3f axis((float)-movement.y, 0.0f, (float)-movement.x);
+		float angle = scale_rotation * sqrt((float)(movement.x * movement.x + movement.y*movement.y));
+		Matrix3f rot = createRotation(axis, angle);
+		uiEngine->freeviewPose.SetRT(rot * uiEngine->freeviewPose.GetR(), rot * uiEngine->freeviewPose.GetT());
+		uiEngine->freeviewPose.Coerce();
 		uiEngine->needsRefresh = true;
 		break;
 	}
@@ -686,7 +701,6 @@ void UIEngine::Initialise(int & argc, char** argv, AppData* appData, ITMMainEngi
 	this->renderAxesActive = true;
 	this->currentColourMode = 0;
 	this->normalsFromSDF = false;
-	std::cout << sizeof(keysPressed) << std::endl;
 	memset(keysPressed, false, sizeof(keysPressed));
 	this->colourModes_main.push_back(UIColourMode("shaded greyscale", ITMMainEngine::InfiniTAM_IMAGE_SCENERAYCAST));
 	this->colourModes_main.push_back(UIColourMode("integrated colours", ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_VOLUME));
@@ -956,6 +970,15 @@ void UIEngine::ProcessFrame()
 #endif
 	sdkStopTimer(&timer_instant); sdkStopTimer(&timer_average);
 
+	// Safe input images
+	inputImages.emplace_back();
+//	inputImages.back().first = new ITMUChar4Image(true, false);
+//	inputImages.back().first->SetFrom(inputRGBImage, ITMUChar4Image::CPU_TO_CPU);
+	inputImages.back().first = inputRGBImage; // not required for error renderings, so only store reference
+	inputImages.back().second = new ITMShortImage(true, false);
+	inputImages.back().second->SetFrom(inputRawDepthImage, ITMShortImage::CPU_TO_CPU);
+	trackingPoses.push_back(*mainEngine->GetTrackingState()->pose_d);
+
 	statisticsEngine.LogTimeStats(mainEngine->GetTimeStats());
 	statisticsEngine.LogPose(*mainEngine->GetTrackingState());
 	statisticsEngine.LogBlockAllocations(mainEngine->GetAllocationsPerDirection());
@@ -966,10 +989,56 @@ void UIEngine::ProcessFrame()
 	currentFrameNo++;
 }
 
+void UIEngine::CollectICPErrorImages()
+{
+	if (inputImages.empty())
+		return;
+
+	ITMLib::ITMView* view = nullptr;
+	ITMViewBuilder* viewBuilder = ITMViewBuilderFactory::MakeViewBuilder(appData->imageSource->getCalib(),
+	                                                                     appData->internalSettings->deviceType);
+	// needs to be called once with view=nullptr for initialization
+	viewBuilder->UpdateView(&view, inputImages.front().first, inputImages.front().second,
+	                        appData->internalSettings->useBilateralFilter);
+	view = mainEngine->GetView();
+
+	ITMUChar4Image* outputImage = new ITMUChar4Image(inputImages.front().first->noDims, true, false);
+	char str[250];
+
+	int lastPercentile = -1;
+	for (size_t i = 0; i < inputImages.size(); i++)
+	{
+		int percentile = (i * 10) / inputImages.size();
+		if (percentile != lastPercentile)
+		{
+			printf("%i%%\t", percentile * 10);
+			lastPercentile = percentile;
+		}
+		ITMUChar4Image* rgbImage = inputImages.at(i).first;
+		ITMShortImage* depthImage = inputImages.at(i).second;
+
+		viewBuilder->UpdateView(&view, rgbImage, depthImage,
+		                        appData->internalSettings->useBilateralFilter);
+
+		ORUtils::SE3Pose* pose = &trackingPoses.at(i);
+		mainEngine->GetTrackingState()->pose_d->SetFrom(pose);
+
+//		renderState -> visible blocks??
+		mainEngine->GetImage(outputImage, ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_ICP_ERROR,
+		                     pose, &freeviewIntrinsics, normalsFromSDF);
+
+		sprintf(str, "%s/recording/error_%04zu.ppm", outFolder, i);
+		SaveImageToFile(outputImage, str);
+	}
+
+	free(outputImage);
+	free(viewBuilder);
+}
+
 void UIEngine::Run() { glutMainLoop(); }
 void UIEngine::Shutdown()
 {
-//	sdkDeleteTimer(&timer_instant);
+	sdkDeleteTimer(&timer_instant);
 	sdkDeleteTimer(&timer_average);
 
 	statisticsEngine.CloseAll();
@@ -983,6 +1052,11 @@ void UIEngine::Shutdown()
 	delete inputRGBImage;
 	delete inputRawDepthImage;
 	delete inputIMUMeasurement;
+	for (auto imgs: inputImages)
+	{
+//		delete imgs.first;
+		delete imgs.second;
+	}
 
 	delete[] outFolder;
 	delete saveImage;

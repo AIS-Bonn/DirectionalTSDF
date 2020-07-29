@@ -426,6 +426,9 @@ void ITMBasicEngine<TVoxel,TIndex>::GetImage(ITMUChar4Image *out, GetImageType g
 		}
 	case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_ICP_ERROR:
 	{
+		visualisationEngine->FindVisibleBlocks(scene, trackingState->pose_d, &(view->calib.intrinsics_d), renderState_live);
+		visualisationEngine->CreateExpectedDepths(scene, trackingState->pose_d, &(view->calib.intrinsics_d), renderState_live);
+		visualisationEngine->CreateICPMaps(scene, view, trackingState, renderState_live);
 		visualisationEngine->RenderTrackingError(renderState_live->raycastImage, trackingState, view);
 		out->ChangeDims(renderState_live->raycastImage->noDims);
 		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA)

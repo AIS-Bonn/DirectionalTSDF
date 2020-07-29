@@ -73,6 +73,10 @@ namespace InfiniTAM
 			int currentFrameNo; bool isRecording;
 			InputSource::FFMPEGWriter *rgbVideoWriter;
 			InputSource::FFMPEGWriter *depthVideoWriter;
+
+			void CollectICPErrorImages();
+			std::vector<std::pair<ITMUChar4Image*, ITMShortImage*>> inputImages;
+			std::vector<ORUtils::SE3Pose> trackingPoses;
 		public:
 			static UIEngine* Instance(void) {
 				if (instance == NULL) instance = new UIEngine();
