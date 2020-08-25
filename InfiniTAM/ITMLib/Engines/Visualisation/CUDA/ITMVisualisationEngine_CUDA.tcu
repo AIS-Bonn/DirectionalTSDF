@@ -523,7 +523,6 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::RenderTrackingError(ITM
                                                                              const ITMTrackingState* trackingState,
                                                                              const ITMView* view) const
 {
-
 	Vector4u* data = outRendering->GetData(MEMORYDEVICE_CUDA);
 	const Vector4f* pointsRay = trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CUDA);
 	const Vector4f* normalsRay = trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CUDA);
@@ -531,13 +530,14 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::RenderTrackingError(ITM
 	const Matrix4f& depthImageInvPose = trackingState->pose_d->GetInvM();
 	const Matrix4f& sceneRenderingPose = trackingState->pose_pointCloud->GetM();
 	Vector2i imgSize = view->calib.intrinsics_d.imgSize;
+	const float maxError = this->settings->sceneParams.mu;
 
 	dim3 cudaBlockSize(16, 12);
 	dim3 gridSize((int) ceil((float) imgSize.x / (float) cudaBlockSize.x),
 	              (int) ceil((float) imgSize.y / (float) cudaBlockSize.y));
 	renderPixelError_device<TVoxel, TIndex> << < gridSize, cudaBlockSize >> > (
 		data, pointsRay, normalsRay, depthImage, depthImageInvPose, sceneRenderingPose,
-			view->calib.intrinsics_d.projectionParamsSimple.all, imgSize);
+			view->calib.intrinsics_d.projectionParamsSimple.all, imgSize, maxError);
 }
 
 } // namespace ITMLib

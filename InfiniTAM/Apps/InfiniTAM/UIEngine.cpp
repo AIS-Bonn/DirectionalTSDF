@@ -1035,6 +1035,64 @@ void UIEngine::CollectICPErrorImages()
 	free(viewBuilder);
 }
 
+void UIEngine::CollectPointClouds()
+{
+	if (inputImages.empty())
+		return;
+
+	ITMLib::ITMView* view = nullptr;
+	ITMViewBuilder* viewBuilder = ITMViewBuilderFactory::MakeViewBuilder(appData->imageSource->getCalib(),
+	                                                                     appData->internalSettings->deviceType);
+	// needs to be called once with view=nullptr for initialization
+	viewBuilder->UpdateView(&view, inputImages.front().first, inputImages.front().second,
+	                        appData->internalSettings->useBilateralFilter);
+	view = mainEngine->GetView();
+
+
+	ITMUChar4Image* outputImage = new ITMUChar4Image(inputImages.front().first->noDims, true, false);
+	char str[250];
+
+	int lastPercentile = -1;
+	for (size_t i = 0; i < inputImages.size(); i++)
+	{
+		int percentile = (i * 10) / inputImages.size();
+		if (percentile != lastPercentile)
+		{
+			printf("%i%%\t", percentile * 10);
+			lastPercentile = percentile;
+		}
+		ITMUChar4Image* rgbImage = inputImages.at(i).first;
+		ITMShortImage* depthImage = inputImages.at(i).second;
+
+		viewBuilder->UpdateView(&view, rgbImage, depthImage,
+		                        appData->internalSettings->useBilateralFilter);
+
+		ORUtils::SE3Pose* pose = &trackingPoses.at(i);
+		mainEngine->GetTrackingState()->pose_d->SetFrom(pose);
+
+//		renderState -> visible blocks??
+		mainEngine->GetImage(outputImage, ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_ICP_ERROR,
+		                     pose, &freeviewIntrinsics, normalsFromSDF);
+
+
+		if (appData->internalSettings->deviceType == ITMLibSettings::DEVICE_CUDA)
+		{
+			mainEngine->GetTrackingState()->pointCloud->locations->UpdateHostFromDevice();
+			mainEngine->GetTrackingState()->pointCloud->colours->UpdateHostFromDevice();
+		}
+
+			sprintf(str, "%s/recording/cloud_%04zu.pcd", outFolder, i);
+		SavePointCloudToPCL(
+			mainEngine->GetTrackingState()->pointCloud->locations->GetData(MEMORYDEVICE_CPU),
+			mainEngine->GetTrackingState()->pointCloud->colours->GetData(MEMORYDEVICE_CPU),
+			inputImages.front().second->noDims, *pose, str);
+	}
+
+	free(outputImage);
+	free(viewBuilder);
+
+}
+
 void UIEngine::Run() { glutMainLoop(); }
 void UIEngine::Shutdown()
 {

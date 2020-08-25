@@ -1,6 +1,7 @@
 // Copyright 2014-2017 Oxford University Innovation Limited and the authors of InfiniTAM
 
 #include "FileUtils.h"
+#include "SE3Pose.h"
 
 #include <stdio.h>
 #include <fstream>
@@ -326,6 +327,81 @@ void SaveImageToFile(const ORUtils::Image<float>* image, const char* fileName)
 	fclose(f);
 
 	delete[] data;
+}
+
+ORUtils::Vector4<float> QuaternionFromTransformationMatrix(const ORUtils::Matrix4<float>& M)
+{
+	ORUtils::Matrix3<float> R;
+	R.m00 = M.m00; R.m10 = M.m10; R.m20 = M.m20;
+	R.m01 = M.m01; R.m11 = M.m11; R.m21 = M.m21;
+	R.m02 = M.m02; R.m12 = M.m12; R.m22 = M.m22;
+	float values[4]; // x, y, z, w
+
+	// "Quaternion Calculus and Fast Animation", Ken Shoemake, 1987 SIGGRAPH course notes
+	float trace = R.m00 + R.m11 + R.m22;
+	if (trace > 0)
+	{
+		trace = sqrt(1 + trace);
+		float s = 1 / (2 * trace);
+		values[3] = 0.5 * trace;
+		values[0] = (R.m12 - R.m21) * s;
+		values[1] = (R.m20 - R.m02) * s;
+		values[2] = (R.m01 - R.m10) * s;
+	}
+	else
+	{
+		int i = 0;
+		if (R.m11 > R.m00)
+			i = 1;
+		if (R.m22 > R.at(i, i))
+			i = 2;
+		int j = (i+1)%3;
+		int k = (j+1)%3;
+
+		trace = sqrt(R.at(i,i) - R.at(j,j) - R.at(k,k) + 1.0);
+		float s = 1 / (2 * trace);
+		values[i] = 0.5 * trace;
+		values[3] = (R.at(j, k) - R.at(k, j)) * s;
+		values[j] = (R.at(i, j) + R.at(j, i)) * s;
+		values[k] = (R.at(i, k) + R.at(k, i)) * s;
+	}
+	return ORUtils::Vector4<float>(values[0], values[1], values[2], values[3]);
+}
+
+void SavePointCloudToPCL(const ORUtils::Vector4<float>* points, const ORUtils::Vector4<float>* normals,
+                         const ORUtils::Vector2<int> imgSize, const ORUtils::SE3Pose& pose, const char* fileName)
+{
+
+	const char* header = "# .PCD v0.7 - Point Cloud Data file format\n\
+	VERSION 0.7\n\
+	FIELDS x y z normal_x normal_y normal_z\n\
+	SIZE 4 4 4 4 4 4\n\
+	TYPE F F F F F F\n\
+	COUNT 1 1 1 1 1 1\n\
+	WIDTH %i\n\
+	HEIGHT %i\n\
+	VIEWPOINT %f %f %f %f %f %f %f\n\
+	POINTS %i\n\
+	DATA ascii\n";
+
+	ORUtils::Matrix4<float> T_WC = pose.GetInvM();
+	ORUtils::Vector3<float> T = (T_WC * ORUtils::Vector4<float>(0, 0, 0, 1)).toVector3();
+	ORUtils::Vector4<float> Q = QuaternionFromTransformationMatrix(T_WC);
+
+	FILE *f = fopen(fileName, "wb");
+	fprintf(f, header, imgSize.width, imgSize.height,
+		T.x, T.y, T.z, Q.w, Q.x, Q.y, Q.z,
+		imgSize.width * imgSize.height);
+
+	for (int y = 0; y < imgSize.height; y++) for (int x = 0; x < imgSize.width; x++)
+	{
+		int idx = y * imgSize.width + x;
+		fprintf(f, "%f %f %f %f %f %f\n", points[idx].x, points[idx].y, points[idx].z,
+		        normals[idx].x, normals[idx].y, normals[idx].z);
+	}
+
+
+	fclose(f);
 }
 
 bool ReadImageFromFile(ORUtils::Image<ORUtils::Vector4<unsigned char> > * image, const char* fileName)

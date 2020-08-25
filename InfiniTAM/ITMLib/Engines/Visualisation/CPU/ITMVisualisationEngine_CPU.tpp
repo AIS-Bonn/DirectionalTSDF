@@ -660,11 +660,12 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::RenderTrackingError(ITMU
 	const Matrix4f& depthImagePose = trackingState->pose_d->GetInvM();
 	const Matrix4f& sceneRenderingPose = trackingState->pose_pointCloud->GetInvM();
 	Vector2i imgSize = view->calib.intrinsics_d.imgSize;
+	const float maxError = this->settings->sceneParams.mu;
 
-	for (int y = 0; y < view->calib.intrinsics_rgb.imgSize.height; y++)
-		for (int x = 0; x < view->calib.intrinsics_rgb.imgSize.width; x++)
+	for (int y = 0; y < view->calib.intrinsics_d.imgSize.height; y++)
+		for (int x = 0; x < view->calib.intrinsics_d.imgSize.width; x++)
 		{
 			processPixelError(data, pointsRay, normalsRay, depthImage, depthImagePose, sceneRenderingPose,
-			                  view->calib.intrinsics_d.projectionParamsSimple.all, imgSize, x, y);
+			                  view->calib.intrinsics_d.projectionParamsSimple.all, imgSize, maxError, x, y);
 		}
 }

@@ -323,7 +323,7 @@ template<class TVoxel, class TIndex>
 __global__ void renderPixelError_device(
 	Vector4u* outRendering, const Vector4f* pointsRay, const Vector4f* normalsRay, const float* depth,
 	const Matrix4f depthImagePose, const Matrix4f sceneRenderingPose, const Vector4f intrinsics,
-	const Vector2i imgSize)
+	const Vector2i imgSize, const float maxError)
 {
 	int x = (threadIdx.x + blockIdx.x * blockDim.x);
 	int y = (threadIdx.y + blockIdx.y * blockDim.y);
@@ -331,7 +331,7 @@ __global__ void renderPixelError_device(
 	if (x >= imgSize.x || y >= imgSize.y) return;
 
 	processPixelError(outRendering, pointsRay, normalsRay, depth, depthImagePose, sceneRenderingPose, intrinsics,
-	                  imgSize, x, y);
+	                  imgSize, maxError, x, y);
 }
 
 } // ITMLib

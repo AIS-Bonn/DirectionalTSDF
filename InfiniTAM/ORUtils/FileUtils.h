@@ -6,10 +6,13 @@
 
 #include "Image.h"
 #include "Vector.h"
+#include "SE3Pose.h"
 
 void SaveImageToFile(const ORUtils::Image<ORUtils::Vector4<unsigned char> >* image, const char* fileName, bool flipVertical = false);
 void SaveImageToFile(const ORUtils::Image<short>* image, const char* fileName);
 void SaveImageToFile(const ORUtils::Image<float>* image, const char* fileName);
+void SavePointCloudToPCL(const ORUtils::Vector4<float>* points, const ORUtils::Vector4<float>* normals,
+                         const ORUtils::Vector2<int> imgSize, const ORUtils::SE3Pose& pose, const char* fileName);
 bool ReadImageFromFile(ORUtils::Image<ORUtils::Vector4<unsigned char> >* image, const char* fileName);
 bool ReadImageFromFile(ORUtils::Image<short> *image, const char *fileName);
 

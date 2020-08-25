@@ -75,8 +75,10 @@ namespace InfiniTAM
 			InputSource::FFMPEGWriter *depthVideoWriter;
 
 			void CollectICPErrorImages();
+			void CollectPointClouds();
 			std::vector<std::pair<ITMUChar4Image*, ITMShortImage*>> inputImages;
 			std::vector<ORUtils::SE3Pose> trackingPoses;
+
 		public:
 			static UIEngine* Instance(void) {
 				if (instance == NULL) instance = new UIEngine();
