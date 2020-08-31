@@ -77,7 +77,7 @@ namespace ITMLib
 		/// Get a result image as output
 		virtual Vector2i GetImageSize(void) const = 0;
 
-		virtual void GetImage(ITMUChar4Image *out, GetImageType getImageType, ORUtils::SE3Pose *pose = nullptr, ITMIntrinsics *intrinsics = nullptr, bool normalsFromSDF=false) = 0;
+		virtual void GetImage(ITMUChar4Image *out, GetImageType getImageType, ORUtils::SE3Pose *pose = nullptr, const ITMIntrinsics *intrinsics = nullptr, bool normalsFromSDF=false) = 0;
 
 		/// Extracts a mesh from the current scene and saves it to the model file specified by the file name
 		virtual void SaveSceneToMesh(const char *fileName) { };

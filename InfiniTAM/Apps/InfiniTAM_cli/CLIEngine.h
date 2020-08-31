@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <Apps/AppEngine/AppEngine.h>
 #include "ITMLib/Utils/ITMLibSettings.h"
 #include "ITMLib/Utils/ITMImageTypes.h"
 #include "ORUtils/FileUtils.h"
@@ -24,23 +25,15 @@ struct AppData;
 
 namespace InfiniTAM::Engine
 {
-class CLIEngine
+class CLIEngine : public AppEngine
 {
-	static CLIEngine* instance;
-
-	AppData *appData;
-	ITMLib::ITMMainEngine* mainEngine;
-	ITMLib::ITMLoggingEngine* statisticsEngine;
-
-	StopWatchInterface* timer_instant;
-	StopWatchInterface* timer_average;
 
 private:
-	ITMUChar4Image* inputRGBImage;
-	ITMShortImage* inputRawDepthImage;
-	ITMLib::ITMIMUMeasurement* inputIMUMeasurement;
+	void _initialise(int argc, char**argv, AppData* appData, ITMLib::ITMMainEngine* mainEngine) override;
+	bool _processFrame() override;
 
-	int currentFrameNo;
+	static CLIEngine* instance;
+
 public:
 	static CLIEngine* Instance()
 	{
@@ -48,12 +41,10 @@ public:
 		return instance;
 	}
 
-	void Initialise(AppData* appData, ITMLib::ITMMainEngine* mainEngine);
-
 	void Shutdown();
 
 	void Run();
 
-	bool ProcessFrame();
+//	bool ProcessFrame();
 };
 }

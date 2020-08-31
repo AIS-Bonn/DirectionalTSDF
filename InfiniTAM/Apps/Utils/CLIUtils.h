@@ -25,10 +25,11 @@ struct AppData
 	std::shared_ptr<ITMLibSettings> internalSettings;
 	std::string outputDirectory;
 	ORUtils::SE3Pose initialPose;
+	int numberExportPointClouds;
 
 	AppData()
 		: imageSource(nullptr), imuSource(nullptr), trajectorySource(nullptr),
-		  internalSettings(nullptr), outputDirectory("./Output")
+		  internalSettings(nullptr), outputDirectory("./Output"), numberExportPointClouds(-1)
 	{}
 };
 
@@ -41,6 +42,7 @@ inline int ParseCLIOptions(int argc, char** argv,
 	std::string calibrationFile, settingsFile, datasetDirectory, trajectoryFile;
 	std::vector<std::string> device, rawPaths, videoPaths;
 	std::vector<float> initialPose;
+	std::vector<int> numberExportedPointClouds;
 
 	app.add_option("-c,--calibration", calibrationFile,
 	               "Path to the calibration file (required by all modes excluding Realsense)")
@@ -79,6 +81,11 @@ inline int ParseCLIOptions(int argc, char** argv,
 		->type_name("x y z rx ry rz rw")
 		->excludes(trajectoryOption)
 		->expected(7);
+
+	app.add_option("--export_point_clouds", appData.numberExportPointClouds,
+		"Export rendered point clouds from tracking poses after finishing. N number total number of point clouds (evenly spaced). Default (0) = every pose.")
+		->type_name("N")
+		->default_str("0");
 
 	CLI11_PARSE(app, argc, argv)
 

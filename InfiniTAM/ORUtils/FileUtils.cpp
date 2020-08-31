@@ -378,8 +378,6 @@ void SavePointCloudToPCL(const ORUtils::Vector4<float>* points, const ORUtils::V
 	SIZE 4 4 4 4 4 4\n\
 	TYPE F F F F F F\n\
 	COUNT 1 1 1 1 1 1\n\
-	WIDTH %i\n\
-	HEIGHT %i\n\
 	VIEWPOINT %f %f %f %f %f %f %f\n\
 	POINTS %i\n\
 	DATA ascii\n";
@@ -388,14 +386,25 @@ void SavePointCloudToPCL(const ORUtils::Vector4<float>* points, const ORUtils::V
 	ORUtils::Vector3<float> T = (T_WC * ORUtils::Vector4<float>(0, 0, 0, 1)).toVector3();
 	ORUtils::Vector4<float> Q = QuaternionFromTransformationMatrix(T_WC);
 
+	int N = 0;
+	for (int y = 0; y < imgSize.height; y++) for (int x = 0; x < imgSize.width; x++)
+		{
+			int idx = y * imgSize.width + x;
+			if (points[idx].w <= 0)
+				continue;
+			N++;
+		}
+
 	FILE *f = fopen(fileName, "wb");
-	fprintf(f, header, imgSize.width, imgSize.height,
-		T.x, T.y, T.z, Q.w, Q.x, Q.y, Q.z,
-		imgSize.width * imgSize.height);
+	fprintf(f, header,
+		T.x, T.y, T.z, Q.w, Q.x, Q.y, Q.z, N);
 
 	for (int y = 0; y < imgSize.height; y++) for (int x = 0; x < imgSize.width; x++)
 	{
 		int idx = y * imgSize.width + x;
+		if(points[idx].w <= 0)
+			continue;
+
 		fprintf(f, "%f %f %f %f %f %f\n", points[idx].x, points[idx].y, points[idx].z,
 		        normals[idx].x, normals[idx].y, normals[idx].z);
 	}

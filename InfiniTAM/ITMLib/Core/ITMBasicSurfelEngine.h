@@ -66,7 +66,7 @@ namespace ITMLib
 		/// Get a result image as output
 		Vector2i GetImageSize(void) const override;
 
-		void GetImage(ITMUChar4Image *out, GetImageType getImageType, ORUtils::SE3Pose *pose = NULL, ITMIntrinsics *intrinsics = NULL, bool normalsFromSDF=false) override;
+		void GetImage(ITMUChar4Image *out, GetImageType getImageType, ORUtils::SE3Pose *pose = NULL, const ITMIntrinsics *intrinsics = NULL, bool normalsFromSDF=false) override;
 
 		/// switch for turning tracking on/off
 		void turnOnTracking();

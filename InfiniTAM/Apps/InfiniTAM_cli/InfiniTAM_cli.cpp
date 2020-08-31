@@ -25,6 +25,8 @@ int main(int argc, char** argv)
 	if (ret != 0)
 		return ret;
 
+	ImageSourceEngine* imageSource = appData.imageSource;
+	IMUSourceEngine* imuSource = appData.imuSource;
 	std::shared_ptr<ITMLibSettings> internalSettings = appData.internalSettings;
 
 	if (not appData.imageSource)
@@ -37,19 +39,19 @@ int main(int argc, char** argv)
 	switch (internalSettings->libMode)
 	{
 		case ITMLibSettings::LIBMODE_BASIC:
-			mainEngine = new ITMBasicEngine<ITMVoxel, ITMVoxelIndex>(internalSettings, appData.imageSource->getCalib(),
-			                                                         appData.imageSource->getRGBImageSize(),
-			                                                         appData.imageSource->getDepthImageSize());
+			mainEngine = new ITMBasicEngine<ITMVoxel, ITMVoxelIndex>(internalSettings, imageSource->getCalib(),
+			                                                         imageSource->getRGBImageSize(),
+			                                                         imageSource->getDepthImageSize());
 			break;
 		case ITMLibSettings::LIBMODE_BASIC_SURFELS:
-			mainEngine = new ITMBasicSurfelEngine<ITMSurfelT>(internalSettings, appData.imageSource->getCalib(),
-			                                                  appData.imageSource->getRGBImageSize(),
-			                                                  appData.imageSource->getDepthImageSize());
+			mainEngine = new ITMBasicSurfelEngine<ITMSurfelT>(internalSettings, imageSource->getCalib(),
+			                                                  imageSource->getRGBImageSize(),
+			                                                  imageSource->getDepthImageSize());
 			break;
 		case ITMLibSettings::LIBMODE_LOOPCLOSURE:
-			mainEngine = new ITMMultiEngine<ITMVoxel, ITMVoxelIndex>(internalSettings, appData.imageSource->getCalib(),
-			                                                         appData.imageSource->getRGBImageSize(),
-			                                                         appData.imageSource->getDepthImageSize());
+			mainEngine = new ITMMultiEngine<ITMVoxel, ITMVoxelIndex>(internalSettings, imageSource->getCalib(),
+			                                                         imageSource->getRGBImageSize(),
+			                                                         imageSource->getDepthImageSize());
 			break;
 		default:
 			throw std::runtime_error("Unsupported library mode!");
@@ -57,11 +59,12 @@ int main(int argc, char** argv)
 
 	fs::create_directories(appData.outputDirectory);
 
-	CLIEngine::Instance()->Initialise(&appData, mainEngine);
+	CLIEngine::Instance()->Initialise(argc, argv, &appData, mainEngine);
 	CLIEngine::Instance()->Run();
 	CLIEngine::Instance()->Shutdown();
 
 	delete mainEngine;
-	delete appData.imageSource;
+	delete imageSource;
+	delete imuSource;
 	return 0;
 }

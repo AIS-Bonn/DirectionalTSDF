@@ -380,7 +380,7 @@ Vector2i ITMBasicEngine<TVoxel,TIndex>::GetImageSize(void) const
 }
 
 template <typename TVoxel, typename TIndex>
-void ITMBasicEngine<TVoxel,TIndex>::GetImage(ITMUChar4Image *out, GetImageType getImageType, ORUtils::SE3Pose *pose, ITMIntrinsics *intrinsics, bool normalsFromSDF)
+void ITMBasicEngine<TVoxel,TIndex>::GetImage(ITMUChar4Image *out, GetImageType getImageType, ORUtils::SE3Pose *pose, const ITMIntrinsics *intrinsics, bool normalsFromSDF)
 {
 	if (view == NULL) return;
 

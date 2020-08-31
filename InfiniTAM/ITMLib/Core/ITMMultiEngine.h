@@ -65,7 +65,7 @@ namespace ITMLib
 		/// Get a result image as output
 		Vector2i GetImageSize() const override;
 
-		void GetImage(ITMUChar4Image *out, GetImageType getImageType, ORUtils::SE3Pose *pose = nullptr, ITMIntrinsics *intrinsics = nullptr, bool normalsFromSDF=false) override;
+		void GetImage(ITMUChar4Image *out, GetImageType getImageType, ORUtils::SE3Pose *pose = nullptr, const ITMIntrinsics *intrinsics = nullptr, bool normalsFromSDF=false) override;
 
 		void changeFreeviewLocalMapIdx(ORUtils::SE3Pose *pose, int newIdx);
 		void setFreeviewLocalMapIdx(int newIdx)

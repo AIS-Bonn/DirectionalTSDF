@@ -273,12 +273,12 @@ void UIEngine::glutIdleFunction()
 	switch (uiEngine->mainLoopAction)
 	{
 	case PROCESS_FRAME:
-		uiEngine->ProcessFrame(); uiEngine->processedFrameNo++;
+		uiEngine->ProcessFrame();
 		uiEngine->mainLoopAction = PROCESS_PAUSED;
 		uiEngine->needsRefresh = true;
 		break;
 	case PROCESS_VIDEO:
-		uiEngine->ProcessFrame(); uiEngine->processedFrameNo++;
+		uiEngine->ProcessFrame();
 		uiEngine->needsRefresh = true;
 		break;
 		//case SAVE_TO_DISK:
@@ -457,7 +457,8 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 	break;
 	case 'e':
 		printf("Collecting ICP Error Images ... ");
-		uiEngine->CollectICPErrorImages();
+//		uiEngine->CollectICPErrorImages();
+		uiEngine->CollectPointClouds();
 		printf("done\n");
 		break;
 	case 'm':
@@ -692,9 +693,8 @@ void UIEngine::glutMouseWheelFunction(int button, int dir, int x, int y)
 	uiEngine->needsRefresh = true;
 }
 
-void UIEngine::Initialise(int & argc, char** argv, AppData* appData, ITMMainEngine *mainEngine)
+void UIEngine::_initialise(int argc, char** argv, AppData* appData, ITMMainEngine *mainEngine)
 {
-	this->appData = appData;
 	this->freeviewActive = false;
 	this->integrationActive = true;
 	this->helpActive = false;
@@ -712,29 +712,7 @@ void UIEngine::Initialise(int & argc, char** argv, AppData* appData, ITMMainEngi
 	this->colourModes_freeview.push_back(UIColourMode("surface normals", ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL));
 	this->colourModes_freeview.push_back(UIColourMode("confidence", ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_CONFIDENCE));
 
-	this->mainEngine = mainEngine;
-	{
-		size_t len = appData->outputDirectory.size();
-		this->outFolder = new char[len + 1];
-		strcpy(this->outFolder, appData->outputDirectory.c_str());
-	}
-
-	this->statisticsEngine.Initialize(std::string(outFolder));
-
-	//Vector2i winSize;
-	//int textHeight = 30; // Height of text area
-	//winSize.x = 2 * MAX(appData->imageSource->getRGBImageSize().x, appData->imageSource->getDepthImageSize().x);
-	//winSize.y = MAX(appData->imageSource->getRGBImageSize().y, appData->imageSource->getDepthImageSize().y) + textHeight;
-	//float h1 = textHeight / (float)winSize.y, h2 = (1.f + h1) / 2;
-	//winReg[0] = Vector4f(0, h1, 0.5, 1); // Main render
-	//winReg[1] = Vector4f(0.5, h2, 0.75, 1); // Side sub window 0
-	//winReg[2] = Vector4f(0.75, h2, 1, 1); // Side sub window 1
-	//winReg[3] = Vector4f(0.5, h1, 0.75, h2); // Side sub window 2
-	//winReg[4] = Vector4f(0.75, h1, 1, h2); // Side sub window 3
-
 	int textHeight = 30; // Height of text area
-	//winSize.x = (int)(1.5f * (float)MAX(appData->imageSource->getImageSize().x, appData->imageSource->getDepthImageSize().x));
-	//winSize.y = MAX(appData->imageSource->getRGBImageSize().y, appData->imageSource->getDepthImageSize().y) + textHeight;
 	winSize.x = (int)(1.5f * (float)(appData->imageSource->getDepthImageSize().x));
 	winSize.y = appData->imageSource->getDepthImageSize().y + textHeight;
 	float h1 = textHeight / (float)winSize.y, h2 = (1.f + h1) / 2;
@@ -743,7 +721,6 @@ void UIEngine::Initialise(int & argc, char** argv, AppData* appData, ITMMainEngi
 	winReg[2] = Vector4f(0.665f, h1, 1.0f, h2);     // Side sub window 2
 
 	this->isRecording = false;
-	this->currentFrameNo = 0;
 	this->rgbVideoWriter = nullptr;
 	this->depthVideoWriter = nullptr;
 
@@ -773,10 +750,6 @@ void UIEngine::Initialise(int & argc, char** argv, AppData* appData, ITMMainEngi
 	for (int w = 0; w < NUM_WIN; w++)
 		outImage[w] = new ITMUChar4Image(appData->imageSource->getDepthImageSize(), true, allocateGPU);
 
-	inputRGBImage = new ITMUChar4Image(appData->imageSource->getRGBImageSize(), true, allocateGPU);
-	inputRawDepthImage = new ITMShortImage(appData->imageSource->getDepthImageSize(), true, allocateGPU);
-	inputIMUMeasurement = new ITMIMUMeasurement();
-
 	saveImage = new ITMUChar4Image(appData->imageSource->getDepthImageSize(), true, false);
 
 	outImageType[0] = ITMMainEngine::InfiniTAM_IMAGE_SCENERAYCAST;
@@ -790,19 +763,7 @@ void UIEngine::Initialise(int & argc, char** argv, AppData* appData, ITMMainEngi
 	mouseState = 0;
 	mouseWarped = false;
 	needsRefresh = false;
-	processedFrameNo = 0;
 	processedTime = 0.0f;
-
-#ifndef COMPILE_WITHOUT_CUDA
-	ORcudaSafeCall(cudaThreadSynchronize());
-#endif
-
-	sdkCreateTimer(&timer_instant);
-	sdkCreateTimer(&timer_average);
-
-	sdkResetTimer(&timer_average);
-
-	printf("initialised.\n");
 }
 
 void UIEngine::SaveScreenshot(const char *filename) const
@@ -900,29 +861,8 @@ void SaveErrorImage(const ITMView *view, const std::string& path, ITMLibSettings
 	free(errorImage);
 }
 
-void UIEngine::ProcessFrame()
+bool UIEngine::_processFrame()
 {
-	if (!appData->imageSource->hasMoreImages()) return;
-	appData->imageSource->getImages(inputRGBImage, inputRawDepthImage);
-
-	if (appData->imuSource != nullptr) {
-		if (!appData->imuSource->hasMoreMeasurements()) return;
-		else appData->imuSource->getMeasurement(inputIMUMeasurement);
-	}
-
-	const ORUtils::SE3Pose *inputPose = nullptr;
-	if (appData->trajectorySource != nullptr)
-	{
-		if (!appData->trajectorySource->hasMorePoses()) return;
-		inputPose = appData->trajectorySource->getPose();
-	} else if (processedFrameNo == 0)
-	{
-		inputPose = &appData->initialPose;
-	}
-
-	sdkResetTimer(&timer_instant);
-	sdkStartTimer(&timer_instant); sdkStartTimer(&timer_average);
-
 	ITMTrackingState::TrackingResult trackerResult;
 	//actual processing on the mailEngine
 	if (appData->imuSource != nullptr) trackerResult = mainEngine->ProcessFrame(inputRGBImage, inputRawDepthImage, inputIMUMeasurement, inputPose);
@@ -932,26 +872,28 @@ void UIEngine::ProcessFrame()
 
 	if (isRecording)
 	{
+		fs::path recordingFolder = fs::path(outFolder) / "recording";
+		fs::create_directories(recordingFolder);
 		char str[250];
 
-		sprintf(str, "%s/recording/%04d.pgm", outFolder, currentFrameNo);
+		sprintf(str, "%s/recording/depth%04d.pgm", outFolder, currentFrameNo);
 		SaveImageToFile(inputRawDepthImage, str);
 
 		if (inputRGBImage->noDims != Vector2i(0, 0)) {
-			sprintf(str, "%s/recording/%04d.ppm", outFolder, currentFrameNo);
+			sprintf(str, "%s/recording/rgb%04d.ppm", outFolder, currentFrameNo);
 			SaveImageToFile(inputRGBImage, str);
 		}
 
 		sprintf(str, "%s/recording/render%04d.ppm", outFolder, currentFrameNo);
 		SaveImageToFile(outImage[0], str);
 
-		sprintf(str, "%s/recording/normal_%04d.ppm", outFolder, currentFrameNo);
+		sprintf(str, "%s/recording/normal%04d.ppm", outFolder, currentFrameNo);
 		SaveNormalImage(mainEngine->GetView(), str, appData->internalSettings->deviceType);
 
-		sprintf(str, "%s/recording/normal_direction_%04d.ppm", outFolder, currentFrameNo);
+		sprintf(str, "%s/recording/normal_direction%04d.ppm", outFolder, currentFrameNo);
 		SaveNormalDirectionImage(mainEngine->GetView(), str, mainEngine->GetTrackingState()->pose_d->GetInvM(), appData->internalSettings->deviceType);
 
-		sprintf(str, "%s/recording/error_%04d.ppm", outFolder, currentFrameNo);
+		sprintf(str, "%s/recording/error%04d.ppm", outFolder, currentFrameNo);
 //		mainEngine->GetTrackingState()
 //		mainEngine->GetView()
 //		SaveErrorImage()
@@ -968,137 +910,17 @@ void UIEngine::ProcessFrame()
 #ifndef COMPILE_WITHOUT_CUDA
 	ORcudaSafeCall(cudaThreadSynchronize());
 #endif
-	sdkStopTimer(&timer_instant); sdkStopTimer(&timer_average);
 
-	// Safe input images
-	inputImages.emplace_back();
-//	inputImages.back().first = new ITMUChar4Image(true, false);
-//	inputImages.back().first->SetFrom(inputRGBImage, ITMUChar4Image::CPU_TO_CPU);
-	inputImages.back().first = inputRGBImage; // not required for error renderings, so only store reference
-	inputImages.back().second = new ITMShortImage(true, false);
-	inputImages.back().second->SetFrom(inputRawDepthImage, ITMShortImage::CPU_TO_CPU);
-	trackingPoses.push_back(*mainEngine->GetTrackingState()->pose_d);
-
-	statisticsEngine.LogTimeStats(mainEngine->GetTimeStats());
-	statisticsEngine.LogPose(*mainEngine->GetTrackingState());
-	statisticsEngine.LogBlockAllocations(mainEngine->GetAllocationsPerDirection());
 
 	//processedTime = sdkGetTimerValue(&timer_instant);
 	processedTime = sdkGetAverageTimerValue(&timer_average);
 
-	currentFrameNo++;
-}
-
-void UIEngine::CollectICPErrorImages()
-{
-	if (inputImages.empty())
-		return;
-
-	ITMLib::ITMView* view = nullptr;
-	ITMViewBuilder* viewBuilder = ITMViewBuilderFactory::MakeViewBuilder(appData->imageSource->getCalib(),
-	                                                                     appData->internalSettings->deviceType);
-	// needs to be called once with view=nullptr for initialization
-	viewBuilder->UpdateView(&view, inputImages.front().first, inputImages.front().second,
-	                        appData->internalSettings->useBilateralFilter);
-	view = mainEngine->GetView();
-
-	ITMUChar4Image* outputImage = new ITMUChar4Image(inputImages.front().first->noDims, true, false);
-	char str[250];
-
-	int lastPercentile = -1;
-	for (size_t i = 0; i < inputImages.size(); i++)
-	{
-		int percentile = (i * 10) / inputImages.size();
-		if (percentile != lastPercentile)
-		{
-			printf("%i%%\t", percentile * 10);
-			lastPercentile = percentile;
-		}
-		ITMUChar4Image* rgbImage = inputImages.at(i).first;
-		ITMShortImage* depthImage = inputImages.at(i).second;
-
-		viewBuilder->UpdateView(&view, rgbImage, depthImage,
-		                        appData->internalSettings->useBilateralFilter);
-
-		ORUtils::SE3Pose* pose = &trackingPoses.at(i);
-		mainEngine->GetTrackingState()->pose_d->SetFrom(pose);
-
-//		renderState -> visible blocks??
-		mainEngine->GetImage(outputImage, ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_ICP_ERROR,
-		                     pose, &freeviewIntrinsics, normalsFromSDF);
-
-		sprintf(str, "%s/recording/error_%04zu.ppm", outFolder, i);
-		SaveImageToFile(outputImage, str);
-	}
-
-	free(outputImage);
-	free(viewBuilder);
-}
-
-void UIEngine::CollectPointClouds()
-{
-	if (inputImages.empty())
-		return;
-
-	ITMLib::ITMView* view = nullptr;
-	ITMViewBuilder* viewBuilder = ITMViewBuilderFactory::MakeViewBuilder(appData->imageSource->getCalib(),
-	                                                                     appData->internalSettings->deviceType);
-	// needs to be called once with view=nullptr for initialization
-	viewBuilder->UpdateView(&view, inputImages.front().first, inputImages.front().second,
-	                        appData->internalSettings->useBilateralFilter);
-	view = mainEngine->GetView();
-
-
-	ITMUChar4Image* outputImage = new ITMUChar4Image(inputImages.front().first->noDims, true, false);
-	char str[250];
-
-	int lastPercentile = -1;
-	for (size_t i = 0; i < inputImages.size(); i++)
-	{
-		int percentile = (i * 10) / inputImages.size();
-		if (percentile != lastPercentile)
-		{
-			printf("%i%%\t", percentile * 10);
-			lastPercentile = percentile;
-		}
-		ITMUChar4Image* rgbImage = inputImages.at(i).first;
-		ITMShortImage* depthImage = inputImages.at(i).second;
-
-		viewBuilder->UpdateView(&view, rgbImage, depthImage,
-		                        appData->internalSettings->useBilateralFilter);
-
-		ORUtils::SE3Pose* pose = &trackingPoses.at(i);
-		mainEngine->GetTrackingState()->pose_d->SetFrom(pose);
-
-//		renderState -> visible blocks??
-		mainEngine->GetImage(outputImage, ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_ICP_ERROR,
-		                     pose, &freeviewIntrinsics, normalsFromSDF);
-
-
-		if (appData->internalSettings->deviceType == ITMLibSettings::DEVICE_CUDA)
-		{
-			mainEngine->GetTrackingState()->pointCloud->locations->UpdateHostFromDevice();
-			mainEngine->GetTrackingState()->pointCloud->colours->UpdateHostFromDevice();
-		}
-
-			sprintf(str, "%s/recording/cloud_%04zu.pcd", outFolder, i);
-		SavePointCloudToPCL(
-			mainEngine->GetTrackingState()->pointCloud->locations->GetData(MEMORYDEVICE_CPU),
-			mainEngine->GetTrackingState()->pointCloud->colours->GetData(MEMORYDEVICE_CPU),
-			inputImages.front().second->noDims, *pose, str);
-	}
-
-	free(outputImage);
-	free(viewBuilder);
-
+	return true;
 }
 
 void UIEngine::Run() { glutMainLoop(); }
 void UIEngine::Shutdown()
 {
-	sdkDeleteTimer(&timer_instant);
-	sdkDeleteTimer(&timer_average);
-
 	statisticsEngine.CloseAll();
 
 	if (rgbVideoWriter != nullptr) delete rgbVideoWriter;
@@ -1106,15 +928,6 @@ void UIEngine::Shutdown()
 
 	for (int w = 0; w < NUM_WIN; w++)
 		delete outImage[w];
-
-	delete inputRGBImage;
-	delete inputRawDepthImage;
-	delete inputIMUMeasurement;
-	for (auto imgs: inputImages)
-	{
-//		delete imgs.first;
-		delete imgs.second;
-	}
 
 	delete[] outFolder;
 	delete saveImage;
