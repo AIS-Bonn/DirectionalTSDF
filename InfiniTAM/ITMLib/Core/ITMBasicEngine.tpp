@@ -405,6 +405,7 @@ void ITMBasicEngine<TVoxel,TIndex>::GetImage(ITMUChar4Image *out, GetImageType g
 	case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_VOLUME:
 	case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_NORMAL:
 	case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_CONFIDENCE:
+	case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_DEPTH:
 		{
 		// use current raycast or forward projection?
 		IITMVisualisationEngine::RenderRaycastSelection raycastType = IITMVisualisationEngine::RENDER_FROM_NEW_RAYCAST;
@@ -440,6 +441,7 @@ void ITMBasicEngine<TVoxel,TIndex>::GetImage(ITMUChar4Image *out, GetImageType g
 	case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME:
 	case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL:
 	case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_CONFIDENCE:
+	case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_DEPTH:
 	{
 		if (renderState_freeview == NULL)
 		{

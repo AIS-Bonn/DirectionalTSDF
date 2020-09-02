@@ -1325,6 +1325,23 @@ _CPU_AND_GPU_CODE_ inline void processPixelColour(
 }
 
 template<class TVoxel, class TIndex>
+_CPU_AND_GPU_CODE_ inline void processPixelDepth(
+	DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point, bool foundPoint, const float voxelSize, const float maxDepth)
+{
+	float depth = point.z * voxelSize;
+
+	if (not foundPoint or depth <= 0.0f)
+	{
+		outRendering = Vector4u(0, 0, 0, 255);
+		return;
+	}
+
+	float hue = (1 - (maxDepth - depth) / maxDepth) * 240;
+
+	outRendering = Vector4f(HSVtoRGB(hue, 1, 1) * 255, 255).toUChar();
+}
+
+template<class TVoxel, class TIndex>
 _CPU_AND_GPU_CODE_ inline void processPixelNormal_SDFNormals(DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point,
                                                              const Vector6f* directionalContribution,
                                                              bool foundPoint, const CONSTPTR(TVoxel)* voxelData,
@@ -1365,7 +1382,7 @@ _CPU_AND_GPU_CODE_ inline void
 processPixelError(Vector4u* outRendering, const Vector4f* pointsRay, const Vector4f* normalsRay,
                   const float* depth,
                   const Matrix4f& depthImageInvPose, const Matrix4f& sceneRenderingPose,
-                  const Vector4f& intrinsics, const Vector2i& imgSize,
+                  const Vector4f& intrinsics, const Vector2i& imgSize, const float maxError,
                   const int x, const int y)
 {
 	int locId = x + y * imgSize.width;
@@ -1377,16 +1394,18 @@ processPixelError(Vector4u* outRendering, const Vector4f* pointsRay, const Vecto
 	                                                             pointsRay, normalsRay, 100.0);
 	float angle = -(sceneRenderingPose * normalsRay[locId]).z;
 
-	if (!isValidPoint or angle <= 0.0) {
-		outRendering[locId] = Vector4u(0, 0, 0, 0);
+	if (!isValidPoint) {// or angle <= 0.0) {
+		if (depth[locId] > 0)
+			outRendering[locId] = Vector4u(127, 127, 127, 255);
+		else
+			outRendering[locId] = Vector4u(0, 0, 0, 0);
 		return;
 	}
 
-	double upperBound = 1e-1;
-	b = MIN(fabs(b / upperBound), 1); // normalize
+	b = MIN(fabs(b / maxError), 1); // normalize
 
 	Vector4f color = Vector4f(HSVtoRGB((1 - b) * 240, 1, 1) * 255, 255);
-	color = (0.8f * angle + 0.2f) * color;
+//	color = (0.8f * angle + 0.2f) * color;
 	outRendering[locId] = color.toUChar();
 }
 

@@ -421,8 +421,8 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 		}
 		uiEngine->needsRefresh = true;
 		break;
-	case '1': case '2': case '3': case '4': case '5':
-		uiEngine->currentColourMode = (key - '1') % (uiEngine->freeviewActive ? 4 : 5);
+	case '1': case '2': case '3': case '4': case '5': case '6':
+		uiEngine->currentColourMode = (key - '1') % (uiEngine->freeviewActive ? 5 : 6);
 		uiEngine->needsRefresh = true;
 		break;
 	case 'c':
@@ -706,11 +706,13 @@ void UIEngine::_initialise(int argc, char** argv, AppData* appData, ITMMainEngin
 	this->colourModes_main.push_back(UIColourMode("integrated colours", ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_VOLUME));
 	this->colourModes_main.push_back(UIColourMode("surface normals", ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_NORMAL));
 	this->colourModes_main.push_back(UIColourMode("confidence", ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_CONFIDENCE));
+	this->colourModes_main.push_back(UIColourMode("depth", ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_DEPTH));
 	this->colourModes_main.push_back(UIColourMode("icp error", ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_ICP_ERROR));
 	this->colourModes_freeview.push_back(UIColourMode("shaded greyscale", ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_SHADED));
 	this->colourModes_freeview.push_back(UIColourMode("integrated colours", ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME));
 	this->colourModes_freeview.push_back(UIColourMode("surface normals", ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL));
 	this->colourModes_freeview.push_back(UIColourMode("confidence", ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_CONFIDENCE));
+	this->colourModes_freeview.push_back(UIColourMode("depth", ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_DEPTH));
 
 	int textHeight = 30; // Height of text area
 	winSize.x = (int)(1.5f * (float)(appData->imageSource->getDepthImageSize().x));
@@ -785,7 +787,7 @@ void SaveNormalImage(const ITMView *view, const std::string& path, ITMLibSetting
 		view->depthNormal->UpdateHostFromDevice();
 	}
 
-	ITMUChar4Image *normalImage = new ITMUChar4Image(view->rgb->noDims, true, false);
+	ITMUChar4Image *normalImage = new ITMUChar4Image(view->depth->noDims, true, false);
 	Vector4u *data_to = normalImage->GetData(MEMORYDEVICE_CPU);
 	const Vector4f *data_from = view->depthNormal->GetData(MEMORYDEVICE_CPU);
 

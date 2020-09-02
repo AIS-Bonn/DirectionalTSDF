@@ -297,6 +297,20 @@ __global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, Vecto
 	}
 
 template<class TVoxel, class TIndex>
+__global__ void renderDepth_device(Vector4u *outRendering, const Vector4f *ptsRay, const Vector2i imgSize,
+	const float voxelSize, const float maxDepth)
+{
+	int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
+
+	if (x >= imgSize.x || y >= imgSize.y) return;
+
+	int locId = x + y * imgSize.x;
+
+	Vector4f ptRay = ptsRay[locId];
+	processPixelDepth<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(), ptRay.w > 0, voxelSize, maxDepth);
+}
+
+template<class TVoxel, class TIndex>
 __global__ void computePointCloudNormals_device(Vector4f* outputNormals, const Vector4f* pointsRay,
                                                 const Vector2i imgSize, float voxelSize)
 {

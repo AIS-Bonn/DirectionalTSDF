@@ -365,6 +365,7 @@ void ITMMultiEngine<TVoxel, TIndex>::GetImage(ITMUChar4Image *out, GetImageType 
 	case ITMMainEngine::InfiniTAM_IMAGE_SCENERAYCAST:
 	case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_NORMAL:
 	case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_CONFIDENCE:
+	case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_DEPTH:
 	{
 		int visualisationLocalMapIdx = mActiveDataManager->findBestVisualisationLocalMapIdx();
 		if (visualisationLocalMapIdx < 0) break; // TODO: clear image? what else to do when tracking is lost?
@@ -397,6 +398,7 @@ void ITMMultiEngine<TVoxel, TIndex>::GetImage(ITMUChar4Image *out, GetImageType 
 	case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME:
 	case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL:
 	case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_CONFIDENCE:
+	case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_DEPTH:
 	{
 		if (freeviewLocalMapIdx >= 0)
 		{
