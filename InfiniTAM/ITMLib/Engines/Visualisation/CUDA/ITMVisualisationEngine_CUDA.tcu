@@ -348,7 +348,7 @@ void ITMVisualisationEngine_CUDA_common<TVoxel, TIndex>::RenderImage(const ITMSc
 			ORcudaKernelCheck;
 			break;
 		case IITMVisualisationEngine::RENDER_COLOUR_FROM_DEPTH:
-			renderDepth_device<TVoxel, TIndex> <<<gridSize, cudaBlockSize>>>(outRendering, pointsRay, imgSize, scene->sceneParams->voxelSize, scene->sceneParams->viewFrustum_max);
+			renderDepth_device<TVoxel, TIndex> <<<gridSize, cudaBlockSize>>>(outRendering, pointsRay, pose->GetM(), imgSize, scene->sceneParams->voxelSize, scene->sceneParams->viewFrustum_max);
 			ORcudaKernelCheck;
 			break;
 		case IITMVisualisationEngine::RENDER_SHADED_GREYSCALE_IMAGENORMALS:

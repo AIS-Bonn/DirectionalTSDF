@@ -1326,9 +1326,11 @@ _CPU_AND_GPU_CODE_ inline void processPixelColour(
 
 template<class TVoxel, class TIndex>
 _CPU_AND_GPU_CODE_ inline void processPixelDepth(
-	DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point, bool foundPoint, const float voxelSize, const float maxDepth)
+	DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point, bool foundPoint,
+	const Matrix4f& T_CW, const float voxelSize, const float maxDepth)
 {
-	float depth = point.z * voxelSize;
+	Vector4f pointCamera = T_CW * Vector4f(point * voxelSize, 1);
+	float depth = pointCamera.z;
 
 	if (not foundPoint or depth <= 0.0f)
 	{

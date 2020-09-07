@@ -242,6 +242,16 @@ void ITMMultiVisualisationEngine_CPU<TVoxel, TIndex>::RenderImage(const ORUtils:
 				}
 			}
 			break;
+		case IITMVisualisationEngine::RENDER_COLOUR_FROM_DEPTH:
+#ifdef WITH_OPENMP
+#pragma omp parallel for
+#endif
+			for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
+			{
+				processPixelDepth<TVoxel, TIndex>(outRendering[locId], pointsRay[locId].toVector3(), pointsRay[locId].w > 0,
+				                                  pose->GetM(), renderState->sceneParams.voxelSize, renderState->sceneParams.viewFrustum_max);
+			}
+			break;
 		case IITMVisualisationEngine::RENDER_SHADED_GREYSCALE:
 		default:
 			if (intrinsics->FocalLengthSignsDiffer())

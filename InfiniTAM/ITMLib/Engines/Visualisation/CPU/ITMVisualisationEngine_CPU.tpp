@@ -345,6 +345,16 @@ void ITMVisualisationEngine_CPU_common<TVoxel, TIndex>::RenderImage(const ITMSce
 			}
 		}
 		break;
+	case IITMVisualisationEngine::RENDER_COLOUR_FROM_DEPTH:
+#ifdef WITH_OPENMP
+#pragma omp parallel for
+#endif
+			for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
+			{
+				processPixelDepth<TVoxel, TIndex>(outRendering[locId], pointsRay[locId].toVector3(), pointsRay[locId].w > 0,
+					pose->GetM(), scene->sceneParams->voxelSize, scene->sceneParams->viewFrustum_max);
+			}
+			break;
 	case IITMVisualisationEngine::RENDER_SHADED_GREYSCALE_IMAGENORMALS:
 #ifdef WITH_OPENMP
 		#pragma omp parallel for
