@@ -18,6 +18,8 @@ void TrajectorySourceEngine::Read(const std::string& path)
 	std::string line;
 	while (std::getline(file, line))
 	{
+		if (line[0] == '#')
+			continue;
 		std::istringstream lineStream(line);
 
 		float timestamp, tx, ty, tz, qx, qy, qz, qw;
