@@ -1,15 +1,14 @@
 # InfiniTAM v3
 
-This is the main branch of the software bundle "InfiniTAM", the current version is actively maintained by:
+This is the DTSDF branch of the software bundle "InfiniTAM".
 
+  
+Previous maintainers and contributors are:
   Victor Adrian Prisacariu <victor@robots.ox.ac.uk>  
   Olaf Kaehler <olaf@robots.ox.ac.uk>  
   Stuart Golodetz <smg@robots.ox.ac.uk>  
   Michael Sapienza <michael.sapienza@eng.ox.ac.uk>  
   Tommaso Cavallari <tommaso.cavallari@unibo.it>
-  
-Previous maintainers and contributors are:
-
   Carl Yuheng Ren <carl@robots.ox.ac.uk>  
   Ming Ming Cheng <cmm.thu@gmail.com>  
   Xin Sun <xin.sun@st-hughs.ox.ac.uk>  
@@ -37,7 +36,7 @@ Several 3rd party libraries are needed for compiling InfiniTAM. The given versio
     the library should run without
     available at http://freeglut.sourceforge.net/
 
-  - CUDA (e.g. version 6.0 or 7.0)
+  - CUDA (e.g. version 9.0 or 10.0)
     OPTIONAL but REQUIRED for all GPU accelerated code
     at least with cmake it is still possible to compile the CPU part without
     available at https://developer.nvidia.com/cuda-downloads
@@ -74,11 +73,12 @@ Several 3rd party libraries are needed for compiling InfiniTAM. The given versio
 
 ###1.2 Build Process
 
-  To compile the system, use the standard cmake approach:
+  To compile the system, use the standard cmake approach (use options for required input devices, e.g. by using ccmake):
 ```
+  $ git submodule update --init --recursive
   $ mkdir build
   $ cd build
-  $ cmake /path/to/InfiniTAM -DOPEN_NI_ROOT=/path/to/OpenNI2/
+  $ cmake -DWITH_PNG=ON -DWITH_OPENNI=ON -DWITH_REALSENSE2=ON -DREALSENSE2_ROOT="/usr/" -DOPENNI_ROOT="/usr/" -DWITH_KINECT2=ON ..
   $ make
 ```
   To create a doxygen documentation, just run doxygen:
@@ -104,20 +104,21 @@ In the current version of InfiniTAM these errors are avoided by specifying ```CM
 
 If a version of GLUT other than freeglut is used, the InfiniTAM sample application has problems on exit, as it is currently not explicitly cleaning up CUDA memory or closing the OpenNI device. Use freeglut to avoid this if you experience any problems.
 
-Some sensors may need a small change to work correctly with OpenNI, the changes are described [here](http://com.occipital.openni.s3.amazonaws.com/Structure%20Sensor%20OpenNI2%20Quick%20Start%20Guide.pdf).
-
-
 # 2. Sample Programs
 
-The build process should result in an executable InfiniTAM, which is the main sample program. For a version without visualisation, try InfiniTAM_cli. If compiled with OpenNI support, both should run out-of-the-box without problems for live reconstruction. If you have calibration information for your specific device, you can pass it as the first argument to the program, e.g.:
+The build process should result in two executables, InfiniTAM and InfiniTAM_cli. The former is a GUI, the latter a headless application. If compiled with OpenNI support, both should run out-of-the-box without problems for live reconstruction. All available command line options are printed using the ```--help``` flag.
+If no OpenNI support has been compiled in, the program can be used for offline processing. For raw datasets in the form of
 ```
-  $ ./InfiniTAM Teddy/calib.txt
+  $ ./InfiniTAM Teddy/calib.txt --settings ./Files/settings.yaml --raw Teddy/Frames/%04i.ppm Teddy/Frames/%04i.pgm
 ```
-If no OpenNI support has been compiled in, the program can be used for offline processing:
+Datasets in TUM format are also supported. Here is an example for a dataset from the fr3 sequences. (Note: the dataset's rgb.txt and depth.txt must only use the associated files) 
 ```
-  $ ./InfiniTAM Teddy/calib.txt Teddy/Frames/%04i.ppm Teddy/Frames/%04i.pgm
+  $ ./InfiniTAM --calibration ./Files/TUM3.txt --settings ./Files/settings.yaml --tum /path/to/dataset
 ```
 The arguments are essentially masks for sprintf and the %04i will be replaced by a running number, accordingly.
+
+The calibration files (e.g. ```.Files/TUM3.txt```) contain camera calibrations required for differnt datasets. Many live input sources like OpenNI2 provied their instrinsics themselves.
+The file ```./Files/settings.yaml``` contains algorithm parameters like voxel size, tracking parameters etc.
 
 
 # 3. Additional Documentation
