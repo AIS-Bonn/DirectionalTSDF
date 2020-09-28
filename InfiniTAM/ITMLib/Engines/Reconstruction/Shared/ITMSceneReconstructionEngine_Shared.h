@@ -671,7 +671,7 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 				int index = findVoxel(hashTable, voxelIdx, TSDFDirection(direction), foundEntry, cache[direction]);
 				if (not foundEntry)
 				{
-					break;
+					continue;
 				}
 
 				if (fusionParams.useWeighting)
