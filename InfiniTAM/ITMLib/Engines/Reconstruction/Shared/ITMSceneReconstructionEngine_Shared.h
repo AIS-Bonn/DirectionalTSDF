@@ -89,7 +89,7 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 	// compute updated SDF value and reliability
 	oldF = TVoxel::valueToFloat(voxel.sdf);
 	oldW = TVoxel::weightToFloat(voxel.w_depth, sceneParams.maxW);
-	newF = MIN(1.0f, distance / sceneParams.mu);
+	newF = MAX(MIN(1.0f, distance / sceneParams.mu), -1.0f);
 	newW = 1;
 
 	if (fusionParams.useWeighting) //and distance < carveSurfaceOffset)
@@ -101,32 +101,29 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 			newW = 0.01f * weightNormal(normal_camera.toVector3(), viewRay_camera);
 		} else
 		{ // truncation region
-			Vector4f normal_camera = depthNormals[idx];
-			if (normal_camera.w != 1)
-				return -1;
 			Vector3f viewRay_camera = reprojectImagePoint(voxel_image.x, voxel_image.y, 1,
 			                                              invertProjectionParams(projParams_d)).normalised();
-			float directionWeight = 1;
 			if (direction != TSDFDirection::NONE)
 			{
-				Matrix4f invM_d;
-				M_d.inv(invM_d);
-				Vector3f normal_world = normalCameraToWorld(normal_camera, invM_d);
-				directionWeight = DirectionWeight(normal_world, direction);
-
-				if (directionWeight < direction_weight_threshold)
-					return -1;
+				float directionAngle = DirectionAngle(normal_world, direction);
+				float directionWeight = DirectionWeight(directionAngle);
+				newW = depthWeight(depth_measure, normal_camera.toVector3(), viewRay_camera, directionWeight, sceneParams);
+				if (distance > 0 and directionAngle > direction_angle_threshold and directionAngle < M_PI_2)
+					newW = 0.01f * weightNormal(normal_camera.toVector3(), viewRay_camera);
+			} else {
+				newW = depthWeight(depth_measure, normal_camera.toVector3(), viewRay_camera, 1, sceneParams);
 			}
-			newW = depthWeight(depth_measure, normal_camera.toVector3(), viewRay_camera, directionWeight, sceneParams);
 		}
 	}
+	if (newW <= 0)
+		return -1;
 
 	newF = oldW * oldF + newW * newF;
 	newW = oldW + newW;
 	newF /= newW;
 	newW = MIN(newW, sceneParams.maxW);
 
-	// write back
+		// write back
 	voxel.sdf = TVoxel::floatToValue(newF);
 	voxel.w_depth = TVoxel::floatToWeight(newW, sceneParams.maxW);
 
@@ -485,23 +482,18 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* d
 
 	float depthValue = depth[idx];
 	Vector4f normal_camera = depthNormals[idx];
-	if (depthValue <= 0 or (depthValue - mu) < viewFrustum_min or (depthValue + mu) > viewFrustum_max
-	    or normal_camera.w != 1)
+	if ((depthValue - mu) < viewFrustum_min or (depthValue + mu) > viewFrustum_max or normal_camera.w != 1)
 		return;
 
+	// Normal too steep -> don't carve (because unreliable)
+//	if (ORUtils::dot(normal_camera.toVector3(), Vector3f(0, 0, -1)) < 0.337)
+//		return;
 
 	Vector3f pt_camera = reprojectImagePoint(x, y, depthValue, invProjParams_d);
 	Vector3f pt_world = (invM_d * Vector4f(pt_camera, 1)).toVector3();
 	Vector4f rayStart_camera = Vector4f(reprojectImagePoint(x, y, viewFrustum_min, invProjParams_d), 1);
 	Vector3f rayStart_world = (invM_d * rayStart_camera).toVector3();
 	Vector3f rayDirection_world = (pt_world - rayStart_world).normalised();
-
-	float weights[N_DIRECTIONS];
-	if (fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL)
-	{
-		ComputeDirectionWeights(-rayDirection_world, weights);
-	}
-
 
 	Matrix4f M_d;
 	invM_d.inv(M_d);
@@ -513,7 +505,7 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* d
 	// Decrease distance by depth noise model (std. dev * 3)
 	carveDistance -= depthNoiseSigma(depthValue, fabs(1.0 - dot(normal_world, -rayDirection_world)) * M_PI * 0.5) * 3;
 
-	BlockTraversal blockTraversal(rayStart_world, rayDirection_world, carveDistance, voxelSize);
+	BlockTraversal blockTraversal(rayStart_world, rayDirection_world, carveDistance, voxelSize, true);
 	ITMVoxelBlockHash::IndexCache cache[N_DIRECTIONS];
 	while (blockTraversal.HasNextBlock())
 	{
@@ -594,9 +586,12 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 	float depthValue = depth[idx];
 	Vector4f normal_camera = depthNormals[idx];
 
-	if (depthValue <= 0 or (depthValue - mu) < viewFrustum_min or
-	    (depthValue + mu) > viewFrustum_max or normal_camera.w != 1)
+	if ((depthValue - mu) < viewFrustum_min or (depthValue + mu) > viewFrustum_max or normal_camera.w != 1)
 		return;
+
+	// Normal too steep -> don't update (because unreliable)
+//	if (ORUtils::dot(normal_camera.toVector3(), Vector3f(0, 0, -1)) < 0.707)
+//		return;
 
 	Vector4f pt_camera = Vector4f(reprojectImagePoint(x, y, depthValue, invProjParams_d), 1);
 	Vector3f pt_world = (invM_d * pt_camera).toVector3();
@@ -604,10 +599,10 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 
 	Vector3f viewRay_camera = reprojectImagePoint(x, y, 1, invProjParams_d).normalised();
 
-	float weights[N_DIRECTIONS];
+	float angles[N_DIRECTIONS];
 	if (fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL)
 	{
-		ComputeDirectionWeights(normal_world, weights);
+		ComputeDirectionAngle(normal_world, angles);
 	}
 
 	Vector3f rayDirectionBefore, rayDirectionBehind;
@@ -626,8 +621,9 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 		rayDirectionBehind = -normal_world;
 	}
 
-	BlockTraversal blockTraversalBefore(pt_world, rayDirectionBefore, mu, voxelSize);
-	BlockTraversal blockTraversalBehind(pt_world, rayDirectionBehind, mu, voxelSize);
+	// FIXME: why add block to start?? (its offset without, but why?)
+	BlockTraversal blockTraversalBefore(pt_world + Vector3f(1, 1, 1) * voxelSize / 2, rayDirectionBefore, mu, voxelSize, true);
+	BlockTraversal blockTraversalBehind(pt_world + Vector3f(1, 1, 1) * voxelSize / 2, rayDirectionBehind, mu, voxelSize, true);
 	if (blockTraversalBehind.HasNextBlock()) blockTraversalBehind.GetNextBlock(); // Skip first voxel to prevent duplicate fusion
 
 	ITMVoxelBlockHash::IndexCache cache[N_DIRECTIONS];
@@ -664,8 +660,13 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 		{
 			for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
 			{
-				if (weights[direction] < direction_weight_threshold)
+//				if (DirectionAngle(rayDirectionBefore, TSDFDirection(direction)) < 0.3 or (angles[direction] < direction_angle_threshold and distance <= 0))//direction_angle_threshold)
+
+//				if (angles[direction] > direction_angle_threshold)
+				if (angles[direction] > 2 * M_PI_4 or (angles[direction] > direction_angle_threshold and distance <= 0))//direction_angle_threshold)
+				{
 					continue;
+				}
 
 				int foundEntry = false;
 				int index = findVoxel(hashTable, voxelIdx, TSDFDirection(direction), foundEntry, cache[direction]);
@@ -676,13 +677,17 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
 
 				if (fusionParams.useWeighting)
 				{
-					float directionWeight = DirectionWeight(normal_world, TSDFDirection(direction));
+					float directionWeight = DirectionWeight(angles[direction]);
 					float voxelDistanceWeight = 1 - MIN(length(voxelSurfaceOffset) / mu, 1);
 
-					weight = depthWeight(depthValue, normal_camera.toVector3(), viewRay_camera, directionWeight, sceneParams) * voxelDistanceWeight;
+					weight = depthWeight(depthValue, normal_camera.toVector3(), viewRay_camera, directionWeight, sceneParams);// * voxelDistanceWeight;
 
 					// Normalize by voxel size in camera image (max num rays to hit), so comparable to voxelProjection fusion
 					weight *= 1 / (voxelSideLengthCamera * voxelSideLengthCamera);
+
+					// Carving space (parts that exceed direction angle)
+					if (angles[direction] > direction_angle_threshold)
+						weight = 0.1f * weightNormal(normal_camera.toVector3(), viewRay_camera);
 				}
 
 				VoxelRayCastingSum& voxelRayCastingSum = entriesRayCasting[index];
@@ -832,12 +837,10 @@ buildHashAllocAndVisibleType(DEVICEPTR(HashEntryAllocType)* entriesAllocType,
 {
 	float depth_measure = depth[x + y * imgSize.x];
 	Vector4f normal_camera = depthNormal[x + y * imgSize.x];
-	if (depth_measure <= 0 or (depth_measure - mu) < 0 or (depth_measure - mu) < viewFrustum_min or
-	    (depth_measure + mu) > viewFrustum_max or normal_camera.w != 1)
+	if ((depth_measure - mu) < viewFrustum_min or (depth_measure + mu) > viewFrustum_max or normal_camera.w != 1)
 		return;
 
-	normal_camera.w = 0; // rotation-only transformation
-	Vector3f normalWorld = (invM_d * normal_camera).toVector3();
+	Vector3f normalWorld = normalCameraToWorld(normal_camera, invM_d);
 
 	Vector4f pt_camera = Vector4f(reprojectImagePoint(x, y, depth_measure, projParams_d), 1);
 
@@ -865,8 +868,8 @@ buildHashAllocAndVisibleType(DEVICEPTR(HashEntryAllocType)* entriesAllocType,
 	BlockTraversal blockTraversalBehind(pt_world, rayDirectionBehind, mu, voxelSize);
 	if (blockTraversalBehind.HasNextBlock()) blockTraversalBehind.GetNextBlock(); // Skip first voxel to prevent duplicate fusion
 
-	float weights[N_DIRECTIONS];
-	ComputeDirectionWeights(normalWorld, weights);
+	float angles[N_DIRECTIONS];
+	ComputeDirectionAngle(normalWorld, angles);
 
 	Vector3i lastBlockPos(MAX_INT, MAX_INT, MAX_INT);
 	while (blockTraversalBefore.HasNextBlock() or blockTraversalBehind.HasNextBlock())
@@ -885,7 +888,7 @@ buildHashAllocAndVisibleType(DEVICEPTR(HashEntryAllocType)* entriesAllocType,
 		{
 			for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
 			{
-				if (weights[direction] < direction_weight_threshold)
+				if (DirectionWeight(angles[direction]) <= 0)
 					continue;
 				SetBlockAllocAndVisibleType(hashTable, blockCoords, blockDirections, entriesAllocType, entriesVisibleType,
 				                            blockPos, TSDFDirection(direction));

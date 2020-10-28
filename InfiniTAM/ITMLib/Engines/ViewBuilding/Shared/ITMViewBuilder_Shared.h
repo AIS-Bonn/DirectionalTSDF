@@ -93,47 +93,119 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndWeight(const CONSTPTR(float) *dep
 	float z = depth_in[x + y * imgDims.x];
 	if (z < 0.0f)
 	{
-		normal_out[idx].w = -1.0f;
+		normal_out[idx] = Vector4f(0, 0, 0, -1.0f);
 		sigmaZ_out[idx] = -1;
 		return;
 	}
-
-	// first compute the normal
-	Vector3f diff_x(0.0f, 0.0f, 0.0f), diff_y(0.0f, 0.0f, 0.0f);
 
 	Vector4f invProjParams_d = invertProjectionParams(intrinparam);
-	Vector3f xp1_y = reprojectImagePoint(x + 1, y, depth_in[(x + 1) + y * imgDims.x], invProjParams_d);
-	Vector3f xm1_y = reprojectImagePoint(x - 1, y, depth_in[(x - 1) + y * imgDims.x], invProjParams_d);
-	Vector3f x_yp1 = reprojectImagePoint(x, y + 1, depth_in[x + (y + 1) * imgDims.x], invProjParams_d);
-	Vector3f x_ym1 = reprojectImagePoint(x, y - 1, depth_in[x + (y - 1) * imgDims.x], invProjParams_d);
 
-	if (xp1_y.z <= 0 or x_yp1.z <= 0 or xm1_y.z <= 0 or x_ym1.z <= 0 or abs(xp1_y.z - z) > 0.02 or abs(xm1_y.z - z) > 0.02)
+	Vector4f x_y = Vector4f(reprojectImagePoint(x, y, depth_in[(x) + y * imgDims.x], invProjParams_d),
+	                        depth_in[(x) + y * imgDims.x] > 0 ? 1 : 0);
+	Vector4f xp_y = Vector4f(reprojectImagePoint(x + 1, y, depth_in[(x + 1) + y * imgDims.x], invProjParams_d),
+	                        depth_in[(x + 1) + y * imgDims.x] > 0 ? 1 : 0);
+	Vector4f xm_y = Vector4f(reprojectImagePoint(x - 1, y, depth_in[(x - 1) + y * imgDims.x], invProjParams_d),
+	                         depth_in[(x - 1) + y * imgDims.x] > 0 ? 1 : 0);
+	Vector4f x_yp = Vector4f(reprojectImagePoint(x, y + 1, depth_in[x + (y + 1) * imgDims.x], invProjParams_d),
+	                        depth_in[x + (y + 1) * imgDims.x] > 0 ? 1 : 0);
+	Vector4f x_ym = Vector4f(reprojectImagePoint(x, y - 1, depth_in[x + (y - 1) * imgDims.x], invProjParams_d),
+	                         depth_in[x + (y - 1) * imgDims.x] > 0 ? 1 : 0);
+
+	Vector3f sum(0, 0, 0);
+	float weightSum = 0;
+
+	if (xp_y.w > 0 and x_yp.w > 0)
 	{
-		normal_out[idx].w = -1.0f;
+		Vector3f diff_x = (xp_y - x_y).toVector3();
+		Vector3f diff_y = (x_yp - x_y).toVector3();
+		if (ORUtils::length(diff_x) < 3 and ORUtils::length(diff_y) < 3)
+		{
+			weightSum += 1;
+			Vector3f normal = -ORUtils::cross(diff_x, diff_y).normalised();
+			sum += normal;
+		}
+	}
+	if (xm_y.w > 0 and x_yp.w > 0)
+	{
+		Vector3f diff_x = (x_y - xm_y).toVector3();
+		Vector3f diff_y = (x_yp - x_y).toVector3();
+		if (ORUtils::length(diff_x) < 3 and ORUtils::length(diff_y) < 3)
+		{
+			weightSum += 1;
+			Vector3f normal = -ORUtils::cross(diff_x, diff_y).normalised();
+			sum += normal;
+		}
+	}
+	if (xm_y.w > 0 and x_ym.w > 0)
+	{
+		Vector3f diff_x = (x_y - xm_y).toVector3();
+		Vector3f diff_y = (x_y - x_ym).toVector3();
+		if (ORUtils::length(diff_x) < 3 and ORUtils::length(diff_y) < 3)
+		{
+			weightSum += 1;
+			Vector3f normal = -ORUtils::cross(diff_x, diff_y).normalised();
+			sum += normal;
+		}
+	}
+	if (xp_y.w > 0 and x_ym.w > 0)
+	{
+		Vector3f diff_x = (xp_y - x_y).toVector3();
+		Vector3f diff_y = (x_y - x_ym).toVector3();
+		if (ORUtils::length(diff_x) < 3 and ORUtils::length(diff_y) < 3)
+		{
+			weightSum += 1;
+			Vector3f normal = -ORUtils::cross(diff_x, diff_y).normalised();
+			sum += normal;
+		}
+	}
+	if (weightSum == 0)
+	{
+		normal_out[idx] = Vector4f(0, 0, 0, -1);
 		sigmaZ_out[idx] = -1;
 		return;
 	}
-
-	// gradients x and y
-	diff_x = xp1_y - xm1_y, diff_y = x_yp1 - x_ym1;
-
-	outNormal = cross(diff_y, diff_x);
-
-	if (outNormal.x == 0.0f && outNormal.y == 0 && outNormal.z == 0)
-	{
-		normal_out[idx].w = -1.0f;
-		sigmaZ_out[idx] = -1;
-		return;
-	}
-	outNormal = outNormal.normalised();
-
-	normal_out[idx] = Vector4f(outNormal, 1.0f);
-
-	// now compute weight
+	normal_out[idx] = Vector4f((sum / weightSum).normalised(), 1.0f);
 	float theta = acos(outNormal.z);
 	float theta_diff = theta / (PI*0.5f - theta);
 
 	sigmaZ_out[idx] = (0.0012f + 0.0019f * (z - 0.4f) * (z - 0.4f) + 0.0001f / sqrt(z) * theta_diff * theta_diff);
+
+
+//	Vector3f diff_x(0.0f, 0.0f, 0.0f), diff_y(0.0f, 0.0f, 0.0f);
+//
+//	Vector3f xp1_y = reprojectImagePoint(x + 1, y, depth_in[(x + 1) + y * imgDims.x], invProjParams_d);
+//	Vector3f xm1_y = reprojectImagePoint(x - 1, y, depth_in[(x - 1) + y * imgDims.x], invProjParams_d);
+//	Vector3f x_yp1 = reprojectImagePoint(x, y + 1, depth_in[x + (y + 1) * imgDims.x], invProjParams_d);
+//	Vector3f x_ym1 = reprojectImagePoint(x, y - 1, depth_in[x + (y - 1) * imgDims.x], invProjParams_d);
+//
+//	float threshold = z * 0.1f;
+//	if (xp1_y.z <= 0 or x_yp1.z <= 0 or xm1_y.z <= 0 or x_ym1.z <= 0 or abs(xp1_y.z - z) > threshold or abs(xm1_y.z - z) > threshold)
+//	{
+//		normal_out[idx].w = -1.0f;
+//		sigmaZ_out[idx] = -1;
+//		return;
+//	}
+//
+//	// gradients x and y
+//	diff_x = xp1_y - xm1_y, diff_y = x_yp1 - x_ym1;
+//
+//	outNormal = cross(diff_y, diff_x);
+//
+//	if (outNormal.x == 0.0f && outNormal.y == 0 && outNormal.z == 0)
+//	{
+//		normal_out[idx].w = -1.0f;
+//		sigmaZ_out[idx] = -1;
+//		return;
+//	}
+//	outNormal = outNormal.normalised();
+//
+//	normal_out[idx] = Vector4f(outNormal, 1.0f);
+//
+//	// now compute weight
+//	float theta = acos(outNormal.z);
+//	float theta_diff = theta / (PI*0.5f - theta);
+//
+//	sigmaZ_out[idx] = (0.0012f + 0.0019f * (z - 0.4f) * (z - 0.4f) + 0.0001f / sqrt(z) * theta_diff * theta_diff);
 }
 
 } // namespace ITMLib

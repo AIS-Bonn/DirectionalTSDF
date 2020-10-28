@@ -95,8 +95,16 @@ void ITMViewBuilder_CUDA::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImag
 	if (modelSensorNoise)
 	{
 		timer.Tick();
-		this->ComputeNormalAndWeights(this->normals, view->depthUncertainty, view->depth, view->calib.intrinsics_d.projectionParamsSimple.all);
+//#define FILTER_NORMALS
+#ifdef FILTER_NORMALS
+		this->ComputeNormalAndWeights(this->normals, view->depthUncertainty, view->depth,
+		                              view->calib.intrinsics_d.projectionParamsSimple.all);
 		this->NormalFiltering(view->depthNormal, this->normals);
+#else
+		// normals from filteres image
+		this->ComputeNormalAndWeights(view->depthNormal, view->depthUncertainty, view->depth,
+																	view->calib.intrinsics_d.projectionParamsSimple.all);
+#endif
 		timeStats.normalEstimation = timer.Tock();
 	}
 }
@@ -242,7 +250,7 @@ __global__ void filterNormals_device(Vector4f *normals_out, const Vector4f *norm
 
 	if (x >= imgDims.x || y >= imgDims.y) return;
 
-	filterNormals(normals_out, normals_in, 5, 5, x, y, imgDims);
+	filterNormals(normals_out, normals_in, 2.5, 5.0, x, y, imgDims);
 }
 
 __global__ void ComputeNormalAndWeight_device(const float* depth_in, Vector4f* normal_out, float *sigmaZ_out, Vector2i imgDims, Vector4f intrinsic)

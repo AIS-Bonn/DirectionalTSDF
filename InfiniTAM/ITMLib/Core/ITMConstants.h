@@ -25,4 +25,4 @@
 #define SDF_TRANSFER_BLOCK_NUM 0x1000       // Maximum number of blocks transfered in one swap operation
 
 // Set to 1 for combination between 6 independent renderings and 0 for combined raytracing (slower)
-#define DIRECTIONAL_RENDERING_MODE 1
+#define DIRECTIONAL_RENDERING_MODE 0

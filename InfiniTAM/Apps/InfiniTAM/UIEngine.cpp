@@ -12,6 +12,7 @@
 #ifdef FREEGLUT
 #include <GL/freeglut.h>
 #include <ITMLib/Engines/ViewBuilding/ITMViewBuilderFactory.h>
+#include <ITMLib/Utils/ITMProjectionUtils.h>
 
 #else
 #if (!defined USING_CMAKE) && (defined _MSC_VER)
@@ -787,7 +788,7 @@ void SaveNormalImage(const ITMView *view, const std::string& path, ITMLibSetting
 		view->depthNormal->UpdateHostFromDevice();
 	}
 
-	ITMUChar4Image *normalImage = new ITMUChar4Image(view->depth->noDims, true, false);
+	ITMUChar4Image *normalImage = new ITMUChar4Image(view->depthNormal->noDims, true, false);
 	Vector4u *data_to = normalImage->GetData(MEMORYDEVICE_CPU);
 	const Vector4f *data_from = view->depthNormal->GetData(MEMORYDEVICE_CPU);
 
@@ -820,7 +821,7 @@ void SaveNormalDirectionImage(const ITMView *view, const std::string& path, cons
 		Vector4f normal_world = invM_d * normal_camera;
 
 		float weights[N_DIRECTIONS];
-		ComputeDirectionWeights(-normal_world.toVector3(), weights);
+		ComputeDirectionAngle(-normal_world.toVector3(), weights);
 
 		const Vector3f directionColors[6] = {
 			Vector3f(1, 0, 0),
@@ -835,7 +836,7 @@ void SaveNormalDirectionImage(const ITMView *view, const std::string& path, cons
 		Vector3f colorCombined(0, 0, 0);
 		for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
 		{
-			if (weights[direction] < direction_weight_threshold) continue;
+			if (weights[direction] < direction_angle_threshold) continue;
 
 			colorCombined += weights[direction] * directionColors[direction];
 			sumWeights += weights[direction];
@@ -865,6 +866,8 @@ void SaveErrorImage(const ITMView *view, const std::string& path, ITMLibSettings
 
 bool UIEngine::_processFrame()
 {
+	glutTimerFunc(5000, UIEngine::checkStuck, currentFrameNo);
+
 	ITMTrackingState::TrackingResult trackerResult;
 	//actual processing on the mailEngine
 	if (appData->imuSource != nullptr) trackerResult = mainEngine->ProcessFrame(inputRGBImage, inputRawDepthImage, inputIMUMeasurement, inputPose);
@@ -880,6 +883,44 @@ bool UIEngine::_processFrame()
 
 		sprintf(str, "%s/recording/depth%04d.pgm", outFolder, currentFrameNo);
 		SaveImageToFile(inputRawDepthImage, str);
+//
+//		sprintf(str, "%s/recording/depth_color%04d.pgm", outFolder, currentFrameNo);
+//		mainEngine->GetImage(outImage[0], ITMMainEngine::GetImageType::InfiniTAM_IMAGE_ORIGINAL_DEPTH, &freeviewPose, &freeviewIntrinsics, normalsFromSDF);
+//		SaveImageToFile(outImage[0], str);
+
+//		{
+//			mainEngine->GetView()->depth->UpdateHostFromDevice();
+//			ORUtils::Image<ORUtils::Vector4<float>>* points = new ORUtils::Image<ORUtils::Vector4<float>>(
+//				mainEngine->GetView()->calib.intrinsics_d.imgSize, true, false);
+//			Matrix4f invM = mainEngine->GetTrackingState()->pose_d->GetInvM();
+//
+//			Vector4f invProjParams = invertProjectionParams(mainEngine->GetView()->calib.intrinsics_d.projectionParamsSimple.all);
+//			for (int y = 0; y < mainEngine->GetImageSize().height; y++)
+//					for (int x = 0; x < mainEngine->GetImageSize().width; x++)
+//			{
+//				int i = y * mainEngine->GetImageSize().width + x;
+//				float depth = mainEngine->GetView()->depth->GetData(MEMORYDEVICE_CPU)[i];
+//				if (depth <= 0)
+//				{
+//					points->GetData(MEMORYDEVICE_CPU)[i] = Vector4f(0, 0, 0, 0);
+//					continue;
+//				}
+//				Vector3f pt_camera = reprojectImagePoint(x, y, depth, invProjParams);
+//				points->GetData(MEMORYDEVICE_CPU)[i] = Vector4f(pt_camera, 1);
+//			}
+//
+//			mainEngine->GetView()->depth->GetData(MEMORYDEVICE_CPU),
+//
+//				sprintf(str, "%s/recording/depth_cloud_%04d.pcd", outFolder, currentFrameNo);
+//
+//			mainEngine->GetView()->depthNormal->UpdateHostFromDevice();
+//
+//			SavePointCloudToPCL(
+//				points->GetData(MEMORYDEVICE_CPU),
+//				mainEngine->GetView()->depthNormal->GetData(MEMORYDEVICE_CPU),
+//				inputImages.front().second->noDims, *(mainEngine->GetTrackingState()->pose_d), str);
+//			free(points);
+//		}
 
 		if (inputRGBImage->noDims != Vector2i(0, 0)) {
 			sprintf(str, "%s/recording/rgb%04d.ppm", outFolder, currentFrameNo);
@@ -935,4 +976,15 @@ void UIEngine::Shutdown()
 	delete saveImage;
 	delete instance;
 	instance = nullptr;
+}
+
+void UIEngine::checkStuck(int frameNoBefore)
+{
+	UIEngine *uiEngine = UIEngine::Instance();
+
+	if (uiEngine->currentFrameNo <= frameNoBefore)
+	{
+		printf("Stuck while processing frame. Exiting program.");
+		exit(-2);
+	}
 }

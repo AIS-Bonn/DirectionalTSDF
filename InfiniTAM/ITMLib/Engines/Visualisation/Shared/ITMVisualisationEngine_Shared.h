@@ -4,6 +4,7 @@
 
 #include <math_constants.h>
 #include <ITMLib/Trackers/Shared/ITMDepthTracker_Shared.h>
+#include <ITMLib/Engines/Reconstruction/Shared/ITMFusionWeight.hpp>
 #include "ITMLib/Objects/Scene/ITMDirectional.h"
 #include "ITMLib/Objects/Scene/ITMMultiSceneAccess.h"
 #include "ITMLib/Objects/Scene/ITMRepresentationAccess.h"
@@ -21,6 +22,8 @@ static const CONSTPTR(int) minmaximg_subsample = 8;
 static const float bilateralFilterSigmaD = 2.0;
 static const float bilateralFilterSigmaR = 0.1;
 static const int bilateralFilterRadius = 3;
+
+static const float cluster_direction_threshold = M_PI_4;
 
 #if !(defined __METALC__)
 
@@ -42,6 +45,17 @@ struct RenderingBlock
 static const CONSTPTR(int) renderingBlockSizeX = 16;
 static const CONSTPTR(int) renderingBlockSizeY = 16;
 
+/** Project voxel onto image plane and compute uper left, lower right coordinates as well as zRange
+ * @param blockPos
+ * @param pose
+ * @param intrinsics
+ * @param imgSize
+ * @param voxelSize
+ * @param upperLeft
+ * @param lowerRight
+ * @param zRange
+ * @return
+ */
 _CPU_AND_GPU_CODE_ inline bool ProjectSingleBlock(const THREADPTR(Vector3s)& blockPos, const THREADPTR(Matrix4f)& pose,
                                                   const THREADPTR(Vector4f)& intrinsics,
                                                   const THREADPTR(Vector2i)& imgSize, float voxelSize,
@@ -455,15 +469,15 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 	totalLengthMax = length(TO_VECTOR3(pt_camera_f)) * sceneParams.oneOverVoxelSize;
 	pt_block_e = TO_VECTOR3(invM * pt_camera_f) * sceneParams.oneOverVoxelSize;
 
-	rayDirection = pt_block_e - pt_block_s;
-	float direction_norm =
-		1.0f / sqrt(rayDirection.x * rayDirection.x + rayDirection.y * rayDirection.y + rayDirection.z * rayDirection.z);
-	rayDirection *= direction_norm;
+	rayDirection = (pt_block_e - pt_block_s).normalised();
 
 	pt_result = pt_block_s;
 
 	typename TIndex::IndexCache cache;
 
+
+	bool secondTry = false;
+	foo:
 	float lastSDFValue = sdfValue;
 	while (totalLength < totalLengthMax)
 	{
@@ -521,6 +535,13 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 
 	if (fabs(sdfValue) > 0.1)
 	{
+//		totalLength += 2;
+//		pt_result += 2 * rayDirection;
+//		if (not secondTry)
+//		{
+//			secondTry = true;
+//			goto foo;
+//		}
 		return false;
 	}
 
@@ -533,6 +554,178 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 
 template<class TVoxel, class TIndex>
 _CPU_AND_GPU_CODE_ inline bool castRayDirectional2(DEVICEPTR(Vector4f)& pt_out, Vector6f* directionalContribution,
+                                                  DEVICEPTR(HashEntryVisibilityType)* entriesVisibleType,
+                                                  int x, int y, const CONSTPTR(TVoxel)* voxelData,
+                                                  const CONSTPTR(typename TIndex::IndexData)* voxelIndex,
+                                                  Matrix4f invM, Vector4f invProjParams,
+                                                  const ITMSceneParams& sceneParams,
+                                                  const CONSTPTR(Vector2f)& minMaxImg)
+{
+	Vector4f pt_camera_f;
+	Vector3f pt_block_s, pt_block_e, rayDirection, pt_result;
+	int vmIndex = 0;
+	float sdfValue = 1.0f, confidence = 0;
+	float totalLength, stepLength, totalLengthMax, stepScale;
+
+	pt_out = Vector4f(0, 0, 0, 0);
+
+	stepScale = sceneParams.mu * sceneParams.oneOverVoxelSize;
+
+	pt_camera_f = Vector4f(reprojectImagePoint(x, y, minMaxImg.x, invProjParams), 1.0f);
+	totalLength = length(TO_VECTOR3(pt_camera_f)) * sceneParams.oneOverVoxelSize;
+	pt_block_s = TO_VECTOR3(invM * pt_camera_f) * sceneParams.oneOverVoxelSize;
+
+	pt_camera_f = Vector4f(reprojectImagePoint(x, y, minMaxImg.y,
+	                                           invProjParams), 1.0f);
+	totalLengthMax = length(TO_VECTOR3(pt_camera_f)) * sceneParams.oneOverVoxelSize;
+	pt_block_e = TO_VECTOR3(invM * pt_camera_f) * sceneParams.oneOverVoxelSize;
+
+	rayDirection = (pt_block_e - pt_block_s).normalised();
+
+	pt_result = pt_block_s;
+
+	typename TIndex::IndexCache cache[N_DIRECTIONS];
+
+
+	float lastSDFValue = sdfValue;
+	while (totalLength < totalLengthMax)
+	{
+		float weightSum = 0;
+		sdfValue = 0;
+		vmIndex = false;
+		for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
+		{
+			const auto direction = TSDFDirection(directionIdx);
+			float confidence_ = 0;
+			float sdfValue_ = 1;
+			int vmIndex_ = 0;
+			sdfValue_ = readWithConfidenceFromSDF_float_interpolated(confidence, voxelData, voxelIndex,
+			                                                         pt_result, TSDFDirection(directionIdx),
+			                                                         sceneParams.maxW,
+			                                                         vmIndex, cache[directionIdx]);
+			Vector3f gradient_ = computeSingleNormalFromSDF(voxelData, voxelIndex, pt_result, direction);
+
+			float weight = DirectionWeight(DirectionAngle(gradient_, direction))
+			               * ORUtils::dot(gradient_, -rayDirection);// * confidence_;
+
+			weight = MAX(weight, 0);
+
+			sdfValue += weight * sdfValue_;
+			weightSum += weight;
+
+		}
+		if(weightSum > 0)
+		{
+			vmIndex = true;
+			sdfValue /= weightSum;
+			confidence = weightSum;
+		}
+		else
+		{
+			sdfValue = 1;
+			confidence = 0;
+		}
+
+		if (!vmIndex)
+		{
+			stepLength = SDF_BLOCK_SIZE;
+		} else
+		{
+			if (lastSDFValue > 0 and sdfValue <= 0)
+			{
+				break;
+			}
+			stepLength = MAX(sdfValue * stepScale, 1.0f);
+		}
+
+		lastSDFValue = sdfValue;
+		pt_result += stepLength * rayDirection;
+		totalLength += stepLength;
+	}
+
+	if (sdfValue > 0.0f)
+		return false;
+
+	// Perform 2 additional steps to get more accurate zero crossing
+	for (int i = 0; i < 2 or (i < 5 and fabs(sdfValue) > 1e-6); i++)
+	{
+		lastSDFValue = sdfValue;
+		stepLength = sdfValue * stepScale;
+		pt_result += stepLength * rayDirection;
+		totalLength += stepLength;
+
+		float weightSum = 0;
+		sdfValue = 0;
+		bool isFreeSpace = false;
+		vmIndex = false;
+		for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
+		{
+			const auto direction = TSDFDirection(directionIdx);
+			float confidence_ = 0;
+			float sdfValue_ = 1;
+			int vmIndex_ = 0;
+			sdfValue_ = readWithConfidenceFromSDF_float_interpolated(confidence, voxelData, voxelIndex,
+			                                                         pt_result, TSDFDirection(directionIdx),
+			                                                         sceneParams.maxW,
+			                                                         vmIndex, cache[directionIdx]);
+			Vector3f gradient_ = computeSingleNormalFromSDF(voxelData, voxelIndex, pt_result, direction);
+
+			float weight = DirectionWeight(DirectionAngle(gradient_, direction))
+			 * ORUtils::dot(gradient_, -rayDirection);// * confidence_;
+
+			if (confidence_ > 0 and sdfValue_ > 0.25)
+				isFreeSpace = true;
+
+			weight = MAX(weight, 0);
+
+			directionalContribution->v[directionIdx] = weight;
+
+			sdfValue += weight * sdfValue_;
+			weightSum += weight;
+
+		}
+		if(weightSum > 0 and not isFreeSpace)
+		{
+			vmIndex = true;
+			sdfValue /= weightSum;
+			confidence = weightSum;
+
+			if (directionalContribution)
+			{
+				for (int i = 0; i < 6; i++)
+				{
+					directionalContribution->v[i] = MAX(directionalContribution->v[i] / weightSum, 0);
+				}
+			}
+		}
+		else
+		{
+			sdfValue = 1;
+			confidence = 0;
+		}
+
+		// Compensate sign hopping with little to no reduction in magnitude (steep angles)
+		float reductionFactor = (fabs(sdfValue) - fabs(lastSDFValue)) / fabs(lastSDFValue);
+		// rF < 0: magnitude reduction, rF > 0: magnitude increase
+		if (SIGN(sdfValue) != SIGN(lastSDFValue) and reductionFactor > -0.75)
+		{
+			stepScale *= 0.5;
+		}
+	}
+
+	if (fabs(sdfValue) > 0.1)
+	{
+		return false;
+	}
+
+	// multiply by transition: negative transition <=> negative confidence!
+	pt_out = Vector4f(pt_result, confidence);
+
+	return true;
+}
+
+template<class TVoxel, class TIndex>
+_CPU_AND_GPU_CODE_ inline bool castRayDirectional(DEVICEPTR(Vector4f)& pt_out, Vector6f* directionalContribution,
                                                    DEVICEPTR(HashEntryVisibilityType)* entriesVisibleType,
                                                    int x, int y, const CONSTPTR(TVoxel)* voxelData,
                                                    const CONSTPTR(typename TIndex::IndexData)* voxelIndex,
@@ -558,50 +751,70 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional2(DEVICEPTR(Vector4f)& pt_out, 
 	totalLengthMax = length(TO_VECTOR3(pt_camera_f)) * sceneParams.oneOverVoxelSize;
 	pt_block_e = TO_VECTOR3(invM * pt_camera_f) * sceneParams.oneOverVoxelSize;
 
-	rayDirection = pt_block_e - pt_block_s;
-	float direction_norm =
-		1.0f / sqrt(rayDirection.x * rayDirection.x + rayDirection.y * rayDirection.y + rayDirection.z * rayDirection.z);
-	rayDirection *= direction_norm;
-
+	rayDirection = (pt_block_e - pt_block_s).normalised();
 	pt_result = pt_block_s;
 
-	/// Find first positive zero crossing
+	float maxDistancePerVoxel = sceneParams.voxelSize / sceneParams.mu;
+
+	// 1) Find first zero crossing with positive confidence (or use first crossing if all confidences = 0)
 	int vmIndex;
 	float sdfValues[N_DIRECTIONS] = {1, 1, 1, 1, 1, 1};
 	float lastSDFValues[N_DIRECTIONS] = {1, 1, 1, 1, 1, 1};
 	typename TIndex::IndexCache cache[N_DIRECTIONS];
 	float stepLength = SDF_BLOCK_SIZE;
-	TSDFDirection_type firstCrossingDirection = static_cast<TSDFDirection_type>(TSDFDirection::NONE);
+	auto firstCrossingDirection = static_cast<TSDFDirection_type>(TSDFDirection::NONE);
+	float firstCrossingLength = 0;
+	Vector3f pt_firstCrossing;
 	while (totalLength < totalLengthMax)
 	{
 		bool foundZeroCrossing = false;
+		bool isFreeSpace = false;
 		int numReadableValues = 0;
 		for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
 		{
 			const auto direction = TSDFDirection(directionIdx);
 
-			sdfValues[directionIdx] = readFromSDF_float_uninterpolated(voxelData, voxelIndex, pt_result, direction, vmIndex,
-			                                                           cache[directionIdx]);
+			float confidence = 0;
+			sdfValues[directionIdx] = readWithConfidenceFromSDF_float_uninterpolated(confidence, voxelData, voxelIndex,
+			                                                                         pt_result, direction, sceneParams.maxW,
+			                                                                         vmIndex, cache[directionIdx]);
+			if (confidence > 0 and sdfValues[directionIdx] > maxDistancePerVoxel) isFreeSpace = true;
 
 			if (vmIndex)
 			{
 				numReadableValues++;
-				float confidence = 0;
 				if (sdfValues[directionIdx] <= 0.5 and sdfValues[directionIdx] >= -0.5)
 				{
 					sdfValues[directionIdx] = readWithConfidenceFromSDF_float_interpolated(confidence, voxelData, voxelIndex,
 					                                                                       pt_result, TSDFDirection(directionIdx),
 					                                                                       sceneParams.maxW,
 					                                                                       vmIndex, cache[directionIdx]);
+					if (confidence > 0 and sdfValues[directionIdx] > maxDistancePerVoxel) isFreeSpace = true;
 				}
 				if (lastSDFValues[directionIdx] > 0 and sdfValues[directionIdx] <= 0)
 				{
-					totalLengthMax = MIN(totalLengthMax, totalLength + SDF_BLOCK_SIZE);
-					if (confidence > 0)
+//					Vector3f ptGradient = pt_result + rayDirection * sdfValues[directionIdx] * stepScale; // closer to surface, so gradient computation always works
+//					Vector3f gradient = computeSingleNormalFromSDF(voxelData, voxelIndex,
+//					                                               ptGradient, TSDFDirection(directionIdx)).normalised();
+//					// Check if surface towards camera and compatible with direction
+//					bool isApplicable = SIGN(dot(gradient, -rayDirection)) > 0 and
+//					                    DirectionAngle(gradient, TSDFDirection(directionIdx)) < direction_angle_threshold;
+					bool isApplicable = true;
+
+					// Select first crossing with confidence > 0 or just first crossing if all confidences == 0
+					if (firstCrossingDirection >= N_DIRECTIONS and isApplicable)
 					{
+						pt_firstCrossing = pt_result;
 						firstCrossingDirection = directionIdx;
+						firstCrossingLength = totalLength;
+					}
+					if (confidence > 0 and isApplicable)
+					{
+						pt_firstCrossing = pt_result;
+						firstCrossingDirection = directionIdx;
+						firstCrossingLength = totalLength;
 						foundZeroCrossing = true;
-						break;
+//						break; // don't break to allow free space detection
 					}
 				}
 				stepLength = MIN(stepLength, MAX(sdfValues[directionIdx] * stepScale, 1.0f));
@@ -609,24 +822,37 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional2(DEVICEPTR(Vector4f)& pt_out, 
 			lastSDFValues[directionIdx] = sdfValues[directionIdx];
 		}
 
+		if (foundZeroCrossing and not isFreeSpace)
+			break;
+
+		if (isFreeSpace)
+		{
+			firstCrossingDirection = static_cast<TSDFDirection_type>(TSDFDirection::NONE);
+		}
+
 		pt_result += stepLength * rayDirection;
 		totalLength += stepLength;
 
 		if (numReadableValues == 0)
 			stepLength = SDF_BLOCK_SIZE;
-
-		if (foundZeroCrossing)
-			break;
 	}
 
-	if (firstCrossingDirection >= N_DIRECTIONS or sdfValues[firstCrossingDirection] > 0.0)
+	totalLength = firstCrossingLength;
+	totalLengthMax = MIN(totalLengthMax, totalLength + SDF_BLOCK_SIZE);
+
+	pt_result = pt_firstCrossing;
+
+	if (firstCrossingDirection >= N_DIRECTIONS)
 		return false;
 
-	/// Check which directions have usable information
+	firstCrossingDirection = static_cast<TSDFDirection_type>(TSDFDirection::Z_NEG);
+
+	// 2) Determine best direction (via confidence & gradient)
 	float weights[N_DIRECTIONS] = {1, 1, 1, 1, 1, 1};
+//	float weights[N_DIRECTIONS] = {0, 0, 0, 0, 0, 0};
 	Vector3f gradients[N_DIRECTIONS];
 	float maxConfidence = 0;
-	TSDFDirection_type maxConfidenceIdx = static_cast<TSDFDirection_type>(TSDFDirection::NONE);
+	auto maxConfidenceIdx = firstCrossingDirection;
 	for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
 	{
 		float confidence = 0;
@@ -634,59 +860,55 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional2(DEVICEPTR(Vector4f)& pt_out, 
 		                                                                       TSDFDirection(directionIdx),
 		                                                                       sceneParams.maxW,
 		                                                                       vmIndex, cache[directionIdx]);
-		if (confidence == 0)
+		if (confidence == 0)// and directionIdx != firstCrossingDirection)
 		{
 			weights[directionIdx] = 0;
 			continue;
 		}
-		gradients[directionIdx] = computeSingleNormalFromSDF(voxelData, voxelIndex, pt_result,
-		                                                     TSDFDirection(directionIdx)).normalised();
-		confidence *= DirectionWeight(gradients[directionIdx], TSDFDirection(directionIdx));
+		Vector3f ptGradient = pt_result + rayDirection * sdfValues[directionIdx] * stepScale; // closer to surface, so gradient computation always works
+		gradients[directionIdx] = computeSingleNormalFromSDF(voxelData, voxelIndex, ptGradient, TSDFDirection(directionIdx));
+		// Compliance of surface gradient wrt direction
+//		confidence *= DirectionAngle(gradients[directionIdx], TSDFDirection(directionIdx));
+//		confidence *= DirectionWeight(DirectionAngle(gradients[directionIdx], TSDFDirection(directionIdx)));
+		// Exclude points on opposite side
 		confidence *= SIGN(dot(gradients[directionIdx], -rayDirection));
 
 		if (confidence > maxConfidence)
 		{
 			maxConfidence = confidence;
 			maxConfidenceIdx = directionIdx;
+		} else if (confidence <= 0)
+		{
+			weights[directionIdx] = 0;
 		}
 	}
 
-	firstCrossingDirection = maxConfidenceIdx;
-
-	if (firstCrossingDirection >= N_DIRECTIONS)
+	if (maxConfidenceIdx >= N_DIRECTIONS)
 		return false;
 
-	/// Perform steps to get closer to zero crossing
-	float sdfValue = sdfValues[firstCrossingDirection];
+	float sdfValue = sdfValues[maxConfidenceIdx];
 
-	/// Determine directions and weights to use for final interpolation (surface gradient)
-	float weights_[N_DIRECTIONS];
-	ComputeDirectionWeights(gradients[firstCrossingDirection], weights_);
+	// 3) Determine directions and weights to use for final interpolation (surface gradient)
+	float angles[N_DIRECTIONS];
+	ComputeDirectionAngle(gradients[maxConfidenceIdx], angles);
 
 	for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
 	{
-		if (weights[directionIdx] <= 0 or directionIdx == firstCrossingDirection)
+		if (weights[directionIdx] <= 0)
 			continue;
 
-		if (weights_[directionIdx] < direction_weight_threshold)
-		{
-			weights[directionIdx] = 0;
-			continue;
-		}
-
-		weights[directionIdx] = weights_[directionIdx] * dot(gradients[directionIdx], gradients[firstCrossingDirection]);
+//		weights[directionIdx] = DirectionWeight(angles[directionIdx]) * dot(gradients[directionIdx], gradients[maxConfidenceIdx]);
+		weights[directionIdx] = dot(gradients[directionIdx], gradients[maxConfidenceIdx]);
 		if (weights[directionIdx] != weights[directionIdx])
 			weights[directionIdx] = 0; // check NaN
 	}
 
-	stepScale =
-		sceneParams.mu * sceneParams.oneOverVoxelSize / MAX(fabs(dot(gradients[firstCrossingDirection], rayDirection)),
-		                                                    0.5); // Adapt step scale to angle between surface and observation ray
+	// Adapt step scale to angle between surface and observation ray
+	stepScale = sceneParams.mu * sceneParams.oneOverVoxelSize / MAX(fabs(dot(gradients[maxConfidenceIdx], rayDirection)), 0.5);
 
-	float dbg_[10];
-	float dbg2_[10];
+	pt_result += rayDirection * sdfValues[maxConfidenceIdx] * stepScale; // closer to surface, so gradient computation always works
 
-	/// Perform additional steps to get more accurate zero crossing (interpolate directions)
+	// 4) Perform additional steps to get more accurate zero crossing (interpolate directions)
 	float contributionWeights[N_DIRECTIONS] = {0, 0, 0, 0, 0, 0};
 	float lastSDFValue;
 	float weightSum = 0;
@@ -697,7 +919,7 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional2(DEVICEPTR(Vector4f)& pt_out, 
 		weightSum = 0;
 		for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
 		{
-			if (weights[directionIdx] < direction_weight_threshold) continue;
+			if (weights[directionIdx] <= 0) continue;
 
 			float confidence = 0;
 			float value = readWithConfidenceFromSDF_float_interpolated(confidence, voxelData, voxelIndex, pt_result,
@@ -705,10 +927,14 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional2(DEVICEPTR(Vector4f)& pt_out, 
 			                                                           sceneParams.maxW,
 			                                                           vmIndex, cache[directionIdx]);
 
-			if (confidence == 0)
+			if (confidence == 0 and directionIdx != maxConfidenceIdx)
 			{
 				weights[directionIdx] = 0; // Direction not applicable for estimation
+				contributionWeights[directionIdx] = 0;
 				continue;
+			} else
+			{
+				confidence = MAX(confidence, 1e-6);
 			}
 
 			contributionWeights[directionIdx] = confidence * weights[directionIdx];
@@ -716,24 +942,57 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional2(DEVICEPTR(Vector4f)& pt_out, 
 			sdfValue += contributionWeights[directionIdx] * value;
 			weightSum += contributionWeights[directionIdx];
 		}
-		if (weightSum == 0)
+		if (weightSum <= 0)
 			return false;
 
 		sdfValue /= weightSum;
-		if (SIGN(sdfValue) != SIGN(lastSDFValue) and (fabs(sdfValue) - fabs(lastSDFValue)) / fabs(lastSDFValue) > -0.75)
-		{ // Sign hopping with little to no reduction in magnitude
+		float reductionFactor = (fabs(sdfValue) - fabs(lastSDFValue)) / fabs(lastSDFValue);
+		// rF < 0: magnitude reduction, rF > 0: magnitude increase
+		if (SIGN(sdfValue) != SIGN(lastSDFValue) and reductionFactor > -0.75)
+		{
 			stepScale *= 0.5;
 		}
-		dbg2_[i] = stepScale;
 
 		stepLength = sdfValue * stepScale;
 		pt_result += stepLength * rayDirection;
 		totalLength += stepLength;
 
-		dbg_[i] = sdfValue;
+		// Prevent searching too far behind first zero crossing
+		if (totalLength > totalLengthMax)
+			break;
 	}
-	if (fabs(sdfValue) > 0.1)
+	if (fabs(sdfValue) > 0.1)// or totalLength > totalLengthMax) // no convergence
+	{
 		return false;
+	}
+
+	// 5) Check all directions we'd suppose to see the surface. If it is not there -> don't render!
+	for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
+	{
+//		if (angles[directionIdx] < cluster_direction_threshold) continue;
+
+		// Only check directions for conflict which haven't been used for estimate
+		if (contributionWeights[directionIdx] > 0) continue;
+
+		float confidence = 0;
+		float value = readWithConfidenceFromSDF_float_interpolated(confidence, voxelData, voxelIndex, pt_result,
+		                                                           TSDFDirection(directionIdx),
+		                                                           sceneParams.maxW,
+		                                                           vmIndex, cache[directionIdx]);
+		if (confidence <= 0) continue;
+
+		float sdfThreshold = 0.5f / (sceneParams.mu / sceneParams.voxelSize); // allow maximum half a voxel size of distance to the surface
+		if (value > sdfThreshold)
+		{
+			return false;
+		}
+
+		// Directions which could concur with the surface normal taken more seriously
+//		if (angles[directionIdx] < cluster_direction_threshold and value > 0)
+//		{
+//			return false;
+//		}
+	}
 
 	if (directionalContribution)
 	{
@@ -744,146 +1003,6 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional2(DEVICEPTR(Vector4f)& pt_out, 
 	}
 
 	pt_out = Vector4f(pt_result, weightSum);
-	return true;
-}
-
-/**
- *
- * @param directionalContribution vector of floats that holds the proportional contribution of every direction to the pixel
- */
-template<class TVoxel, class TIndex>
-_CPU_AND_GPU_CODE_ inline bool castRayDirectional(DEVICEPTR(Vector4f)& pt_out, Vector6f* directionalContribution,
-                                                  DEVICEPTR(HashEntryVisibilityType)* entriesVisibleType,
-                                                  int x, int y, const CONSTPTR(TVoxel)* voxelData,
-                                                  const CONSTPTR(typename TIndex::IndexData)* voxelIndex,
-                                                  Matrix4f invM, Vector4f invProjParams,
-                                                  const ITMSceneParams& sceneParams,
-                                                  const CONSTPTR(Vector2f)& minMaxImg)
-{
-	Vector3f ptStart_camera = reprojectImagePoint(x, y, minMaxImg.x, invProjParams);
-	Vector3f ptStart_world = (invM * Vector4f(ptStart_camera, 1.0f)).toVector3() * sceneParams.oneOverVoxelSize;
-
-	Vector3f ptEnd_camera = reprojectImagePoint(x, y, minMaxImg.y, invProjParams);
-	Vector3f ptEnd_world = (invM * Vector4f(ptEnd_camera, 1.0f)).toVector3() * sceneParams.oneOverVoxelSize;
-
-	Vector3f rayDirection_world = (ptEnd_world - ptStart_world).normalised();
-
-	/// collect TSDF directions which are applicable for ray
-	float directionWeights[N_DIRECTIONS];
-	ComputeDirectionWeights(-rayDirection_world, directionWeights);
-
-	float max = 0;
-	int maxIdx = -1;
-	for (uchar directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
-	{
-		if (directionWeights[directionIdx] < direction_weight_threshold)
-			continue;
-		if (directionWeights[directionIdx] > max)
-		{
-			max = directionWeights[directionIdx];
-			maxIdx = directionIdx;
-		}
-	}
-	int opositeIdx = 2 * (maxIdx / 2) + (1 - maxIdx % 2);
-
-	const float MAX_LENGTH = 1e9;
-	float directionIntersectionLength[N_DIRECTIONS] = {MAX_LENGTH, MAX_LENGTH, MAX_LENGTH, MAX_LENGTH, MAX_LENGTH,
-	                                                   MAX_LENGTH};
-	float directionIntersectionWeight[N_DIRECTIONS] = {0, 0, 0, 0, 0, 0};
-	Vector3f directionIntersectionPoint[N_DIRECTIONS];
-	Vector3f directionIntersectionNormal[N_DIRECTIONS];
-	float maxIntersectionLength = -1;
-	for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
-	{
-		if (directionIdx == opositeIdx)
-			continue;
-		Vector4f point;
-		float distance = -1;
-		if (castRayDefault<TVoxel, TIndex>(
-			point, distance,
-			entriesVisibleType, x, y, voxelData, voxelIndex,
-			invM, invProjParams, sceneParams, minMaxImg, TSDFDirection(directionIdx),
-			maxIntersectionLength > 0 ? maxIntersectionLength + SDF_BLOCK_SIZE / sceneParams.oneOverVoxelSize : -1))
-		{
-			maxIntersectionLength = MAX(maxIntersectionLength, distance);
-#if 1
-			const auto direction = TSDFDirection(directionIdx);
-			directionIntersectionNormal[directionIdx] = computeSingleNormalFromSDF(
-				voxelData, voxelIndex, point.toVector3(), direction).normalised();
-			float directionCompliance = DirectionWeight(directionIntersectionNormal[directionIdx], direction);
-			if (directionCompliance >= direction_weight_threshold)
-			{
-				directionIntersectionPoint[directionIdx] = point.toVector3();
-				directionIntersectionLength[directionIdx] = distance;
-				directionIntersectionWeight[directionIdx] = point.w;
-			}
-#else
-			directionIntersectionPoint[directionIdx] = point.toVector3();
-			directionIntersectionLength[directionIdx] = distance;
-			directionIntersectionWeight[directionIdx] = point.w;
-#endif
-		}
-	}
-
-	/// Find closest intersection
-	float currentIntersectionLength = MAX_LENGTH;
-	int currentIntersectionIdx = -1;
-	for (TSDFDirection_type idx = 0; idx < N_DIRECTIONS; idx++)
-	{
-		if (directionIntersectionLength[idx] < currentIntersectionLength)
-		{
-			currentIntersectionLength = directionIntersectionLength[idx];
-			currentIntersectionIdx = idx;
-		}
-	}
-
-	/// Find most suitable intersection (innermost one in vicinity of first intersection)
-	float shortestIntersectionLength = currentIntersectionLength;
-	int shortestIntersectionIdx = currentIntersectionIdx;
-	for (TSDFDirection_type idx = 0; idx < N_DIRECTIONS; idx++)
-	{
-		if (directionIntersectionLength[idx] - shortestIntersectionLength > 0 and
-		    directionIntersectionLength[idx] - currentIntersectionLength < SDF_BLOCK_SIZE)
-		{
-			shortestIntersectionLength = directionIntersectionLength[idx];
-			shortestIntersectionIdx = idx;
-		}
-	}
-	currentIntersectionIdx = shortestIntersectionIdx;
-	currentIntersectionLength = shortestIntersectionLength;
-
-	float weightSum = 0;
-	pt_out = Vector4f(0, 0, 0, 0);
-	for (TSDFDirection_type idx = 0; idx < N_DIRECTIONS; idx++)
-	{
-		if (directionIntersectionLength[idx] - currentIntersectionLength < SDF_BLOCK_SIZE)
-		{
-			pt_out += Vector4f(directionIntersectionPoint[idx] * directionIntersectionWeight[idx], 0);
-			weightSum += directionIntersectionWeight[idx];
-		} else
-		{
-			directionIntersectionWeight[idx] = 0; // Set 0 to exclude from coloring
-		}
-	}
-	float oneOverWeightSum = 1 / weightSum;
-
-	pt_out *= oneOverWeightSum;
-	pt_out.w = weightSum;
-
-	if (currentIntersectionIdx < 0 or weightSum <= 0)
-	{
-		pt_out.w = 0.0f;
-		return false;
-	}
-
-	if (directionalContribution)
-	{
-		for (int i = 0; i < 6; i++)
-		{
-			directionalContribution->v[i] = directionIntersectionWeight[i] * oneOverWeightSum;
-		}
-	}
-
 	return true;
 }
 
@@ -899,9 +1018,10 @@ _CPU_AND_GPU_CODE_ inline bool castRay(DEVICEPTR(Vector4f)& pt_out, Vector6f* di
 {
 	float distance;
 	if (directionalTSDF)
-//		return castRayDirectional<TVoxel, TIndex>(pt_out, directionalContribution, entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams, sceneParams, minMaxImg);
-		return castRayDirectional2<TVoxel, TIndex>(pt_out, directionalContribution, entriesVisibleType, x, y, voxelData,
-		                                           voxelIndex, invM, invProjParams, sceneParams, minMaxImg);
+//		return castRayDirectional<TVoxel, TIndex>(pt_out, directionalContribution, entriesVisibleType, x, y, voxelData,
+//		                                           voxelIndex, invM, invProjParams, sceneParams, minMaxImg);
+	return castRayDirectional2<TVoxel, TIndex>(pt_out, directionalContribution, entriesVisibleType, x, y, voxelData,
+	                                          voxelIndex, invM, invProjParams, sceneParams, minMaxImg);
 //		return castRayDefault<TVoxel, TIndex>(pt_out, distance, entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams,
 //																					sceneParams, minMaxImg, TSDFDirection::Z_NEG);
 	else
@@ -951,7 +1071,7 @@ _CPU_AND_GPU_CODE_ inline void processPixelICP(DEVICEPTR(Vector4f)& pointsMap, D
 
 template<typename T>
 _CPU_AND_GPU_CODE_
-inline void insertionSort(const T* in, T* out, size_t* outIds, size_t length)
+inline void insertionSort(const T* in, T* out, int* outIds, size_t length)
 {
 	for (size_t idx = 0; idx < length; idx++)
 	{
@@ -973,29 +1093,48 @@ inline void findBestCluster(const float* distances, const float* confidences, co
                             int* clusterOutput, Vector3f& clusterNormalOutput)
 {
 	float distancesSorted[N_DIRECTIONS];
-	size_t distancesSortedIds[N_DIRECTIONS];
+	int distancesSortedIds[N_DIRECTIONS] = {-1, -1, -1, -1, -1, -1};
 	insertionSort(distances, distancesSorted, distancesSortedIds, N_DIRECTIONS);
 
-	/// Cluster the distances. Number indicates starting index of a cluster (end indicated by next cluster or -1)
+	/** number indicates starting index of a cluster (end indicated by next cluster or -1)
+	 * index corresponds to distancesSorted */
 	int clusters[N_DIRECTIONS] = {-1, -1, -1, -1, -1, -1};
+
+	/** confidences for each cluster */
 	float clusterConfidences[N_DIRECTIONS] = {0, 0, 0, 0, 0, 0};
+
+	/** representative normal for each cluster */
 	Vector3f clusterNormals[N_DIRECTIONS];
+
 	uchar numClusters = 0;
 	float lastDistance = -1;
 	float interClusterMaxConfidence = -1;
+	float interClusterCenterDistanceSum = 0;
 	float sumConfidences = 0;
-	for (uchar idx = 0; idx < N_DIRECTIONS and distancesSorted[idx] >= 0; idx++)
+
+	/// 1. cluster the distances
+	for (uchar idx = 0; idx < N_DIRECTIONS and distancesSorted[idx] >= 0 and distancesSorted[idx] < INF_FLOAT; idx++)
 	{
-		if (fabs(distancesSorted[idx] - lastDistance) > 8) // maximum distance in voxels
+		float interClusterCenterDistance = lastDistance;
+		if (clusterConfidences[numClusters] > 0)
+			interClusterCenterDistance = interClusterCenterDistanceSum / clusterConfidences[numClusters];
+
+		const double maxClusterRadius = 2;
+		if (fabs(distancesSorted[idx] - interClusterCenterDistance) > maxClusterRadius
+				or distancesSorted[idx] - distancesSorted[clusters[numClusters - 1]] > 2 * maxClusterRadius
+		    or ORUtils::dot(clusterNormals[numClusters - 1], normals[distancesSortedIds[idx]]) < 0)//cluster_direction_threshold) // maximum deviation of normal
 		{
-			clusters[numClusters] = idx;
 			numClusters++;
+			clusters[numClusters - 1] = idx;
+			clusterNormals[numClusters - 1] = normals[distancesSortedIds[idx]];
 			interClusterMaxConfidence = -1;
+			interClusterCenterDistanceSum = 0;
 		}
 		lastDistance = distancesSorted[idx];
 
 		float confidence = confidences[distancesSortedIds[idx]];
 		clusterConfidences[numClusters - 1] += confidence;
+		interClusterCenterDistanceSum += confidence * distancesSorted[idx];
 
 		if (confidence > interClusterMaxConfidence)
 		{
@@ -1009,11 +1148,34 @@ inline void findBestCluster(const float* distances, const float* confidences, co
 	int bestCluster = -1;
 	for (uchar idx = 0; idx < N_DIRECTIONS and clusters[idx] >= 0; idx++)
 	{
-		if (clusterConfidences[idx] >= 0.1 * sumConfidences)
+		bool skip = false;
+		/// Check if there is a more distant cluster containing point from a direction which complies with this cluster's normal
+		/// -> this is likely to be a false positive (successfully reduces overhanging edges)
+		if (idx + 1 < N_DIRECTIONS and clusters[idx + 1] >= 0)
+		{
+			for (uchar j = clusters[idx + 1]; j < N_DIRECTIONS and distancesSorted[j] > 0 and distancesSorted[j] < INF_FLOAT; j++)
+			{
+				if (//confidences[distancesSortedIds[j]] > 0 and
+					DirectionAngle(clusterNormals[idx], TSDFDirection(distancesSortedIds[j])) > cluster_direction_threshold)
+				{
+					skip = true;
+					break;
+				}
+			}
+		}
+
+		// First cluster with positive confidence
+		if (not skip and clusterConfidences[idx] > 0)
 		{
 			bestCluster = idx;
 			break;
 		}
+	}
+
+	// If no cluster, select first one
+	if (bestCluster < 0 and clusters[0] >= 0)
+	{
+		bestCluster = 0;
 	}
 
 	for (uchar i = 0; i < N_DIRECTIONS; i++)
@@ -1075,7 +1237,7 @@ _CPU_AND_GPU_CODE_ inline void combineDirectionalPointClouds(
 		directionalContribution[locId].v[directionIdx] = 0;
 
 		point = inputPointClouds.pointCloud[directionIdx][locId];
-		confidence = point.w ;//- 1;
+		confidence = point.w ;
 
 		bool foundPoint = confidence > 0.0f;
 		if (not foundPoint)
@@ -1083,20 +1245,20 @@ _CPU_AND_GPU_CODE_ inline void combineDirectionalPointClouds(
 
 		distance = length(cameraPos_world - point.toVector3());
 
-		float angle;
+		float angle; // becomes dot(-viewRay, normal)
 		computeNormalAndAngle<useSmoothing, flipNormals>(inputPointClouds.pointCloud[directionIdx],
 		                                                 inputPointClouds.pointCloudNormals[directionIdx],
 		                                                 cameraPos_world, imgSize, x, y,
 		                                                 foundPoint, normal, angle);
 
-		if (not foundPoint or DirectionWeight(normal, TSDFDirection(directionIdx)) < direction_weight_threshold)
+		if (not foundPoint or DirectionAngle(normal, TSDFDirection(directionIdx)) > direction_angle_threshold)
 		{
 			confidence = 0;
 			continue;
 		}
 
 		// Compliance of surface gradient wrt direction
-		confidence *= angle; //DirectionWeight(normal, TSDFDirection(directionIdx));
+//		confidence *= DirectionWeight(angle); // DirectionAngle(normal, TSDFDirection(directionIdx));
 		// Exclude points on opposite side
 		confidence *= SIGN(dot(normal, -viewRay));
 
@@ -1121,10 +1283,10 @@ _CPU_AND_GPU_CODE_ inline void combineDirectionalPointClouds(
 //	 {
 //					 TSDFDirection_type directionIdx = cluster[idx];
 ////           if (DirectionWeight(-viewRay, TSDFDirection(directionIdx)) >= direction_weight_threshold)
-//					 if (DirectionWeight(clusterNormal, TSDFDirection(directionIdx)) >= direction_weight_threshold)
+//					 if (DirectionAngle(clusterNormal, TSDFDirection(directionIdx)) >= direction_angle_threshold)
 //					 {
 //									 clusterHasGoodDirection = true;
-//									 float confidence = confidences[directionIdx] * DirectionWeight(normals[directionIdx], TSDFDirection(directionIdx));
+//									 float confidence = confidences[directionIdx] * DirectionAngle(normals[directionIdx], TSDFDirection(directionIdx));
 //									 if (confidences[directionIdx] > 0 and confidence > bestDirectionConfidence)
 //									 {
 //													 bestDirectionConfidence = confidence;
@@ -1155,11 +1317,11 @@ _CPU_AND_GPU_CODE_ inline void combineDirectionalPointClouds(
 			continue;
 
 		// Filter directions, that don't apply to gradient
-		if (DirectionWeight(clusterNormal, TSDFDirection(directionIdx)) < direction_weight_threshold)
+		if (DirectionAngle(clusterNormal, TSDFDirection(directionIdx)) > direction_angle_threshold)
 			continue;
 
 		// Filter gradients, that are too different
-		if (dot(normal, clusterNormal) < direction_weight_threshold)
+		if (dot(normal, clusterNormal) < cluster_direction_threshold)
 			continue;
 
 		float weight = confidence * dot(normal, clusterNormal);
@@ -1196,27 +1358,11 @@ _CPU_AND_GPU_CODE_ inline void processPixelICP(DEVICEPTR(Vector4f)* pointsMap, D
 
 	if (foundPoint)
 	{
-		Vector4f outPoint4;
-		outPoint4.x = point.x * voxelSize;
-		outPoint4.y = point.y * voxelSize;
-		outPoint4.z = point.z * voxelSize;
-		outPoint4.w = point.w;//outPoint4.w = 1.0f;
-		pointsMap[locId] = outPoint4;
-
-		Vector4f outNormal4;
-		outNormal4.x = outNormal.x;
-		outNormal4.y = outNormal.y;
-		outNormal4.z = outNormal.z;
-		outNormal4.w = 0.0f;
-		normalsMap[locId] = outNormal4;
+		pointsMap[locId] = Vector4f(point.toVector3() * voxelSize, point.w);
+		normalsMap[locId] = Vector4f(outNormal, 0);
 	} else
 	{
-		Vector4f out4;
-		out4.x = 0.0f;
-		out4.y = 0.0f;
-		out4.z = 0.0f;
-		out4.w = -1.0f;
-
+		Vector4f out4(0, 0, 0, -1);
 		pointsMap[locId] = out4;
 		normalsMap[locId] = out4;
 	}
@@ -1311,8 +1457,9 @@ _CPU_AND_GPU_CODE_ inline void processPixelColour(
 {
 	float angle;
 	Vector3f outNormal;
-	computeNormalAndAngle<TVoxel, TIndex>(foundPoint, point, directionalContribution, voxelData, voxelIndex,
-	                                      lightSource, outNormal, angle);
+//	computeNormalAndAngle<TVoxel, TIndex>(foundPoint, point, directionalContribution, voxelData, voxelIndex,
+//	                                      lightSource, outNormal, angle);
+	angle =1;
 
 	if (foundPoint)
 	{
@@ -1399,6 +1546,8 @@ processPixelError(Vector4u* outRendering, const Vector4f* pointsRay, const Vecto
 	if (!isValidPoint) {// or angle <= 0.0) {
 		if (depth[locId] > 0)
 			outRendering[locId] = Vector4u(127, 127, 127, 255);
+		else if (pointsRay[locId].w > 0)
+			outRendering[locId] = Vector4u(255, 255, 255, 255);
 		else
 			outRendering[locId] = Vector4u(0, 0, 0, 0);
 		return;

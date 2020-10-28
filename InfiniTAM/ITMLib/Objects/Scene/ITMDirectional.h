@@ -13,7 +13,7 @@ _CPU_AND_GPU_CODE_
 const static size_t N_DIRECTIONS = 6;
 
 _CPU_AND_GPU_CODE_
-const static float direction_weight_threshold = 0.3826834323650898f; // approx of sin(pi/8)
+const static float direction_angle_threshold = 0.60 * M_PI_2;
 
 enum class TSDFDirection : std::uint8_t
 {
@@ -51,16 +51,8 @@ inline const char* TSDFDirectionToString(TSDFDirection direction)
 	return "UNKNOWN";
 }
 
-/**
- * Computes the compliance of the given normal with each directions.
- *
- * The weight is computed by a dot product, so each weight is in [-1, 1]. Negative values mean non-compliance
- * and a value of 1 is full compliance.
- * @param normal
- * @param weights
- */
 _CPU_AND_GPU_CODE_
-inline void ComputeDirectionWeights(const Vector3f& normal, float weights[N_DIRECTIONS])
+inline float DirectionAngle(const Vector3f& normal, TSDFDirection direction)
 {
 	const Vector3f TSDFDirectionVectors[N_DIRECTIONS] = {
 		Vector3f(1,  0,  0),
@@ -70,25 +62,26 @@ inline void ComputeDirectionWeights(const Vector3f& normal, float weights[N_DIRE
 		Vector3f(0,  0,  1),
 		Vector3f(0,  0,  -1)
 	};
-	for (size_t i = 0; i < 3; i++)
-	{
-		weights[2 * i] = dot(normal, TSDFDirectionVectors[2 * i]);
-		weights[2 * i + 1] = -weights[2 * i]; // opposite direction -> negative value
-	}
+	float angleCos = dot(normal, TSDFDirectionVectors[static_cast<TSDFDirection_type>(direction)]);
+	angleCos = MAX(MIN(angleCos, 1), -1);
+	return acos(angleCos);
 }
 
+/**
+ * Computes the angle between the normal and every direction vector.
+ *
+ * The angle is computed as acos of the dot product, so each angle is in [0, pi].
+ * @param normal
+ * @param angles
+ */
 _CPU_AND_GPU_CODE_
-inline float DirectionWeight(const Vector3f& normal, TSDFDirection direction)
+inline void ComputeDirectionAngle(const Vector3f& normal, float * angles)
 {
-	const Vector3f TSDFDirectionVectors[N_DIRECTIONS] = {
-		Vector3f(1,  0,  0),
-		Vector3f(-1, 0,  0),
-		Vector3f(0,  1,  0),
-		Vector3f(0,  -1, 0),
-		Vector3f(0,  0,  1),
-		Vector3f(0,  0,  -1)
-	};
-	return dot(normal, TSDFDirectionVectors[static_cast<TSDFDirection_type>(direction)]);
+	for (size_t i = 0; i < 3; i++)
+	{
+		angles[2 * i] = DirectionAngle(normal, TSDFDirection(2 * i));
+		angles[2 * i + 1] = M_PI - angles[2 * i]; // opposite direction -> opposite angle
+	}
 }
 
 //__device__

@@ -47,6 +47,14 @@ namespace ITMLib
 		return (seed * value) % 16235657;
 	}
 
+	/**
+	 * l-word hash function as suggested by M. N. Wegman 1977
+	 *
+	 * h(xyz) = h1(x) + h2(y) + h3(z) mod M
+	 * @tparam T
+	 * @param blockPos
+	 * @return
+	 */
 	template<typename T> _CPU_AND_GPU_CODE_
 	inline int hashIndex(const THREADPTR(T) & blockPos) {
 		return (hash(11536487, blockPos.x)

@@ -4,6 +4,9 @@
 
 #pragma once
 
+#include <ITMLib/Objects/Scene/ITMDirectional.h>
+#include <ITMLib/Utils/ITMSceneParams.h>
+
 namespace ITMLib
 {
 
@@ -49,6 +52,21 @@ inline float colorWeight(float depth, const Vector3f& normalCamera, const Vector
                          float directionWeight, const ITMSceneParams& sceneParams)
 {
 	return depthWeight(depth, normalCamera, viewRay, directionWeight, sceneParams);
+}
+
+_CPU_AND_GPU_CODE_
+inline float DirectionWeight(float angle)
+{
+	float width = direction_angle_threshold;
+
+	if (width <= M_PI_4 + 1e-6)
+	{
+		return 1 - MIN(angle / width, 1);
+	}
+
+	width /= M_PI_2;
+	angle /= M_PI_2;
+	return 1 - MIN((MAX(angle, 1 - width) - (1 - width)) / (2 * width - 1), 1);
 }
 
 } // namespace ITMLib

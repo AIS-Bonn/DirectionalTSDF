@@ -85,6 +85,9 @@ namespace InfiniTAM
 			static void displayAxes();
 			static void displayHelp();
 
+			/** Check if programm is stuck (e.g. infinit-loop in CUDA code) and exit, if necessary */
+			static void checkStuck(int value);
+
 			const Vector2i & getWindowSize(void) const
 			{ return winSize; }
 

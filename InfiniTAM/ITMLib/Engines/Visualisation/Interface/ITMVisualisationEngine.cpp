@@ -1,5 +1,6 @@
 // Copyright 2014-2017 Oxford University Innovation Limited and the authors of InfiniTAM
 
+#include <ITMLib/Engines/Visualisation/Shared/ITMVisualisationEngine_Shared.h>
 #include "ITMVisualisationEngine.h"
 
 using namespace ITMLib;
@@ -36,23 +37,16 @@ void IITMVisualisationEngine::DepthToUchar4(ITMUChar4Image *dst, const ITMFloatI
 		if (sourceVal > 0.0f) { lims[0] = MIN(lims[0], sourceVal); lims[1] = MAX(lims[1], sourceVal); }
 	}
 
-	scale = ((lims[1] - lims[0]) != 0) ? 1.0f / (lims[1] - lims[0]) : 1.0f / lims[1];
-
 	if (lims[0] == lims[1]) return;
 
 	for (int idx = 0; idx < dataSize; idx++)
 	{
 		float sourceVal = source[idx];
 
-		if (sourceVal > 0.0f)
-		{
-			sourceVal = (sourceVal - lims[0]) * scale;
+		float hue = (sourceVal - lims[0]) / (lims[1] - lims[0]) * 240;
 
-			destUC4[idx].r = (uchar)(base(sourceVal - 0.5f) * 255.0f);
-			destUC4[idx].g = (uchar)(base(sourceVal) * 255.0f);
-			destUC4[idx].b = (uchar)(base(sourceVal + 0.5f) * 255.0f);
-			destUC4[idx].a = 255;
-		}
+		if (sourceVal > 0.0f)
+			destUC4[idx] = Vector4f(HSVtoRGB(hue, 1, 1) * 255, 255).toUChar();
 	}
 }
 

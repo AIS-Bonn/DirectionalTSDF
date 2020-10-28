@@ -75,7 +75,6 @@ struct BlockTraversal
 	inline Vector3i WorldToBlocki(const Vector3f world_pos)
 	{
 		const Vector3f p = WorldToBlockf(world_pos);
-		// FIXME: This only finds the nearest responsible voxel, not working for blocks
 		if (round_to_nearest)
 		{
 			Vector3f sign(p.x > 0 ? 1 : -1, p.y > 0 ? 1 : -1, p.z > 0 ? 1 : -1);
@@ -101,10 +100,8 @@ struct BlockTraversal
 	}
 
 	_CPU_AND_GPU_CODE_
-	Vector3i GetNextBlock()
+	void Step()
 	{
-		Vector3i current_block = next_block;
-
 		// Distance along the ray to next block
 		distance = fminf(fminf(tMax.x, tMax.y), tMax.z);
 
@@ -131,8 +128,24 @@ struct BlockTraversal
 				tMax.z += tDelta.z;
 			}
 		}
+	}
+
+	_CPU_AND_GPU_CODE_
+	Vector3i GetNextBlock()
+	{
+		Vector3i current_block = next_block;
+
+		Step();
+		if (round_to_nearest)
+		{
+			while (current_block == WorldToBlocki(origin + distance * direction) and distance < truncation_distance)
+			{ // Advance to prevent doubles
+				Step();
+			}
+			next_block = WorldToBlocki(origin + distance * direction);
+		}
+
 		return current_block;
-//		return WorldToBlocki(origin + direction * distance); // Closest point only
 	}
 
 	const Vector3f origin;
