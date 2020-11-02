@@ -1,9 +1,7 @@
 // Copyright 2014-2017 Oxford University Innovation Limited and the authors of InfiniTAM
 
 #pragma once
-#ifndef __METALC__
 #include <math.h>
-#endif
 
 #include "ITMMath.h"
 #include "ORUtils/PlatformIndependence.h"

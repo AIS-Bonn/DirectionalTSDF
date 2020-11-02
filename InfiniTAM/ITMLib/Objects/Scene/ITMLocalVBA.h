@@ -25,10 +25,6 @@ namespace ITMLib
 		inline const TVoxel *GetVoxelBlocks(void) const { return voxelBlocks->GetData(memoryType); }
 		int *GetAllocationList(void) { return allocationList->GetData(memoryType); }
 
-#ifdef COMPILE_WITH_METAL
-		const void* GetVoxelBlocks_MB() const { return voxelBlocks->GetMetalBuffer(); }
-		const void* GetAllocationList_MB(void) const { return allocationList->GetMetalBuffer(); }
-#endif
 		int lastFreeBlockId;
 
 		unsigned int noAllocationsPerDirection[N_DIRECTIONS];

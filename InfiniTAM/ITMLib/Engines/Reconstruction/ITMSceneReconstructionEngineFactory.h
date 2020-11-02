@@ -6,9 +6,6 @@
 #ifndef COMPILE_WITHOUT_CUDA
 #include "CUDA/ITMSceneReconstructionEngine_CUDA.h"
 #endif
-#ifdef COMPILE_WITH_METAL
-#include "Metal/ITMSceneReconstructionEngine_Metal.h"
-#endif
 
 namespace ITMLib
 {
@@ -39,11 +36,6 @@ struct ITMSceneReconstructionEngineFactory
       case ITMLibSettings::DEVICE_CUDA:
 #ifndef COMPILE_WITHOUT_CUDA
         sceneRecoEngine = new ITMSceneReconstructionEngine_CUDA<TVoxel,TIndex>(settings);
-#endif
-        break;
-      case ITMLibSettings::DEVICE_METAL:
-#ifdef COMPILE_WITH_METAL
-        sceneRecoEngine = new ITMSceneReconstructionEngine_Metal<TVoxel,TIndex>;
 #endif
         break;
     }

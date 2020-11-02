@@ -90,13 +90,13 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_Depth(THREADPTR(float) *localNa
 
 	localF = b * b;
 
-#if (defined(__CUDACC__) && defined(__CUDA_ARCH__)) || (defined(__METALC__))
+#if (defined(__CUDACC__) && defined(__CUDA_ARCH__))
 #pragma unroll
 #endif
 	for (int r = 0, counter = 0; r < noPara; r++)
 	{
 		localNabla[r] = b * A[r];
-#if (defined(__CUDACC__) && defined(__CUDA_ARCH__)) || (defined(__METALC__))
+#if (defined(__CUDACC__) && defined(__CUDA_ARCH__))
 #pragma unroll
 #endif
 		for (int c = 0; c <= r; c++, counter++) localHessian[counter] = A[r] * A[c];

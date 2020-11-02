@@ -3,7 +3,6 @@
 #include "ITMViewBuilder_CPU.h"
 
 #include "ITMLib/Engines/ViewBuilding/Shared/ITMViewBuilder_Shared.h"
-#include "ORUtils/MetalContext.h"
 #include "ORUtils/FileUtils.h"
 #include "ITMLib/Utils/ITMTimer.h"
 

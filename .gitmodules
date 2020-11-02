@@ -1,3 +1,6 @@
 [submodule "InfiniTAM/External/yaml-cpp"]
 	path = InfiniTAM/External/yaml-cpp
 	url = https://github.com/jbeder/yaml-cpp
+[submodule "InfiniTAM/External/stdgpu"]
+	path = InfiniTAM/External/stdgpu
+	url = https://github.com/stotko/stdgpu

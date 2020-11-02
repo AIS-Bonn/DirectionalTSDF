@@ -3,7 +3,6 @@
 #pragma once
 
 #include "../Interface/ITMSceneReconstructionEngine.h"
-#include "../../../Objects/Scene/ITMPlainVoxelArray.h"
 
 namespace ITMLib
 {
@@ -46,20 +45,6 @@ template<class TVoxel>
 
 	protected:
 		void IntegrateIntoSceneVoxelProjection(ITMScene<TVoxel, ITMVoxelBlockHash> *scene,
-			const ITMView *view, const ITMTrackingState *trackingState, const ITMRenderState *renderState) override;
-	};
-
-	template<class TVoxel>
-	class ITMSceneReconstructionEngine_CUDA<TVoxel, ITMPlainVoxelArray> : public ITMSceneReconstructionEngine_CUDA_common < TVoxel, ITMPlainVoxelArray >
-	{
-	public:
-		void ResetScene(ITMScene<TVoxel, ITMPlainVoxelArray> *scene);
-
-		void AllocateSceneFromDepth(ITMScene<TVoxel, ITMPlainVoxelArray> *scene, const ITMView *view, const ITMTrackingState *trackingState,
-			const ITMRenderState *renderState, bool onlyUpdateVisibleList = false, bool resetVisibleList = false);
-
-	protected:
-		void IntegrateIntoSceneVoxelProjection(ITMScene<TVoxel, ITMPlainVoxelArray> *scene,
 			const ITMView *view, const ITMTrackingState *trackingState, const ITMRenderState *renderState) override;
 	};
 }

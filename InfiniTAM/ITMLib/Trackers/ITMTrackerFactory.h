@@ -22,10 +22,6 @@
 #include "CUDA/ITMExtendedTracker_CUDA.h"
 #endif
 
-#ifdef COMPILE_WITH_METAL
-#include "Metal/ITMExtendedTracker_Metal.h"
-#endif
-
 #include "../../ORUtils/KeyValueConfig.h"
 
 namespace ITMLib
@@ -197,11 +193,6 @@ namespace ITMLib
 			ret = new ITMColorTracker_CUDA(imgSize_rgb, &(levels[0]), static_cast<int>(levels.size()), lowLevelEngine);
 #endif
 			break;
-		case ITMLibSettings::DEVICE_METAL:
-#ifdef COMPILE_WITH_METAL
-			ret = new ITMColorTracker_CPU(imgSize_rgb, &(levels[0]), static_cast<int>(levels.size()), lowLevelEngine);
-#endif
-			break;
 		}
 
 		if (ret==NULL) DIEWITHEXCEPTION("Failed to make colour tracker");
@@ -243,11 +234,6 @@ namespace ITMLib
 		case ITMLibSettings::DEVICE_CUDA:
 #ifndef COMPILE_WITHOUT_CUDA
 			ret = new ITMDepthTracker_CUDA(imgSize_d, &(levels[0]), static_cast<int>(levels.size()), smallStepSizeCriterion, failureDetectorThd, lowLevelEngine);
-#endif
-			break;
-		case ITMLibSettings::DEVICE_METAL:
-#ifdef COMPILE_WITH_METAL
-			ret = new ITMDepthTracker_CPU(imgSize_d, &(levels[0]), static_cast<int>(levels.size()), smallStepSizeCriterion, failureDetectorThd, lowLevelEngine);
 #endif
 			break;
 		}
@@ -343,12 +329,6 @@ namespace ITMLib
 												lowLevelEngine);
 #endif
 			break;
-		case ITMLibSettings::DEVICE_METAL:
-#ifdef COMPILE_WITH_METAL
-			ret = new ITMExtendedTracker_Metal(imgSize_d, imgSize_rgb, useDepth, useColour, colourWeight, &(levels[0]), static_cast<int>(levels.size()), smallStepSizeCriterion, failureDetectorThd,
-				scene->sceneParams->viewFrustum_min, scene->sceneParams->viewFrustum_max, tukeyCutOff, framesToSkip, framesToWeight, lowLevelEngine);
-#endif
-			break;
 		}
 
 		if (ret == NULL) DIEWITHEXCEPTION("Failed to make extended tracker");
@@ -391,11 +371,6 @@ namespace ITMLib
 		case ITMLibSettings::DEVICE_CUDA:
 #ifndef COMPILE_WITHOUT_CUDA
 			dTracker = new ITMDepthTracker_CUDA(imgSize_d, &(levels[0]), static_cast<int>(levels.size()), smallStepSizeCriterion, failureDetectorThd, lowLevelEngine);
-#endif
-			break;
-		case ITMLibSettings::DEVICE_METAL:
-#ifdef COMPILE_WITH_METAL
-			dTracker = new ITMDepthTracker_CPU(imgSize_d, &(levels[0]), static_cast<int>(levels.size()), smallStepSizeCriterion, failureDetectorThd, lowLevelEngine);
 #endif
 			break;
 		default: break;

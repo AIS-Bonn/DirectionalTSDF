@@ -37,11 +37,6 @@ namespace ITMLib
 				meshingEngine = new ITMMeshingEngine_CUDA<TVoxel, TIndex>;
 #endif
 				break;
-			case ITMLibSettings::DEVICE_METAL:
-#ifdef COMPILE_WITH_METAL
-				meshingEngine = new ITMMeshingEngine_CPU<TVoxel, TIndex>;
-#endif
-				break;
 			}
 
 			return meshingEngine;

@@ -315,13 +315,13 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_exDepth(THREADPTR(float) *local
 
 	localF = rho(b, spaceThresh) * depthWeight;
 
-#if (defined(__CUDACC__) && defined(__CUDA_ARCH__)) || (defined(__METALC__))
+#if (defined(__CUDACC__) && defined(__CUDA_ARCH__))
 #pragma unroll
 #endif
 	for (int r = 0, counter = 0; r < noPara; r++)
 	{
 		localNabla[r] = rho_deriv(b, spaceThresh) * depthWeight * A[r];
-#if (defined(__CUDACC__) && defined(__CUDA_ARCH__)) || (defined(__METALC__))
+#if (defined(__CUDACC__) && defined(__CUDA_ARCH__))
 #pragma unroll
 #endif
 		for (int c = 0; c <= r; c++, counter++) localHessian[counter] = rho_deriv2(b, spaceThresh) * depthWeight * A[r] * A[c];

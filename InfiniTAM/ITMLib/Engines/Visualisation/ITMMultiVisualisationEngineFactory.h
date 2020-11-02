@@ -6,9 +6,6 @@
 #ifndef COMPILE_WITHOUT_CUDA
 #include "CUDA/ITMMultiVisualisationEngine_CUDA.h"
 #endif
-#ifdef COMPILE_WITH_METAL
-//#include "Metal/ITMMultiVisualisationEngine_Metal.h"
-#endif
 
 namespace ITMLib
 {
@@ -38,11 +35,6 @@ namespace ITMLib
 			case ITMLibSettings::DEVICE_CUDA:
 #ifndef COMPILE_WITHOUT_CUDA
 				visualisationEngine = new ITMMultiVisualisationEngine_CUDA<TVoxel, TIndex>(settings);
-#endif
-				break;
-			case ITMLibSettings::DEVICE_METAL:
-#ifdef COMPILE_WITH_METAL
-				visualisationEngine = new ITMMultiVisualisationEngine_CPU<TVoxel, TIndex>;
 #endif
 				break;
 			}

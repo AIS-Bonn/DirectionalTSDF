@@ -371,7 +371,6 @@ Objects/Scene/ITMGlobalCache.h
 Objects/Scene/ITMLocalMap.h
 Objects/Scene/ITMLocalVBA.h
 Objects/Scene/ITMMultiSceneAccess.h
-Objects/Scene/ITMPlainVoxelArray.h
 Objects/Scene/ITMRepresentationAccess.h
 Objects/Scene/ITMScene.h
 Objects/Scene/ITMSurfelScene.h

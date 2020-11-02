@@ -406,12 +406,12 @@ __device__ void exDepthTrackerOneLevel_g_rt_device_main(ITMExtendedTracker_CUDA:
 	__syncthreads();
 
 	float localHessian[noParaSQ];
-#if (defined(__CUDACC__) && defined(__CUDA_ARCH__)) || (defined(__METALC__))
+#if (defined(__CUDACC__) && defined(__CUDA_ARCH__))
 #pragma unroll
 #endif
 	for (unsigned char r = 0, counter = 0; r < noPara; r++)
 	{
-#if (defined(__CUDACC__) && defined(__CUDA_ARCH__)) || (defined(__METALC__))
+#if (defined(__CUDACC__) && defined(__CUDA_ARCH__))
 #pragma unroll
 #endif
 		for (int c = 0; c <= r; c++, counter++) localHessian[counter] = rho_deriv2(b, spaceThresh) * depthWeight * A[r] * A[c];

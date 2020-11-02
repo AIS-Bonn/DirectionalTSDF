@@ -2,8 +2,6 @@
 
 #pragma once
 
-#ifndef __METALC__
-
 #include "ITMLib/Objects/Scene/ITMDirectional.h"
 #include "../../Utils/ITMMath.h"
 #include "../../../ORUtils/Image.h"
@@ -104,5 +102,3 @@ namespace ITMLib
 		}
 	};
 }
-
-#endif

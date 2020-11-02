@@ -26,11 +26,6 @@ ITMLowLevelEngine *ITMLowLevelEngineFactory::MakeLowLevelEngine(ITMLibSettings::
       lowLevelEngine = new ITMLowLevelEngine_CUDA();
 #endif
       break;
-    case ITMLibSettings::DEVICE_METAL:
-#ifdef COMPILE_WITH_METAL
-      lowLevelEngine = new ITMLowLevelEngine_CPU();
-#endif
-      break;
   }
 
   return lowLevelEngine;

@@ -60,10 +60,5 @@ namespace ITMLib
 		currently processed by integration and tracker.
 		*/
 		HashEntryVisibilityType *GetEntriesVisibleType(void) { return entriesVisibleType->GetData(memoryType); }
-
-#ifdef COMPILE_WITH_METAL
-		const void* GetVisibleEntryIDs_MB(void) { return visibleEntryIDs->GetMetalBuffer(); }
-		const void* GetEntriesVisibleType_MB(void) { return entriesVisibleType->GetMetalBuffer(); }
-#endif
 	};
 } 

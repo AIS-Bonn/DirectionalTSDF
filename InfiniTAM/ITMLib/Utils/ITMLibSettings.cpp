@@ -17,8 +17,6 @@ ITMLibSettings::DeviceType DeviceTypeFromString(const std::string& type)
 		return ITMLibSettings::DeviceType::DEVICE_CPU;
 	else if (iequals(type, "cuda"))
 		return ITMLibSettings::DeviceType::DEVICE_CUDA;
-	else if (iequals(type, "metal"))
-		return ITMLibSettings::DeviceType::DEVICE_METAL;
 
 	printf(R"(ERROR: Unknown device type "%s". Using "cpu" instead)", type.c_str());
 	return ITMLibSettings::DeviceType::DEVICE_CPU;
@@ -84,14 +82,8 @@ ITMLibSettings::ITMLibSettings()
 #ifndef COMPILE_WITHOUT_CUDA
 	deviceType = DEVICE_CUDA;
 #else
-#ifdef COMPILE_WITH_METAL
-	deviceType = DEVICE_METAL;
-#else
 	deviceType = DEVICE_CPU;
 #endif
-#endif
-
-//	deviceType = DEVICE_CPU;
 
 	/// how swapping works: disabled, fully enabled (still with dragons) and delete what's not visible - not supported in loop closure version
 	swappingMode = SWAPPINGMODE_DISABLED;

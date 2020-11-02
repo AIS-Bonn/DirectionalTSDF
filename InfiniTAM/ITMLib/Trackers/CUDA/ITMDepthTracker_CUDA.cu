@@ -218,12 +218,12 @@ __device__ void depthTrackerOneLevel_g_rt_device_main(ITMDepthTracker_CUDA::Accu
 	__syncthreads();
 
 	float localHessian[noParaSQ];
-#if (defined(__CUDACC__) && defined(__CUDA_ARCH__)) || (defined(__METALC__))
+#if (defined(__CUDACC__) && defined(__CUDA_ARCH__))
 #pragma unroll
 #endif
 	for (unsigned char r = 0, counter = 0; r < noPara; r++)
 	{
-#if (defined(__CUDACC__) && defined(__CUDA_ARCH__)) || (defined(__METALC__))
+#if (defined(__CUDACC__) && defined(__CUDA_ARCH__))
 #pragma unroll
 #endif
 		for (int c = 0; c <= r; c++, counter++) localHessian[counter] = A[r] * A[c];

@@ -20,7 +20,6 @@ namespace ITMLib
 		typedef enum {
 			DEVICE_CPU,
 			DEVICE_CUDA,
-			DEVICE_METAL
 		} DeviceType;
 
 		typedef enum

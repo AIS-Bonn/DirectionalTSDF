@@ -26,11 +26,6 @@ ITMViewBuilder *ITMViewBuilderFactory::MakeViewBuilder(const ITMRGBDCalib& calib
       viewBuilder = new ITMViewBuilder_CUDA(calib);
 #endif
       break;
-    case ITMLibSettings::DEVICE_METAL:
-#ifdef COMPILE_WITH_METAL
-      viewBuilder = new ITMViewBuilder_CPU(calib);
-#endif
-      break;
   }
 
   return viewBuilder;

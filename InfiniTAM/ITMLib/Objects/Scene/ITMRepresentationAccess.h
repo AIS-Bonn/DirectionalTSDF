@@ -490,51 +490,6 @@ struct VoxelColorReader<true, TVoxel, TIndex> {
 	}
 };
 
-#ifndef __METALC__
-
-#include "ITMPlainVoxelArray.h"
-
-_CPU_AND_GPU_CODE_ inline int findVoxel(const CONSTPTR(ITMLib::ITMPlainVoxelArray::IndexData) *voxelIndex,
-	const THREADPTR(Vector3i) & point_orig, const TSDFDirection direction,
-	THREADPTR(int) &vmIndex)
-{
-	Vector3i point = point_orig - voxelIndex->offset;
-
-	if ((point.x < 0) || (point.x >= voxelIndex->size.x) ||
-		(point.y < 0) || (point.y >= voxelIndex->size.y) ||
-		(point.z < 0) || (point.z >= voxelIndex->size.z)) {
-		vmIndex = false;
-		return -1;
-	}
-
-	int linearIdx = point.x + point.y * voxelIndex->size.x + point.z * voxelIndex->size.x * voxelIndex->size.y;
-
-	vmIndex = true;
-	return linearIdx;
-}
-
-_CPU_AND_GPU_CODE_ inline int findVoxel(const CONSTPTR(ITMLib::ITMPlainVoxelArray::IndexData) *voxelIndex, const THREADPTR(Vector3i) & point_orig,
-	const TSDFDirection direction, THREADPTR(int) &vmIndex, THREADPTR(ITMLib::ITMPlainVoxelArray::IndexCache) & cache)
-{
-	return findVoxel(voxelIndex, point_orig, direction, vmIndex);
-}
-
-
-template<class TVoxel>
-_CPU_AND_GPU_CODE_ inline TVoxel readVoxel(const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(ITMLib::ITMPlainVoxelArray::IndexData) *voxelIndex,
-	const THREADPTR(Vector3i) & point_orig, const TSDFDirection direction, THREADPTR(int) &vmIndex)
-{
-	int voxelAddress = findVoxel(voxelIndex, point_orig, direction, vmIndex);
-	return vmIndex ? voxelData[voxelAddress] : TVoxel();
-}
-
-template<class TVoxel>
-_CPU_AND_GPU_CODE_ inline TVoxel readVoxel(const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(ITMLib::ITMPlainVoxelArray::IndexData) *voxelIndex,
-	const THREADPTR(Vector3i) & point_orig, const TSDFDirection direction, THREADPTR(int) &vmIndex, THREADPTR(ITMLib::ITMPlainVoxelArray::IndexCache) & cache)
-{
-	return readVoxel(voxelData, voxelIndex, point_orig, direction,  vmIndex);
-}
-
 /**
 * \brief The specialisations of this struct template can be used to write/read colours to/from surfels.
 *
@@ -615,5 +570,3 @@ struct SurfelColourManipulator<true>
 };
 
 } // namespace ITMLIb
-
-#endif

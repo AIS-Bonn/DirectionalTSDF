@@ -2,11 +2,9 @@
 
 #pragma once
 
-#ifndef __METALC__
 #include <stdlib.h>
 #include <fstream>
 #include <iostream>
-#endif
 
 #include "ITMLib/Core/ITMConstants.h"
 #include "ITMLib/Utils/ITMMath.h"
@@ -93,7 +91,6 @@ namespace ITMLib
 		static const int noLocalEntries = SDF_LOCAL_BLOCK_NUM;
 		static const int voxelBlockSize = SDF_BLOCK_SIZE3;
 
-#ifndef __METALC__
 	private:
 		int lastFreeExcessListId;
 
@@ -140,12 +137,6 @@ namespace ITMLib
 		int GetLastFreeExcessListId(void) { return lastFreeExcessListId; }
 		void SetLastFreeExcessListId(int lastFreeExcessListId) { this->lastFreeExcessListId = lastFreeExcessListId; }
 
-#ifdef COMPILE_WITH_METAL
-		const void* GetEntries_MB(void) { return hashEntries->GetMetalBuffer(); }
-		const void* GetExcessAllocationList_MB(void) { return excessAllocationList->GetMetalBuffer(); }
-		const void* getIndexData_MB(void) const { return hashEntries->GetMetalBuffer(); }
-#endif
-
 		/** Maximum number of total entries. */
 		int getNumAllocatedVoxelBlocks(void) { return noLocalEntries; }
 		int getVoxelBlockSize(void) { return voxelBlockSize; }
@@ -181,7 +172,6 @@ namespace ITMLib
 		// Suppress the default copy constructor and assignment operator
 		ITMVoxelBlockHash(const ITMVoxelBlockHash&);
 		ITMVoxelBlockHash& operator=(const ITMVoxelBlockHash&);
-#endif
 	};
 
 	/**

@@ -25,8 +25,6 @@ _CPU_AND_GPU_CODE_ inline void convertDisparityToDepth(DEVICEPTR(float) *d_out, 
 	d_out[locId] = (depth > 0) ? depth : -1.0f;
 }
 
-#ifndef __METALC__
-
 _CPU_AND_GPU_CODE_ inline void convertDepthAffineToFloat(DEVICEPTR(float) *d_out, int x, int y, const CONSTPTR(short) *d_in, Vector2i imgSize, Vector2f depthCalibParams)
 {
 	int locId = x + y * imgSize.x;
@@ -209,5 +207,3 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndWeight(const CONSTPTR(float) *dep
 }
 
 } // namespace ITMLib
-
-#endif

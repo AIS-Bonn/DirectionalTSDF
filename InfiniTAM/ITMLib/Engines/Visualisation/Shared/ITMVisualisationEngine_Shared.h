@@ -25,8 +25,6 @@ static const int bilateralFilterRadius = 3;
 
 static const float cluster_direction_threshold = M_PI_4;
 
-#if !(defined __METALC__)
-
 struct RenderingBlock
 {
 	Vector2s upperLeft;
@@ -126,9 +124,6 @@ _CPU_AND_GPU_CODE_ inline void CreateRenderingBlocks(DEVICEPTR(RenderingBlock)* 
 		}
 	}
 }
-
-#endif
-
 
 _CPU_AND_GPU_CODE_ inline int
 forwardProjectPixel(Vector4f pixel, const CONSTPTR(Matrix4f)& M, const CONSTPTR(Vector4f)& projParams,

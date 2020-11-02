@@ -6,9 +6,6 @@
 #ifndef COMPILE_WITHOUT_CUDA
 #include "CUDA/ITMSwappingEngine_CUDA.h"
 #endif
-#ifdef COMPILE_WITH_METAL
-#include "Metal/ITMSwappingEngine_Metal.h"
-#endif
 
 namespace ITMLib
 {
@@ -38,11 +35,6 @@ struct ITMSwappingEngineFactory
       case ITMLibSettings::DEVICE_CUDA:
 #ifndef COMPILE_WITHOUT_CUDA
         swappingEngine = new ITMSwappingEngine_CUDA<TVoxel,TIndex>;
-#endif
-        break;
-      case ITMLibSettings::DEVICE_METAL:
-#ifdef COMPILE_WITH_METAL
-        swappingEngine = new ITMSwappingEngine_CPU<TVoxel,TIndex>;
 #endif
         break;
     }
