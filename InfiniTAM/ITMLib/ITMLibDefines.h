@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <ITMLib/Objects/Scene/ITMScene.h>
 #include "Objects/Scene/ITMSurfelTypes.h"
 #include "Objects/Scene/ITMVoxelBlockHash.h"
 #include "Objects/Scene/ITMVoxelTypes.h"
@@ -20,3 +21,5 @@ typedef ITMVoxel_f_rgb ITMVoxel;
     valid options are ITMVoxelBlockHash and ITMPlainVoxelArray.
 */
 typedef ITMLib::ITMVoxelBlockHash ITMVoxelIndex;
+
+typedef ITMLib::ITMScene<ITMVoxel, ITMVoxelIndex> Scene;

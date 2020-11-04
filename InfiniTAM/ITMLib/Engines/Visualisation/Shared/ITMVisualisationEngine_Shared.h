@@ -471,8 +471,8 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 	typename TIndex::IndexCache cache;
 
 
-	bool secondTry = false;
-	foo:
+//	bool secondTry = false;
+//	foo:
 	float lastSDFValue = sdfValue;
 	while (totalLength < totalLengthMax)
 	{

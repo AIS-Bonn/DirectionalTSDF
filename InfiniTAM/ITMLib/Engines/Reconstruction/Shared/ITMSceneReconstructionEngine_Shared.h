@@ -27,17 +27,16 @@ normalCameraToWorld(const Vector4f& normal_camera, const Matrix4f& invM)
 	return (invM * Vector4f(normal_camera.toVector3(), 0)).toVector3();
 }
 
-template<class TVoxel>
 _CPU_AND_GPU_CODE_ inline float
-computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direction,
-                             const THREADPTR(Vector4f)& voxel_world,
-                             const CONSTPTR(Matrix4f)& M_d,
-                             const CONSTPTR(Vector4f)& projParams_d,
-                             const CONSTPTR(ITMFusionParams)& fusionParams,
-                             const CONSTPTR(ITMSceneParams)& sceneParams,
-                             const CONSTPTR(float)* depth,
-                             const CONSTPTR(Vector4f)* depthNormals,
-                             const CONSTPTR(Vector2i)& imgSize
+computeUpdatedVoxelDepthInfo(ITMVoxel& voxel, const TSDFDirection direction,
+                             const Vector4f& voxel_world,
+                             const Matrix4f& M_d,
+                             const Vector4f& projParams_d,
+                             const ITMFusionParams& fusionParams,
+                             const ITMSceneParams& sceneParams,
+                             const float* depth,
+                             const Vector4f* depthNormals,
+                             const Vector2i& imgSize
 )
 {
 	Vector4f voxel_camera;
@@ -87,8 +86,8 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 	}
 
 	// compute updated SDF value and reliability
-	oldF = TVoxel::valueToFloat(voxel.sdf);
-	oldW = TVoxel::weightToFloat(voxel.w_depth, sceneParams.maxW);
+	oldF = ITMVoxel::valueToFloat(voxel.sdf);
+	oldW = ITMVoxel::weightToFloat(voxel.w_depth, sceneParams.maxW);
 	newF = MAX(MIN(1.0f, distance / sceneParams.mu), -1.0f);
 	newW = 1;
 
@@ -124,20 +123,19 @@ computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 	newW = MIN(newW, sceneParams.maxW);
 
 		// write back
-	voxel.sdf = TVoxel::floatToValue(newF);
-	voxel.w_depth = TVoxel::floatToWeight(newW, sceneParams.maxW);
+	voxel.sdf = ITMVoxel::floatToValue(newF);
+	voxel.w_depth = ITMVoxel::floatToWeight(newW, sceneParams.maxW);
 
 	return distance;
 }
 
-template<class TVoxel>
 _CPU_AND_GPU_CODE_ inline void
-computeUpdatedVoxelColorInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direction,
-                             const THREADPTR(Vector4f)& pt_world,
-                             const CONSTPTR(Matrix4f)& M_rgb,
-                             const CONSTPTR(Vector4f)& projParams_rgb,
-                             const CONSTPTR(ITMSceneParams)& sceneParams, float eta,
-                             const CONSTPTR(Vector4u)* rgb, const CONSTPTR(Vector2i)& imgSize)
+computeUpdatedVoxelColorInfo(ITMVoxel& voxel, const TSDFDirection direction,
+                             const Vector4f& pt_world,
+                             const Matrix4f& M_rgb,
+                             const Vector4f& projParams_rgb,
+                             const ITMSceneParams& sceneParams, float eta,
+                             const Vector4u* rgb, const Vector2i& imgSize)
 {
 	Vector4f pt_camera;
 	Vector2f pt_image;
@@ -146,7 +144,7 @@ computeUpdatedVoxelColorInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 	float newW, oldW;
 
 	buffV3u = voxel.clr;
-	oldW = TVoxel::weightToFloat(voxel.w_color, sceneParams.maxW);
+	oldW = ITMVoxel::weightToFloat(voxel.w_color, sceneParams.maxW);
 
 	oldC = TO_FLOAT3(buffV3u) / 255.0f;
 	newC = oldC;
@@ -168,46 +166,46 @@ computeUpdatedVoxelColorInfo(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direc
 	newW = MIN(newW, sceneParams.maxW);
 
 	voxel.clr = TO_UCHAR3(newC * 255.0f);
-	voxel.w_color = TVoxel::floatToWeight(newW, sceneParams.maxW);
+	voxel.w_color = ITMVoxel::floatToWeight(newW, sceneParams.maxW);
 }
 
-template<bool hasColor, bool hasConfidence, class TVoxel>
+template<bool hasColor, bool hasConfidence>
 struct ComputeUpdatedVoxelInfo;
 
-template<class TVoxel>
-struct ComputeUpdatedVoxelInfo<false, false, TVoxel>
+template<>
+struct ComputeUpdatedVoxelInfo<false, false>
 {
-	_CPU_AND_GPU_CODE_ static void compute(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direction,
-	                                       const THREADPTR(Vector4f)& pt_world,
-	                                       const CONSTPTR(Matrix4f)& M_d, const CONSTPTR(Vector4f)& projParams_d,
-	                                       const CONSTPTR(Matrix4f)& M_rgb, const CONSTPTR(Vector4f)& projParams_rgb,
+	_CPU_AND_GPU_CODE_ static void compute(ITMVoxel& voxel, const TSDFDirection direction,
+	                                       const Vector4f& pt_world,
+	                                       const Matrix4f& M_d, const Vector4f& projParams_d,
+	                                       const Matrix4f& M_rgb, const Vector4f& projParams_rgb,
 	                                       const ITMFusionParams& fusionParams,
-	                                       const CONSTPTR(ITMSceneParams)& sceneParams,
-	                                       const CONSTPTR(float)* depth,
-	                                       const CONSTPTR(Vector4f)* depthNormals,
-	                                       const CONSTPTR(float)* confidence,
-	                                       const CONSTPTR(Vector2i)& imgSize_d,
-	                                       const CONSTPTR(Vector4u)* rgb, const CONSTPTR(Vector2i)& imgSize_rgb)
+	                                       const ITMSceneParams& sceneParams,
+	                                       const float* depth,
+	                                       const Vector4f* depthNormals,
+	                                       const float* confidence,
+	                                       const Vector2i& imgSize_d,
+	                                       const Vector4u* rgb, const Vector2i& imgSize_rgb)
 	{
 		computeUpdatedVoxelDepthInfo(voxel, direction, pt_world, M_d, projParams_d, fusionParams, sceneParams, depth,
 		                             depthNormals, imgSize_d);
 	}
 };
 
-template<class TVoxel>
-struct ComputeUpdatedVoxelInfo<true, false, TVoxel>
+template<>
+struct ComputeUpdatedVoxelInfo<true, false>
 {
-	_CPU_AND_GPU_CODE_ static void compute(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direction,
-	                                       const THREADPTR(Vector4f)& pt_world,
-	                                       const THREADPTR(Matrix4f)& M_d, const THREADPTR(Vector4f)& projParams_d,
-	                                       const THREADPTR(Matrix4f)& M_rgb, const THREADPTR(Vector4f)& projParams_rgb,
+	_CPU_AND_GPU_CODE_ static void compute(ITMVoxel& voxel, const TSDFDirection direction,
+	                                       const Vector4f& pt_world,
+	                                       const Matrix4f& M_d, const Vector4f& projParams_d,
+	                                       const Matrix4f& M_rgb, const Vector4f& projParams_rgb,
 	                                       const ITMFusionParams& fusionParams,
-	                                       const CONSTPTR(ITMSceneParams)& sceneParams,
-	                                       const CONSTPTR(float)* depth,
-	                                       const CONSTPTR(Vector4f)* depthNormals,
-	                                       const CONSTPTR(float)* confidence,
-	                                       const CONSTPTR(Vector2i)& imgSize_d,
-	                                       const CONSTPTR(Vector4u)* rgb, const THREADPTR(Vector2i)& imgSize_rgb)
+	                                       const ITMSceneParams& sceneParams,
+	                                       const float* depth,
+	                                       const Vector4f* depthNormals,
+	                                       const float* confidence,
+	                                       const Vector2i& imgSize_d,
+	                                       const Vector4u* rgb, const Vector2i& imgSize_rgb)
 	{
 		float eta = computeUpdatedVoxelDepthInfo(voxel, direction, pt_world, M_d, projParams_d, fusionParams, sceneParams,
 		                                         depth, depthNormals, imgSize_d);
@@ -216,66 +214,65 @@ struct ComputeUpdatedVoxelInfo<true, false, TVoxel>
 	}
 };
 
-template<class TVoxel>
-struct ComputeUpdatedVoxelInfo<false, true, TVoxel>
-{
-	_CPU_AND_GPU_CODE_ static void compute(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direction,
-	                                       const THREADPTR(Vector4f)& pt_world,
-	                                       const CONSTPTR(Matrix4f)& M_d, const CONSTPTR(Vector4f)& projParams_d,
-	                                       const CONSTPTR(Matrix4f)& M_rgb, const CONSTPTR(Vector4f)& projParams_rgb,
-	                                       const ITMFusionParams& fusionParams,
-	                                       const CONSTPTR(ITMSceneParams)& sceneParams,
-	                                       const CONSTPTR(float)* depth,
-	                                       const CONSTPTR(Vector4f)* depthNormals,
-	                                       const CONSTPTR(float)* confidence,
-	                                       const CONSTPTR(Vector2i)& imgSize_d,
-	                                       const CONSTPTR(Vector4u)* rgb, const CONSTPTR(Vector2i)& imgSize_rgb)
-	{
-		computeUpdatedVoxelDepthInfo(voxel, direction, pt_world, M_d, projParams_d, fusionParams, sceneParams, depth,
-		                             depthNormals, confidence, imgSize_d);
-	}
-};
+//template<>
+//struct ComputeUpdatedVoxelInfo<false, true>
+//{
+//	_CPU_AND_GPU_CODE_ static void compute(ITMVoxel& voxel, const TSDFDirection direction,
+//	                                       const Vector4f& pt_world,
+//	                                       const Matrix4f& M_d, const Vector4f& projParams_d,
+//	                                       const Matrix4f& M_rgb, const Vector4f& projParams_rgb,
+//	                                       const ITMFusionParams& fusionParams,
+//	                                       const ITMSceneParams& sceneParams,
+//	                                       const float* depth,
+//	                                       const Vector4f* depthNormals,
+//	                                       const float* confidence,
+//	                                       const Vector2i& imgSize_d,
+//	                                       const Vector4u* rgb, const Vector2i& imgSize_rgb)
+//	{
+//		computeUpdatedVoxelDepthInfo(voxel, direction, pt_world, M_d, projParams_d, fusionParams, sceneParams, depth,
+//		                             depthNormals, confidence, imgSize_d);
+//	}
+//};
+//
+//template<>
+//struct ComputeUpdatedVoxelInfo<true, true>
+//{
+//	_CPU_AND_GPU_CODE_ static void compute(ITMVoxel& voxel, const TSDFDirection direction,
+//	                                       const Vector4f& pt_world,
+//	                                       const Matrix4f& M_d, const Vector4f& projParams_d,
+//	                                       const Matrix4f& M_rgb, const Vector4f& projParams_rgb,
+//	                                       const ITMFusionParams& fusionParams,
+//	                                       const ITMSceneParams& sceneParams,
+//	                                       const float* depth,
+//	                                       const Vector4f* depthNormals,
+//	                                       const float* confidence,
+//	                                       const Vector2i& imgSize_d,
+//	                                       const Vector4u* rgb, const Vector2i& imgSize_rgb)
+//	{
+//		float eta = computeUpdatedVoxelDepthInfo(voxel, direction, pt_world, M_d, projParams_d, fusionParams, sceneParams,
+//		                                         depth, depthNormals, confidence,
+//		                                         imgSize_d);
+//		if ((eta > sceneParams.mu) || (fabs(eta / sceneParams.mu) > 0.25f)) return;
+//		computeUpdatedVoxelColorInfo(voxel, direction, pt_world, M_rgb, projParams_rgb, sceneParams, eta, rgb, imgSize_rgb);
+//	}
+//};
 
-template<class TVoxel>
-struct ComputeUpdatedVoxelInfo<true, true, TVoxel>
-{
-	_CPU_AND_GPU_CODE_ static void compute(DEVICEPTR(TVoxel)& voxel, const TSDFDirection direction,
-	                                       const THREADPTR(Vector4f)& pt_world,
-	                                       const THREADPTR(Matrix4f)& M_d, const THREADPTR(Vector4f)& projParams_d,
-	                                       const THREADPTR(Matrix4f)& M_rgb, const THREADPTR(Vector4f)& projParams_rgb,
-	                                       const ITMFusionParams& fusionParams,
-	                                       const CONSTPTR(ITMSceneParams)& sceneParams,
-	                                       const CONSTPTR(float)* depth,
-	                                       const CONSTPTR(Vector4f)* depthNormals,
-	                                       const CONSTPTR(float)* confidence,
-	                                       const CONSTPTR(Vector2i)& imgSize_d,
-	                                       const CONSTPTR(Vector4u)* rgb, const THREADPTR(Vector2i)& imgSize_rgb)
-	{
-		float eta = computeUpdatedVoxelDepthInfo(voxel, direction, pt_world, M_d, projParams_d, fusionParams, sceneParams,
-		                                         depth, depthNormals, confidence,
-		                                         imgSize_d);
-		if ((eta > sceneParams.mu) || (fabs(eta / sceneParams.mu) > 0.25f)) return;
-		computeUpdatedVoxelColorInfo(voxel, direction, pt_world, M_rgb, projParams_rgb, sceneParams, eta, rgb, imgSize_rgb);
-	}
-};
-
-template<class TVoxel>
-_CPU_AND_GPU_CODE_ static void voxelProjectionCarveSpace(const TVoxel& voxel,
+_CPU_AND_GPU_CODE_ static void voxelProjectionCarveSpace(const ITMVoxel& voxel,
                                                          VoxelRayCastingSum& voxelRayCastingSum,
                                                          const TSDFDirection direction,
                                                          const Vector4f pt_world,
-                                                         const THREADPTR(Matrix4f)& M_d,
-                                                         const THREADPTR(Vector4f)& projParams_d,
-                                                         const THREADPTR(Matrix4f)& M_rgb,
-                                                         const THREADPTR(Vector4f)& projParams_rgb,
+                                                         const Matrix4f& M_d,
+                                                         const Vector4f& projParams_d,
+                                                         const Matrix4f& M_rgb,
+                                                         const Vector4f& projParams_rgb,
                                                          const ITMFusionParams& fusionParams,
-                                                         const CONSTPTR(ITMSceneParams)& sceneParams,
-                                                         const CONSTPTR(float)* depth,
-                                                         const CONSTPTR(Vector4f)* depthNormals,
-                                                         const CONSTPTR(float)* confidence,
-                                                         const CONSTPTR(Vector2i)& imgSize_d,
-                                                         const CONSTPTR(Vector4u)* rgb,
-                                                         const THREADPTR(Vector2i)& imgSize_rgb)
+                                                         const ITMSceneParams& sceneParams,
+                                                         const float* depth,
+                                                         const Vector4f* depthNormals,
+                                                         const float* confidence,
+                                                         const Vector2i& imgSize_d,
+                                                         const Vector4u* rgb,
+                                                         const Vector2i& imgSize_rgb)
 {
 	// Don't carve, when the voxel was updated during fusion of THIS frame
 	// (This prevents accidentally carving voxels with rays passing by close to a surface)
@@ -307,7 +304,7 @@ _CPU_AND_GPU_CODE_ static void voxelProjectionCarveSpace(const TVoxel& voxel,
 	/// Check area and carve voxel, if necessary
 
 	// skip positive sdf values (because they either mean free space or are values required to estimate the 0-transition)
-	if (TVoxel::valueToFloat(voxel.sdf) >= 0 or TVoxel::weightToFloat(voxel.w_depth, sceneParams.maxW) <= 0)
+	if (ITMVoxel::valueToFloat(voxel.sdf) >= 0 or ITMVoxel::weightToFloat(voxel.w_depth, sceneParams.maxW) <= 0)
 		return;
 
 	Matrix4f invM_d;
@@ -350,9 +347,9 @@ _CPU_AND_GPU_CODE_ static void voxelProjectionCarveSpace(const TVoxel& voxel,
 }
 
 _CPU_AND_GPU_CODE_
-inline void SetBlockVisibleType(const CONSTPTR(ITMHashEntry)* hashTable,
-                                DEVICEPTR(Vector4s)* blockCoords,
-                                DEVICEPTR(TSDFDirection)* blockDirections,
+inline void SetBlockVisibleType(const ITMHashEntry* hashTable,
+                                Vector4s* blockCoords,
+                                TSDFDirection* blockDirections,
                                 HashEntryVisibilityType* entriesVisibleType,
                                 Vector3i blockPos, TSDFDirection direction = TSDFDirection::NONE)
 {
@@ -401,9 +398,9 @@ inline void SetBlockVisibleType(const CONSTPTR(ITMHashEntry)* hashTable,
 }
 
 _CPU_AND_GPU_CODE_
-inline void SetBlockAllocAndVisibleType(const CONSTPTR(ITMHashEntry)* hashTable,
-                                        DEVICEPTR(Vector4s)* blockCoords,
-                                        DEVICEPTR(TSDFDirection)* blockDirections,
+inline void SetBlockAllocAndVisibleType(const ITMHashEntry* hashTable,
+                                        Vector4s* blockCoords,
+                                        TSDFDirection* blockDirections,
                                         HashEntryAllocType* entriesAllocType,
                                         HashEntryVisibilityType* entriesVisibleType,
                                         Vector3i blockPos, TSDFDirection direction = TSDFDirection::NONE)
@@ -461,16 +458,15 @@ inline void SetBlockAllocAndVisibleType(const CONSTPTR(ITMHashEntry)* hashTable,
 	}
 }
 
-template<class TVoxel>
 _CPU_AND_GPU_CODE_
-void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* depthNormals,
+inline void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* depthNormals,
                        const Matrix4f& invM_d,
                        const Vector4f& invProjParams_d, const Vector4f& invProjParams_rgb,
                        const ITMFusionParams& fusionParams,
                        const ITMSceneParams& sceneParams,
                        const ITMHashEntry* hashTable,
                        VoxelRayCastingSum* entriesRayCasting,
-                       TVoxel* voxelArray
+                       ITMVoxel* voxelArray
 )
 {
 	const float mu = sceneParams.mu;
@@ -530,7 +526,7 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* d
 					continue;
 
 				// skip positive sdf values (because they either mean free space or are values required to estimate the 0-transition)
-				if (voxelArray[index].sdf >= 0 or TVoxel::weightToFloat(voxelArray[index].w_depth, sceneParams.maxW) <= 0)
+				if (voxelArray[index].sdf >= 0 or ITMVoxel::weightToFloat(voxelArray[index].w_depth, sceneParams.maxW) <= 0)
 					continue;
 
 				VoxelRayCastingSum& voxelRayCastingSum = entriesRayCasting[index];
@@ -565,9 +561,8 @@ void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* d
 	}
 }
 
-template<class TVoxel>
 _CPU_AND_GPU_CODE_
-void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depthNormals,
+inline void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depthNormals,
                    const Matrix4f& invM_d,
                    const Vector4f& invProjParams_d, const Vector4f& invProjParams_rgb,
                    const ITMFusionParams& fusionParams,
@@ -722,17 +717,16 @@ void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depth
  * Collect and combine summed voxels after ray cast update.
  * @tparam TVoxel
  */
-template<class TVoxel>
 _CPU_AND_GPU_CODE_
-void rayCastCombine(TVoxel& voxel, const VoxelRayCastingSum& rayCastingSum, const ITMSceneParams& sceneParams)
+inline void rayCastCombine(ITMVoxel& voxel, const VoxelRayCastingSum& rayCastingSum, const ITMSceneParams& sceneParams)
 {
 	float deltaSDF = rayCastingSum.sdfSum / rayCastingSum.weightSum;
 	float deltaWeight = rayCastingSum.weightSum;
 	if (deltaWeight == 0)
 		return;
 
-	float currentSDF = TVoxel::valueToFloat(voxel.sdf);
-	float currentWeight = TVoxel::weightToFloat(voxel.w_depth, sceneParams.maxW);
+	float currentSDF = ITMVoxel::valueToFloat(voxel.sdf);
+	float currentWeight = ITMVoxel::weightToFloat(voxel.w_depth, sceneParams.maxW);
 
 	if (sceneParams.stopIntegratingAtMaxW and currentWeight == sceneParams.maxW)
 		return;
@@ -741,8 +735,8 @@ void rayCastCombine(TVoxel& voxel, const VoxelRayCastingSum& rayCastingSum, cons
 	float newSDF = (currentWeight * currentSDF + deltaWeight * deltaSDF) / newWeight;
 	newWeight = MIN(newWeight, sceneParams.maxW);
 
-	voxel.sdf = TVoxel::floatToValue(newSDF);
-	voxel.w_depth = TVoxel::floatToWeight(newWeight, sceneParams.maxW);
+	voxel.sdf = ITMVoxel::floatToValue(newSDF);
+	voxel.w_depth = ITMVoxel::floatToWeight(newWeight, sceneParams.maxW);
 }
 
 /**
@@ -764,13 +758,13 @@ void rayCastCombine(TVoxel& voxel, const VoxelRayCastingSum& rayCastingSum, cons
  * @param viewFrustum_max
  */
 _CPU_AND_GPU_CODE_ inline void
-buildSpaceCarvingVisibleType(DEVICEPTR(HashEntryVisibilityType)* entriesVisibleType,
+buildSpaceCarvingVisibleType(HashEntryVisibilityType* entriesVisibleType,
                              int x, int y,
-                             DEVICEPTR(Vector4s)* blockCoords, DEVICEPTR(TSDFDirection)* blockDirections,
-                             const CONSTPTR(float)* depth,
-                             const CONSTPTR(Vector4f)* depthNormal, Matrix4f invM_d,
+                             Vector4s* blockCoords, TSDFDirection* blockDirections,
+                             const float* depth,
+                             const Vector4f* depthNormal, Matrix4f invM_d,
                              Vector4f projParams_d, float mu, Vector2i imgSize, float voxelSize,
-                             const CONSTPTR(ITMHashEntry)* hashTable, float viewFrustum_min, float viewFrustum_max,
+                             const ITMHashEntry* hashTable, float viewFrustum_min, float viewFrustum_max,
                              const ITMFusionParams& fusionParams
 )
 {
@@ -824,14 +818,14 @@ buildSpaceCarvingVisibleType(DEVICEPTR(HashEntryVisibilityType)* entriesVisibleT
  * @param viewFrustum_max
  */
 _CPU_AND_GPU_CODE_ inline void
-buildHashAllocAndVisibleType(DEVICEPTR(HashEntryAllocType)* entriesAllocType,
-                             DEVICEPTR(HashEntryVisibilityType)* entriesVisibleType,
+buildHashAllocAndVisibleType(HashEntryAllocType* entriesAllocType,
+                             HashEntryVisibilityType* entriesVisibleType,
                              int x, int y,
-                             DEVICEPTR(Vector4s)* blockCoords, DEVICEPTR(TSDFDirection)* blockDirections,
-                             const CONSTPTR(float)* depth,
-                             const CONSTPTR(Vector4f)* depthNormal, Matrix4f invM_d,
+                             Vector4s* blockCoords, TSDFDirection* blockDirections,
+                             const float* depth,
+                             const Vector4f* depthNormal, Matrix4f invM_d,
                              Vector4f projParams_d, float mu, Vector2i imgSize, float voxelSize,
-                             const CONSTPTR(ITMHashEntry)* hashTable, float viewFrustum_min, float viewFrustum_max,
+                             const ITMHashEntry* hashTable, float viewFrustum_min, float viewFrustum_max,
                              const ITMFusionParams& fusionParams
 )
 {
@@ -904,10 +898,10 @@ buildHashAllocAndVisibleType(DEVICEPTR(HashEntryAllocType)* entriesAllocType,
 
 
 template<bool useSwapping>
-_CPU_AND_GPU_CODE_ inline void checkPointVisibility(THREADPTR(bool)& isVisible, THREADPTR(bool)& isVisibleEnlarged,
-                                                    const THREADPTR(Vector4f)& pt_image, const CONSTPTR(Matrix4f)& M_d,
-                                                    const CONSTPTR(Vector4f)& projParams_d,
-                                                    const CONSTPTR(Vector2i)& imgSize)
+_CPU_AND_GPU_CODE_ inline void checkPointVisibility(bool& isVisible, bool& isVisibleEnlarged,
+                                                    const Vector4f& pt_image, const Matrix4f& M_d,
+                                                    const Vector4f& projParams_d,
+                                                    const Vector2i& imgSize)
 {
 	Vector4f pt_buff;
 
@@ -936,10 +930,10 @@ _CPU_AND_GPU_CODE_ inline void checkPointVisibility(THREADPTR(bool)& isVisible, 
 }
 
 template<bool useSwapping>
-_CPU_AND_GPU_CODE_ inline void checkBlockVisibility(THREADPTR(bool)& isVisible, THREADPTR(bool)& isVisibleEnlarged,
-                                                    const THREADPTR(Vector3s)& hashPos, const CONSTPTR(Matrix4f)& M_d,
-                                                    const CONSTPTR(Vector4f)& projParams_d,
-                                                    const CONSTPTR(float)& voxelSize, const CONSTPTR(Vector2i)& imgSize)
+_CPU_AND_GPU_CODE_ inline void checkBlockVisibility(bool& isVisible, bool& isVisibleEnlarged,
+                                                    const Vector3s& hashPos, const Matrix4f& M_d,
+                                                    const Vector4f& projParams_d,
+                                                    const float& voxelSize, const Vector2i& imgSize)
 {
 	Vector4f pt_image;
 	float factor = (float) SDF_BLOCK_SIZE * voxelSize;

@@ -7,18 +7,10 @@
 #include "ITMLib/Engines/Reconstruction/Shared/ITMSceneReconstructionEngine_Shared.h"
 using namespace ITMLib;
 
-template<class TVoxel, class TIndex>
-ITMSceneReconstructionEngine_CPU<TVoxel, TIndex>::ITMSceneReconstructionEngine_CPU(std::shared_ptr<const ITMLibSettings> settings)
-			:ITMSceneReconstructionEngine_CPU_common<TVoxel, TIndex>(settings)
-{
-
-}
-
-template<class TVoxel>
-ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHash>::ITMSceneReconstructionEngine_CPU(std::shared_ptr<const ITMLibSettings> settings)
-			:ITMSceneReconstructionEngine_CPU_common<TVoxel, ITMVoxelBlockHash>(settings)
-{
-	int noTotalEntries = ITMVoxelBlockHash::noTotalEntries;
+ITMSceneReconstructionEngine_CPU::ITMSceneReconstructionEngine_CPU(std::shared_ptr<const ITMLibSettings> settings)
+	: ITMSceneReconstructionEngine(settings)
+	{
+		int noTotalEntries = ITMVoxelBlockHash::noTotalEntries;
 	entriesAllocType = new ORUtils::MemoryBlock<HashEntryAllocType>(noTotalEntries, MEMORYDEVICE_CPU);
 	blockCoords = new ORUtils::MemoryBlock<Vector4s>(noTotalEntries, MEMORYDEVICE_CPU);
 	blockDirections = new ORUtils::MemoryBlock<TSDFDirection>(noTotalEntries, MEMORYDEVICE_CPU);
@@ -30,8 +22,7 @@ ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHash>::ITMSceneReconstructi
 	}
 }
 
-template<class TVoxel>
-ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHash>::~ITMSceneReconstructionEngine_CPU(void)
+ITMSceneReconstructionEngine_CPU::~ITMSceneReconstructionEngine_CPU(void)
 {
 	delete entriesAllocType;
 	delete blockCoords;
@@ -42,14 +33,13 @@ ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHash>::~ITMSceneReconstruct
 	}
 }
 
-template<class TVoxel>
-void ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHash>::ResetScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene)
+void ITMSceneReconstructionEngine_CPU::ResetScene(Scene *scene)
 {
 	int numBlocks = scene->index.getNumAllocatedVoxelBlocks();
 	int blockSize = scene->index.getVoxelBlockSize();
 
-	TVoxel *voxelBlocks_ptr = scene->localVBA.GetVoxelBlocks();
-	for (int i = 0; i < numBlocks * blockSize; ++i) voxelBlocks_ptr[i] = TVoxel();
+	ITMVoxel *voxelBlocks_ptr = scene->localVBA.GetVoxelBlocks();
+	for (int i = 0; i < numBlocks * blockSize; ++i) voxelBlocks_ptr[i] = ITMVoxel();
 	int *vbaAllocationList_ptr = scene->localVBA.GetAllocationList();
 	for (int i = 0; i < numBlocks; ++i) vbaAllocationList_ptr[i] = i;
 	scene->localVBA.lastFreeBlockId = numBlocks - 1;
@@ -66,9 +56,8 @@ void ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHash>::ResetScene(ITMS
 }
 
 
-template<class TVoxel, class TIndex>
-void ITMSceneReconstructionEngine_CPU_common<TVoxel, TIndex>::IntegrateIntoSceneRayCasting(
-	ITMScene<TVoxel, TIndex>* scene, const ITMView* view, const ITMTrackingState* trackingState,
+void ITMSceneReconstructionEngine_CPU::IntegrateIntoSceneRayCasting(
+	Scene* scene, const ITMView* view, const ITMTrackingState* trackingState,
 	const ITMRenderState* renderState)
 {
 	ITMTimer timer;
@@ -83,7 +72,7 @@ void ITMSceneReconstructionEngine_CPU_common<TVoxel, TIndex>::IntegrateIntoScene
 	Vector4f *depthNormals = view->depthNormal->GetData(MEMORYDEVICE_CPU);
 	float *confidence = view->depthConfidence->GetData(MEMORYDEVICE_CPU);
 	Vector4u *rgb = view->rgb->GetData(MEMORYDEVICE_CPU);
-	TVoxel *localVBA = scene->localVBA.GetVoxelBlocks();
+	ITMVoxel *localVBA = scene->localVBA.GetVoxelBlocks();
 	ITMHashEntry *hashTable = scene->index.GetEntries();
 
 	VoxelRayCastingSum *entriesRayCasting = nullptr;
@@ -94,10 +83,10 @@ void ITMSceneReconstructionEngine_CPU_common<TVoxel, TIndex>::IntegrateIntoScene
 	/// 1. Ray trace every pixel, sum up results
 	for (int y = 0; y < view->depth->noDims.y; y++) for (int x = 0; x < view->depth->noDims.x; x++)
 	{
-		rayCastUpdate<TVoxel>(x, y, view->depth->noDims, depth, depthNormals, invM_d,
-		                      invProjParams_d, projParams_rgb,
-		                      this->settings->fusionParams, this->settings->sceneParams,
-		                      hashTable, entriesRayCasting);
+		rayCastUpdate(x, y, view->depth->noDims, depth, depthNormals, invM_d,
+		              invProjParams_d, projParams_rgb,
+		              this->settings->fusionParams, this->settings->sceneParams,
+		              hashTable, entriesRayCasting);
 	}
 	this->timeStats.fusion += timer.Tock();
 
@@ -112,10 +101,10 @@ void ITMSceneReconstructionEngine_CPU_common<TVoxel, TIndex>::IntegrateIntoScene
 		{
 			for (int y = 0; y < view->depth->noDims.y; y++) for (int x = 0; x < view->depth->noDims.x; x++)
 			{
-					rayCastCarveSpace<TVoxel>(x, y, view->depth->noDims, depth, depthNormals, invM_d,
-																		invProjParams_d, projParams_rgb,
-																		this->settings->fusionParams, this->settings->sceneParams,
-																		hashTable, entriesRayCasting, localVBA);
+				rayCastCarveSpace(x, y, view->depth->noDims, depth, depthNormals, invM_d,
+				                  invProjParams_d, projParams_rgb,
+				                  this->settings->fusionParams, this->settings->sceneParams,
+				                  hashTable, entriesRayCasting, localVBA);
 			}
 		} else
 		{
@@ -134,7 +123,7 @@ void ITMSceneReconstructionEngine_CPU_common<TVoxel, TIndex>::IntegrateIntoScene
 
 				Vector3i globalPos = blockToVoxelPos(Vector3i(currentHashEntry.pos.x, currentHashEntry.pos.y, currentHashEntry.pos.z));
 
-				TVoxel *localVoxelBlock = &(localVBA[currentHashEntry.ptr * (SDF_BLOCK_SIZE3)]);
+				ITMVoxel *localVoxelBlock = &(localVBA[currentHashEntry.ptr * (SDF_BLOCK_SIZE3)]);
 				VoxelRayCastingSum *localRayCastingSum = &(entriesRayCasting[currentHashEntry.ptr * (SDF_BLOCK_SIZE3)]);
 
 				for (int z = 0; z < SDF_BLOCK_SIZE; z++) for (int y = 0; y < SDF_BLOCK_SIZE; y++) for (int x = 0; x < SDF_BLOCK_SIZE; x++)
@@ -169,20 +158,19 @@ void ITMSceneReconstructionEngine_CPU_common<TVoxel, TIndex>::IntegrateIntoScene
 		const ITMHashEntry &currentHashEntry = hashTable[visibleEntryIds[entryId]];
 		if (currentHashEntry.ptr < 0) continue;
 
-		TVoxel *localVoxelBlock = &(localVBA[currentHashEntry.ptr * SDF_BLOCK_SIZE3]);
+		ITMVoxel *localVoxelBlock = &(localVBA[currentHashEntry.ptr * SDF_BLOCK_SIZE3]);
 		const VoxelRayCastingSum *rayCastingSum = &(entriesRayCasting[currentHashEntry.ptr * SDF_BLOCK_SIZE3]);
 
 		for (int locId = 0; locId < SDF_BLOCK_SIZE3; locId++)
 		{
-			rayCastCombine<TVoxel>(localVoxelBlock[locId], rayCastingSum[locId], *(scene->sceneParams));
+			rayCastCombine(localVoxelBlock[locId], rayCastingSum[locId], *(scene->sceneParams));
 		}
 	}
 	this->timeStats.fusion += timer.Tock();
 }
 
-template<class TVoxel>
-void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateIntoSceneVoxelProjection(
-	ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view,
+void ITMSceneReconstructionEngine_CPU::IntegrateIntoSceneVoxelProjection(
+	Scene *scene, const ITMView *view,
 	const ITMTrackingState *trackingState, const ITMRenderState *renderState)
 {
 	ITMTimer timer;
@@ -198,7 +186,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateIntoS
 	ITMRenderState_VH *renderState_vh = (ITMRenderState_VH*)renderState;
 
 	M_d = trackingState->pose_d->GetM();
-	if (TVoxel::hasColorInformation) M_rgb = view->calib.trafo_rgb_to_depth.calib_inv * M_d;
+	if (ITMVoxel::hasColorInformation) M_rgb = view->calib.trafo_rgb_to_depth.calib_inv * M_d;
 
 	projParams_d = view->calib.intrinsics_d.projectionParamsSimple.all;
 	projParams_rgb = view->calib.intrinsics_rgb.projectionParamsSimple.all;
@@ -211,7 +199,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateIntoS
 		depthNormals = view->depthNormal->GetData(MEMORYDEVICE_CPU);
 	float *confidence = view->depthConfidence->GetData(MEMORYDEVICE_CPU);
 	Vector4u *rgb = view->rgb->GetData(MEMORYDEVICE_CPU);
-	TVoxel *localVBA = scene->localVBA.GetVoxelBlocks();
+	ITMVoxel *localVBA = scene->localVBA.GetVoxelBlocks();
 	ITMHashEntry *hashTable = scene->index.GetEntries();
 
 	int *visibleEntryIds = renderState_vh->GetVisibleEntryIDs();
@@ -231,7 +219,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateIntoS
 
 		Vector3i globalPos = blockToVoxelPos(Vector3i(currentHashEntry.pos.x, currentHashEntry.pos.y, currentHashEntry.pos.z));
 
-		TVoxel *localVoxelBlock = &(localVBA[currentHashEntry.ptr * (SDF_BLOCK_SIZE3)]);
+		ITMVoxel *localVoxelBlock = &(localVBA[currentHashEntry.ptr * (SDF_BLOCK_SIZE3)]);
 
 		for (int z = 0; z < SDF_BLOCK_SIZE; z++) for (int y = 0; y < SDF_BLOCK_SIZE; y++) for (int x = 0; x < SDF_BLOCK_SIZE; x++)
 		{
@@ -247,7 +235,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateIntoS
 			pt_model.z = (float)(globalPos.z + z) * voxelSize;
 			pt_model.w = 1.0f;
 
-			ComputeUpdatedVoxelInfo<TVoxel::hasColorInformation,TVoxel::hasConfidenceInformation, TVoxel>::compute(
+			ComputeUpdatedVoxelInfo<ITMVoxel::hasColorInformation,ITMVoxel::hasConfidenceInformation>::compute(
 				localVoxelBlock[locId], TSDFDirection(currentHashEntry.direction), pt_model, M_d,
 				projParams_d, M_rgb, projParams_rgb, this->settings->fusionParams, this->settings->sceneParams,
 				depth, depthNormals, confidence, depthImgSize, rgb, rgbImgSize);
@@ -371,8 +359,7 @@ void buildVisibleList_cpu(
 	}
 }
 
-template<class TVoxel>
-void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneFromDepth(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view,
+void ITMSceneReconstructionEngine_CPU::AllocateSceneFromDepth(Scene *scene, const ITMView *view,
 	const ITMTrackingState *trackingState, const ITMRenderState *renderState, bool onlyUpdateVisibleList, bool resetVisibleList)
 {
 	ITMTimer timer;
@@ -502,11 +489,4 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 	scene->index.SetLastFreeExcessListId(allocationTempData.noAllocatedExcessEntries);
 	memcpy(scene->localVBA.noAllocationsPerDirection,
 		     allocationTempData.noAllocationsPerDirection, sizeof(unsigned int) * N_DIRECTIONS);
-}
-
-template<class TVoxel, class TIndex>
-ITMSceneReconstructionEngine_CPU_common<TVoxel, TIndex>::ITMSceneReconstructionEngine_CPU_common(std::shared_ptr<const ITMLibSettings> settings)
-			:ITMSceneReconstructionEngine<TVoxel, TIndex>(settings)
-{
-
 }

@@ -6,45 +6,33 @@
 
 namespace ITMLib
 {
-	template<class TVoxel, class TIndex>
-	class ITMSceneReconstructionEngine_CUDA_common : public ITMSceneReconstructionEngine < TVoxel, TIndex >
-	{
-	public:
-		explicit ITMSceneReconstructionEngine_CUDA_common(std::shared_ptr<const ITMLibSettings> settings);
+class ITMSceneReconstructionEngine_CUDA : public ITMSceneReconstructionEngine
+{
+private:
+	void *allocationTempData_device;
+	void *allocationTempData_host;
+	HashEntryAllocType *entriesAllocType_device;
+	Vector4s *blockCoords_device;
+	TSDFDirection *blockDirections_device;
 
-	protected:
-		void IntegrateIntoSceneRayCasting(ITMScene<TVoxel,TIndex> *scene, const ITMView *view,
-																			const ITMTrackingState *trackingState, const ITMRenderState *renderState) override;
-	};
+public:
+	void ResetScene(ITMScene<ITMVoxel, ITMVoxelIndex>* scene) override;
 
-template<class TVoxel, class TIndex>
-	class ITMSceneReconstructionEngine_CUDA : public ITMSceneReconstructionEngine_CUDA_common < TVoxel, TIndex >
-	{
-	public:
-		explicit ITMSceneReconstructionEngine_CUDA(std::shared_ptr<const ITMLibSettings> settings);
-	};
+	void AllocateSceneFromDepth(ITMScene<ITMVoxel, ITMVoxelIndex>* scene, const ITMView* view,
+	                            const ITMTrackingState* trackingState,
+	                            const ITMRenderState* renderState, bool onlyUpdateVisibleList = false,
+	                            bool resetVisibleList = false) override;
 
-template<class TVoxel>
-	class ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash> : public ITMSceneReconstructionEngine_CUDA_common < TVoxel, ITMVoxelBlockHash >
-	{
-	private:
-		void *allocationTempData_device;
-		void *allocationTempData_host;
-		HashEntryAllocType *entriesAllocType_device;
-		Vector4s *blockCoords_device;
-		TSDFDirection *blockDirections_device;
+	explicit ITMSceneReconstructionEngine_CUDA(const std::shared_ptr<const ITMLibSettings>& settings);
 
-	public:
-		void ResetScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene) override;
+	~ITMSceneReconstructionEngine_CUDA();
 
-		void AllocateSceneFromDepth(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view, const ITMTrackingState *trackingState,
-			const ITMRenderState *renderState, bool onlyUpdateVisibleList = false, bool resetVisibleList = false) override;
+protected:
+	void IntegrateIntoSceneVoxelProjection(ITMScene<ITMVoxel, ITMVoxelIndex>* scene,
+	                                       const ITMView* view, const ITMTrackingState* trackingState,
+	                                       const ITMRenderState* renderState) override;
 
-		explicit ITMSceneReconstructionEngine_CUDA(std::shared_ptr<const ITMLibSettings> settings);
-		~ITMSceneReconstructionEngine_CUDA();
-
-	protected:
-		void IntegrateIntoSceneVoxelProjection(ITMScene<TVoxel, ITMVoxelBlockHash> *scene,
-			const ITMView *view, const ITMTrackingState *trackingState, const ITMRenderState *renderState) override;
-	};
+	void IntegrateIntoSceneRayCasting(ITMScene<ITMVoxel, ITMVoxelIndex>* scene, const ITMView* view,
+	                                  const ITMTrackingState* trackingState, const ITMRenderState* renderState) override;
+};
 }

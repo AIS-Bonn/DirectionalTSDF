@@ -70,7 +70,7 @@ void ITMDenseMapper<TVoxel,TIndex>::UpdateVisibleList(const ITMView *view, const
 }
 
 template<class TVoxel, class TIndex>
-const ITMSceneReconstructionEngine<TVoxel, TIndex>* ITMDenseMapper<TVoxel, TIndex>::GetSceneReconstructionEngine() const
+const ITMSceneReconstructionEngine* ITMDenseMapper<TVoxel, TIndex>::GetSceneReconstructionEngine() const
 {
 	return sceneRecoEngine;
 }

@@ -34,7 +34,6 @@ namespace ITMLib
 	template class ITMMeshingEngine_CPU<ITMVoxel, ITMVoxelIndex>;
 	template class ITMMultiMeshingEngine_CPU<ITMVoxel, ITMVoxelIndex>;
 	template class ITMSwappingEngine_CPU<ITMVoxel, ITMVoxelIndex>;
-	template class ITMSceneReconstructionEngine_CPU<ITMVoxel, ITMVoxelIndex>;
 
 	template class ITMDenseSurfelMapper<ITMSurfel_grey>;
 	template class ITMDenseSurfelMapper<ITMSurfel_rgb>;

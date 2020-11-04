@@ -1,7 +1,8 @@
 // Copyright 2014-2017 Oxford University Innovation Limited and the authors of InfiniTAM
 
 #include "ITMVisualisationHelpers_CUDA.h"
-#include "Engines/Reconstruction/Interface/ITMSceneReconstructionEngine.h"
+#include "ITMLib/Engines/Reconstruction/Shared/ITMSceneReconstructionEngine_Shared.h"
+#include "ITMLib/Engines/Reconstruction/Interface/ITMSceneReconstructionEngine.h"
 
 //device implementations
 

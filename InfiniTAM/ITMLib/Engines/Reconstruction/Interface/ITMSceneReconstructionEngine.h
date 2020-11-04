@@ -4,6 +4,7 @@
 
 #include <memory>
 #include <math.h>
+#include <ITMLib/ITMLibDefines.h>
 
 #include "ITMLib/Objects/RenderStates/ITMRenderState.h"
 #include "ITMLib/Objects/Scene/ITMScene.h"
@@ -47,7 +48,6 @@ namespace ITMLib
 	    an ITMLib::Objects::ITMScene and fuse new image information
 	    into them.
 	*/
-	template<class TVoxel, class TIndex>
 	class ITMSceneReconstructionEngine
 	{
 	public:
@@ -58,19 +58,19 @@ namespace ITMLib
 		/** Clear and reset a scene to set up a new empty
 		    one.
 		*/
-		virtual void ResetScene(ITMScene<TVoxel, TIndex> *scene) = 0;
+		virtual void ResetScene(ITMScene<ITMVoxel, ITMVoxelIndex> *scene) = 0;
 
 		/** Given a view with a new depth image, compute the
 		    visible blocks, allocate them and update the hash
 		    table so that the new image data can be integrated.
 		*/
-		virtual void AllocateSceneFromDepth(ITMScene<TVoxel,TIndex> *scene, const ITMView *view, const ITMTrackingState *trackingState,
+		virtual void AllocateSceneFromDepth(ITMScene<ITMVoxel,ITMVoxelIndex> *scene, const ITMView *view, const ITMTrackingState *trackingState,
 			const ITMRenderState *renderState, bool onlyUpdateVisibleList = false, bool resetVisibleList = false) = 0;
 
 		/** Update the voxel blocks by integrating depth and
 		    possibly colour information from the given view.
 		*/
-		void IntegrateIntoScene(ITMScene<TVoxel, TIndex>* scene, const ITMView* view,
+		void IntegrateIntoScene(ITMScene<ITMVoxel, ITMVoxelIndex>* scene, const ITMView* view,
 			const ITMTrackingState* trackingState, const ITMRenderState* renderState)
 		{
 			if (this->settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_VOXEL_PROJECTION)
@@ -106,11 +106,11 @@ namespace ITMLib
 
 		ITMReconstructionTimeStats timeStats;
 
-		virtual void IntegrateIntoSceneVoxelProjection(ITMScene<TVoxel, TIndex>* scene, const ITMView* view,
+		virtual void IntegrateIntoSceneVoxelProjection(ITMScene<ITMVoxel, ITMVoxelIndex>* scene, const ITMView* view,
 		                                               const ITMTrackingState* trackingState,
 		                                               const ITMRenderState* renderState) = 0;
 
-		virtual void IntegrateIntoSceneRayCasting(ITMScene<TVoxel,TIndex> *scene, const ITMView *view,
+		virtual void IntegrateIntoSceneRayCasting(ITMScene<ITMVoxel,ITMVoxelIndex> *scene, const ITMView *view,
 		                                          const ITMTrackingState *trackingState, const ITMRenderState *renderState) = 0;
 	};
 }

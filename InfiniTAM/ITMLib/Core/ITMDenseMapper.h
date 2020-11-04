@@ -15,7 +15,7 @@ namespace ITMLib
 	class ITMDenseMapper
 	{
 	private:
-		ITMSceneReconstructionEngine<TVoxel,TIndex> *sceneRecoEngine;
+		ITMSceneReconstructionEngine *sceneRecoEngine;
 		ITMSwappingEngine<TVoxel,TIndex> *swappingEngine;
 
 		ITMLibSettings::SwappingMode swappingMode;
@@ -29,7 +29,7 @@ namespace ITMLib
 		/// Update the visible list (this can be called to update the visible list when fusion is turned off)
 		void UpdateVisibleList(const ITMView *view, const ITMTrackingState *trackingState, ITMScene<TVoxel, TIndex> *scene, ITMRenderState *renderState, bool resetVisibleList = false);
 
-		const ITMSceneReconstructionEngine<TVoxel,TIndex> *GetSceneReconstructionEngine() const;
+		const ITMSceneReconstructionEngine *GetSceneReconstructionEngine() const;
 
 		/** \brief Constructor
 		    Ommitting a separate image size for the depth images

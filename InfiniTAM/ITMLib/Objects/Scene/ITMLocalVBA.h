@@ -2,8 +2,9 @@
 
 #pragma once
 
-#include "../../../ORUtils/MemoryBlock.h"
-#include "../../../ORUtils/MemoryBlockPersister.h"
+#include "ORUtils/MemoryBlock.h"
+#include "ORUtils/MemoryBlockPersister.h"
+#include "ITMLib/Objects/Scene/ITMDirectional.h"
 
 namespace ITMLib
 {

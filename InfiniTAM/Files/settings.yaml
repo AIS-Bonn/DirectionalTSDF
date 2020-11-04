@@ -50,7 +50,7 @@ surfelSceneParams:
   useSurfelMerging: true
 
 fusionParams:
-  tsdfMode: directional  # [directional, default]
+  tsdfMode: default  # [directional, default]
   fusionMode: voxelProjection  # [voxelProjection, rayCastingNormal, rayCastingViewDirAndNormal, rayCastingViewDir]
   carvingMode: voxelProjection  # [voxelProjection, rayCasting]
   fusionMetric: pointToPoint  # [pointToPoint, pointToPlane]
