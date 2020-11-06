@@ -6,21 +6,17 @@
 
 namespace ITMLib
 {
-	template<class TVoxel, class TIndex>
-	class ITMMeshingEngine_CUDA : public ITMMeshingEngine < TVoxel, TIndex >
-	{};
+class ITMMeshingEngine_CUDA : public ITMMeshingEngine
+{
+private:
+	unsigned int* noTriangles_device;
+	Vector4s* visibleBlockGlobalPos_device;
 
-	template<class TVoxel>
-	class ITMMeshingEngine_CUDA<TVoxel, ITMVoxelBlockHash> : public ITMMeshingEngine < TVoxel, ITMVoxelBlockHash >
-	{
-	private:
-		unsigned int  *noTriangles_device;
-		Vector4s *visibleBlockGlobalPos_device;
+public:
+	void MeshScene(ITMMesh* mesh, const Scene* scene);
 
-	public:
-		void MeshScene(ITMMesh *mesh, const ITMScene<TVoxel, ITMVoxelBlockHash> *scene);
+	ITMMeshingEngine_CUDA(void);
 
-		ITMMeshingEngine_CUDA(void);
-		~ITMMeshingEngine_CUDA(void);
-	};
+	~ITMMeshingEngine_CUDA(void);
+};
 }

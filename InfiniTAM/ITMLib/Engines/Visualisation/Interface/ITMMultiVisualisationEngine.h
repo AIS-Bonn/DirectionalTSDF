@@ -8,28 +8,34 @@
 #include "../../MultiScene/ITMMapGraphManager.h"
 #include "../Interface/ITMVisualisationEngine.h"
 
-namespace ITMLib {
+namespace ITMLib
+{
 
-	template<class TVoxel, class TIndex>
-	class ITMMultiVisualisationEngine
-	{
-	public:
-		explicit ITMMultiVisualisationEngine(std::shared_ptr<const ITMLibSettings> settings)
-			:settings(std::move(settings))
-		{}
-		virtual ~ITMMultiVisualisationEngine(void) {}
+class ITMMultiVisualisationEngine
+{
+public:
+	explicit ITMMultiVisualisationEngine(std::shared_ptr<const ITMLibSettings> settings)
+		: settings(std::move(settings))
+	{}
 
-		virtual ITMRenderState* CreateRenderState(const ITMScene<TVoxel, TIndex> *scene, const Vector2i & imgSize) const = 0;
+	virtual ~ITMMultiVisualisationEngine(void)
+	{}
 
-		virtual void PrepareRenderState(const ITMVoxelMapGraphManager<TVoxel, TIndex> & sceneManager, ITMRenderState *state) = 0;
+	virtual ITMRenderState* CreateRenderState(const Scene* scene, const Vector2i& imgSize) const = 0;
 
-		//skip "FindVisibleBlocks"
+	virtual void
+	PrepareRenderState(const ITMVoxelMapGraphManager<ITMVoxel>& sceneManager, ITMRenderState* state) = 0;
 
-		virtual void CreateExpectedDepths(const ORUtils::SE3Pose *pose, const ITMIntrinsics *intrinsics, ITMRenderState *renderState) const = 0;
-		virtual void RenderImage(const ORUtils::SE3Pose *pose, const ITMIntrinsics *intrinsics, ITMRenderState *renderState,
-			ITMUChar4Image *outputImage, IITMVisualisationEngine::RenderImageType type) const = 0;
-	protected:
-		std::shared_ptr<const ITMLibSettings> settings;
-	};
+	//skip "FindVisibleBlocks"
+
+	virtual void CreateExpectedDepths(const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
+	                                  ITMRenderState* renderState) const = 0;
+
+	virtual void RenderImage(const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics, ITMRenderState* renderState,
+	                         ITMUChar4Image* outputImage, IITMVisualisationEngine::RenderImageType type) const = 0;
+
+protected:
+	std::shared_ptr<const ITMLibSettings> settings;
+};
 }
 

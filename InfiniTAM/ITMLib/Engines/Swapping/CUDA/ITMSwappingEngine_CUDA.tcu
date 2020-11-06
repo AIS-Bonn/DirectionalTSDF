@@ -4,9 +4,9 @@
 #include "ITMSwappingEngine_CUDA.h"
 
 #include "../Shared/ITMSwappingEngine_Shared.h"
-#include "../../../Objects/RenderStates/ITMRenderState_VH.h"
-#include "../../../Utils/ITMCUDAUtils.h"
-#include "Engines/Reconstruction/Interface/ITMSceneReconstructionEngine.h"
+#include "ITMLib/Objects/RenderStates/ITMRenderState_VH.h"
+#include "ITMLib/Utils/ITMCUDAUtils.h"
+#include "ITMLib/Engines/Reconstruction/Interface/ITMSceneReconstructionEngine.h"
 
 using namespace ITMLib;
 
@@ -42,7 +42,7 @@ namespace
 }
 
 template<class TVoxel>
-ITMSwappingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::ITMSwappingEngine_CUDA(void)
+ITMSwappingEngine_CUDA<TVoxel>::ITMSwappingEngine_CUDA(void)
 {
 	ORcudaSafeCall(cudaMalloc((void**)&noAllocatedVoxelEntries_device, sizeof(int)));
 	ORcudaSafeCall(cudaMalloc((void**)&noNeededEntries_device, sizeof(int)));
@@ -50,7 +50,7 @@ ITMSwappingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::ITMSwappingEngine_CUDA(void)
 }
 
 template<class TVoxel>
-ITMSwappingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::~ITMSwappingEngine_CUDA(void)
+ITMSwappingEngine_CUDA<TVoxel>::~ITMSwappingEngine_CUDA(void)
 {
 	ORcudaSafeCall(cudaFree(noAllocatedVoxelEntries_device));
 	ORcudaSafeCall(cudaFree(noNeededEntries_device));
@@ -58,7 +58,7 @@ ITMSwappingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::~ITMSwappingEngine_CUDA(void)
 }
 
 template<class TVoxel>
-int ITMSwappingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::LoadFromGlobalMemory(ITMScene<TVoxel, ITMVoxelBlockHash> *scene)
+int ITMSwappingEngine_CUDA<TVoxel>::LoadFromGlobalMemory(ITMScene<TVoxel> *scene)
 {
 	ITMGlobalCache<TVoxel> *globalCache = scene->globalCache;
 
@@ -110,7 +110,7 @@ int ITMSwappingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::LoadFromGlobalMemory(ITMS
 }
 
 template<class TVoxel>
-void ITMSwappingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::IntegrateGlobalIntoLocal(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, ITMRenderState *renderState)
+void ITMSwappingEngine_CUDA<TVoxel>::IntegrateGlobalIntoLocal(ITMScene<TVoxel> *scene, ITMRenderState *renderState)
 {
 	ITMGlobalCache<TVoxel> *globalCache = scene->globalCache;
 
@@ -138,7 +138,7 @@ void ITMSwappingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::IntegrateGlobalIntoLocal
 }
 
 template<class TVoxel>
-void ITMSwappingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::SaveToGlobalMemory(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, ITMRenderState *renderState)
+void ITMSwappingEngine_CUDA<TVoxel>::SaveToGlobalMemory(ITMScene<TVoxel> *scene, ITMRenderState *renderState)
 {
 	ITMGlobalCache<TVoxel> *globalCache = scene->globalCache;
 
@@ -217,7 +217,7 @@ void ITMSwappingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::SaveToGlobalMemory(ITMSc
 }
 
 template<class TVoxel>
-void ITMSwappingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::CleanLocalMemory(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, ITMRenderState *renderState)
+void ITMSwappingEngine_CUDA<TVoxel>::CleanLocalMemory(ITMScene<TVoxel> *scene, ITMRenderState *renderState)
 {
 	ITMHashEntry *hashTable = scene->index.GetEntries();
 	HashEntryVisibilityType *entriesVisibleType = ((ITMRenderState_VH*)renderState)->GetEntriesVisibleType();

@@ -235,7 +235,7 @@ void ITMSceneReconstructionEngine_CPU::IntegrateIntoSceneVoxelProjection(
 			pt_model.z = (float)(globalPos.z + z) * voxelSize;
 			pt_model.w = 1.0f;
 
-			ComputeUpdatedVoxelInfo<ITMVoxel::hasColorInformation,ITMVoxel::hasConfidenceInformation>::compute(
+			ComputeUpdatedVoxelInfo<ITMVoxel::hasColorInformation>::compute(
 				localVoxelBlock[locId], TSDFDirection(currentHashEntry.direction), pt_model, M_d,
 				projParams_d, M_rgb, projParams_rgb, this->settings->fusionParams, this->settings->sceneParams,
 				depth, depthNormals, confidence, depthImgSize, rgb, rgbImgSize);

@@ -13,13 +13,13 @@ namespace ITMLib
 	fairly limited GPU memory to some large scale storage
 	space.
 	*/
-	template<class TVoxel, class TIndex>
+	template<class TVoxel>
 	class ITMSwappingEngine
 	{
 	public:
-		virtual void IntegrateGlobalIntoLocal(ITMScene<TVoxel, TIndex> *scene, ITMRenderState *renderState) = 0;
-		virtual void SaveToGlobalMemory(ITMScene<TVoxel, TIndex> *scene, ITMRenderState *renderState) = 0;
-		virtual void CleanLocalMemory(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, ITMRenderState *renderState) = 0;
+		virtual void IntegrateGlobalIntoLocal(ITMScene<TVoxel> *scene, ITMRenderState *renderState) = 0;
+		virtual void SaveToGlobalMemory(ITMScene<TVoxel> *scene, ITMRenderState *renderState) = 0;
+		virtual void CleanLocalMemory(ITMScene<TVoxel> *scene, ITMRenderState *renderState) = 0;
 
 		virtual ~ITMSwappingEngine(void) { }
 	};

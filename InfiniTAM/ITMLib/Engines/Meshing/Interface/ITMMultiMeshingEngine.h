@@ -2,18 +2,22 @@
 
 #pragma once
 
+#include <ITMLib/Objects/Scene/ITMMultiSceneAccess.h>
 #include "ITMMeshingEngine.h"
 #include "../../../Objects/Meshing/ITMMesh.h"
 #include "../../MultiScene/ITMMapGraphManager.h"
 
 namespace ITMLib
 {
-	template<class TVoxel, class TIndex>
 	class ITMMultiMeshingEngine
 	{
 	public:
+		typedef typename ITMMultiIndex<ITMVoxelIndex>::IndexData MultiIndexData;
+		typedef ITMMultiVoxel<ITMVoxel> MultiVoxelData;
+		typedef ITMVoxelMapGraphManager<ITMVoxel> MultiSceneManager;
+
 		virtual ~ITMMultiMeshingEngine(void) {}
 
-		virtual void MeshScene(ITMMesh *mesh, const ITMVoxelMapGraphManager<TVoxel, TIndex> & sceneManager) = 0;
+		virtual void MeshScene(ITMMesh *mesh, const ITMVoxelMapGraphManager<ITMVoxel> & sceneManager) = 0;
 	};
 }

@@ -145,8 +145,8 @@ __global__ void voxelProjectionCarveSpace_device(
 		depthImgSize, rgb, rgbImgSize);
 }
 
-template<class TVoxel, bool stopMaxW>
-__global__ void integrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry *hashTable, int *visibleEntryIDs,
+template<bool stopMaxW>
+__global__ void integrateIntoScene_device(ITMVoxel *localVBA, const ITMHashEntry *hashTable, int *visibleEntryIDs,
 	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, const Vector4f *depthNormals, const float *confidence, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d,
 	Vector4f projParams_rgb, float _voxelSize, const ITMFusionParams fusionParams, const ITMSceneParams sceneParams)
 {
@@ -159,7 +159,7 @@ __global__ void integrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry *
 
 	globalPos = currentHashEntry.pos.toInt() * SDF_BLOCK_SIZE;
 
-	TVoxel *localVoxelBlock = &(localVBA[currentHashEntry.ptr * SDF_BLOCK_SIZE3]);
+	ITMVoxel *localVoxelBlock = &(localVBA[currentHashEntry.ptr * SDF_BLOCK_SIZE3]);
 
 	int x = threadIdx.x, y = threadIdx.y, z = threadIdx.z;
 
@@ -175,7 +175,7 @@ __global__ void integrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry *
 	pt_model.z = (float)(globalPos.z + z) * _voxelSize;
 	pt_model.w = 1.0f;
 
-	ComputeUpdatedVoxelInfo<TVoxel::hasColorInformation, TVoxel::hasConfidenceInformation>::compute(
+	ComputeUpdatedVoxelInfo<ITMVoxel::hasColorInformation>::compute(
 		localVoxelBlock[locId], TSDFDirection(currentHashEntry.direction),
 		pt_model, M_d, projParams_d, M_rgb, projParams_rgb, fusionParams, sceneParams, depth, depthNormals, confidence,
 		depthImgSize, rgb, rgbImgSize);
@@ -363,7 +363,7 @@ ITMSceneReconstructionEngine_CUDA::ITMSceneReconstructionEngine_CUDA(
 
 void
 ITMSceneReconstructionEngine_CUDA::IntegrateIntoSceneRayCasting(
-	ITMScene<ITMVoxel, ITMVoxelIndex>* scene, const ITMView* view, const ITMTrackingState* trackingState,
+	Scene* scene, const ITMView* view, const ITMTrackingState* trackingState,
 	const ITMRenderState* renderState)
 {
 	ITMTimer timer;
@@ -465,7 +465,7 @@ ITMSceneReconstructionEngine_CUDA::~ITMSceneReconstructionEngine_CUDA(void)
 	}
 }
 
-void ITMSceneReconstructionEngine_CUDA::ResetScene(ITMScene<ITMVoxel, ITMVoxelIndex>* scene)
+void ITMSceneReconstructionEngine_CUDA::ResetScene(Scene* scene)
 {
 	int numBlocks = scene->index.getNumAllocatedVoxelBlocks();
 	int blockSize = scene->index.getVoxelBlockSize();
@@ -487,7 +487,7 @@ void ITMSceneReconstructionEngine_CUDA::ResetScene(ITMScene<ITMVoxel, ITMVoxelIn
 	scene->index.SetLastFreeExcessListId(SDF_EXCESS_LIST_SIZE - 1);
 }
 
-void ITMSceneReconstructionEngine_CUDA::AllocateSceneFromDepth(ITMScene<ITMVoxel, ITMVoxelIndex>* scene,
+void ITMSceneReconstructionEngine_CUDA::AllocateSceneFromDepth(Scene* scene,
                                                                const ITMView* view,
                                                                const ITMTrackingState* trackingState,
                                                                const ITMRenderState* renderState,
@@ -615,7 +615,7 @@ void ITMSceneReconstructionEngine_CUDA::AllocateSceneFromDepth(ITMScene<ITMVoxel
 }
 
 void ITMSceneReconstructionEngine_CUDA::IntegrateIntoSceneVoxelProjection(
-	ITMScene<ITMVoxel, ITMVoxelIndex>* scene, const ITMView* view,
+	Scene* scene, const ITMView* view,
 	const ITMTrackingState* trackingState, const ITMRenderState* renderState)
 {
 	ITMTimer timer;
@@ -654,13 +654,13 @@ void ITMSceneReconstructionEngine_CUDA::IntegrateIntoSceneVoxelProjection(
 
 	if (scene->sceneParams->stopIntegratingAtMaxW)
 	{
-		integrateIntoScene_device<ITMVoxel, true> << < gridSize, cudaBlockSize >> > (localVBA, hashTable, visibleEntryIDs,
+		integrateIntoScene_device<true> << < gridSize, cudaBlockSize >> > (localVBA, hashTable, visibleEntryIDs,
 			rgb, rgbImgSize, depth, depthNormals, confidence, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize,
 			this->settings->fusionParams, this->settings->sceneParams);
 		ORcudaKernelCheck;
 	} else
 	{
-		integrateIntoScene_device<ITMVoxel, false> << < gridSize, cudaBlockSize >> > (localVBA, hashTable, visibleEntryIDs,
+		integrateIntoScene_device<false> << < gridSize, cudaBlockSize >> > (localVBA, hashTable, visibleEntryIDs,
 			rgb, rgbImgSize, depth, depthNormals, confidence, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize,
 			this->settings->fusionParams, this->settings->sceneParams);
 		ORcudaKernelCheck;

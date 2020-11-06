@@ -22,4 +22,4 @@ typedef ITMVoxel_f_rgb ITMVoxel;
 */
 typedef ITMLib::ITMVoxelBlockHash ITMVoxelIndex;
 
-typedef ITMLib::ITMScene<ITMVoxel, ITMVoxelIndex> Scene;
+typedef ITMLib::ITMScene<ITMVoxel> Scene;

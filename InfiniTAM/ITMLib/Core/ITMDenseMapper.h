@@ -11,23 +11,22 @@ namespace ITMLib
 {
 	/** \brief
 	*/
-	template<class TVoxel, class TIndex>
 	class ITMDenseMapper
 	{
 	private:
 		ITMSceneReconstructionEngine *sceneRecoEngine;
-		ITMSwappingEngine<TVoxel,TIndex> *swappingEngine;
+		ITMSwappingEngine<ITMVoxel> *swappingEngine;
 
 		ITMLibSettings::SwappingMode swappingMode;
 
 	public:
-		void ResetScene(ITMScene<TVoxel,TIndex> *scene) const;
+		void ResetScene(Scene *scene) const;
 
 		/// Process a single frame
-		void ProcessFrame(const ITMView *view, const ITMTrackingState *trackingState, ITMScene<TVoxel,TIndex> *scene, ITMRenderState *renderState_live, bool resetVisibleList = false);
+		void ProcessFrame(const ITMView *view, const ITMTrackingState *trackingState, Scene *scene, ITMRenderState *renderState_live, bool resetVisibleList = false);
 
 		/// Update the visible list (this can be called to update the visible list when fusion is turned off)
-		void UpdateVisibleList(const ITMView *view, const ITMTrackingState *trackingState, ITMScene<TVoxel, TIndex> *scene, ITMRenderState *renderState, bool resetVisibleList = false);
+		void UpdateVisibleList(const ITMView *view, const ITMTrackingState *trackingState, Scene *scene, ITMRenderState *renderState, bool resetVisibleList = false);
 
 		const ITMSceneReconstructionEngine *GetSceneReconstructionEngine() const;
 

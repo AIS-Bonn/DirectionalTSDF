@@ -22,7 +22,6 @@ struct ITMSceneReconstructionEngineFactory
    *
    * \param deviceType  The device on which the scene reconstruction engine should operate.
    */
-  template <typename TVoxel, typename TIndex>
   static ITMSceneReconstructionEngine *MakeSceneReconstructionEngine(
     const std::shared_ptr<const ITMLibSettings>& settings)
   {

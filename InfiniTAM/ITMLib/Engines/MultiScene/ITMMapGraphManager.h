@@ -37,28 +37,28 @@ namespace ITMLib
 		virtual int countVisibleBlocks(int localMapId, int minBlockId, int maxBlockId, bool invertIDs) const = 0;
 	};
 
-	template<class TVoxel, class TIndex>
+	template<class TVoxel>
 	class ITMVoxelMapGraphManager : public ITMMapGraphManager
 	{
 	private:
 		std::shared_ptr<const ITMLibSettings> settings;
-		const ITMVisualisationEngine<TVoxel, TIndex> *visualisationEngine;
-		const ITMDenseMapper<TVoxel, TIndex> *denseMapper;
+		const ITMVisualisationEngine *visualisationEngine;
+		const ITMDenseMapper *denseMapper;
 		Vector2i trackedImageSize;
 
-		std::vector<ITMLocalMap<TVoxel, TIndex>*> allData;
+		std::vector<ITMLocalMap<TVoxel>*> allData;
 
 	public:
-		ITMVoxelMapGraphManager(const std::shared_ptr<const ITMLibSettings>& settings, const ITMVisualisationEngine<TVoxel, TIndex> *visualisationEngine, const ITMDenseMapper<TVoxel, TIndex> *denseMapper, const Vector2i & trackedImageSize);
+		ITMVoxelMapGraphManager(const std::shared_ptr<const ITMLibSettings>& settings, const ITMVisualisationEngine *visualisationEngine, const ITMDenseMapper *denseMapper, const Vector2i & trackedImageSize);
 		~ITMVoxelMapGraphManager(void);
 
 		int createNewLocalMap(void);
 		void removeLocalMap(int index);
 		size_t numLocalMaps(void) const { return allData.size(); }
 
-		const ITMLocalMap<TVoxel, TIndex>* getLocalMap(int localMapId) const { return allData[localMapId]; }
+		const ITMLocalMap<TVoxel>* getLocalMap(int localMapId) const { return allData[localMapId]; }
 
-		ITMLocalMap<TVoxel, TIndex>* getLocalMap(int localMapId) { return allData[localMapId]; }
+		ITMLocalMap<TVoxel>* getLocalMap(int localMapId) { return allData[localMapId]; }
 
 		const ITMPoseConstraint & getRelation_const(int fromLocalMap, int toLocalMap) const;
 		ITMPoseConstraint & getRelation(int fromLocalMap, int toLocalMap);

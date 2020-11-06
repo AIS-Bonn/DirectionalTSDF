@@ -39,9 +39,9 @@ int main(int argc, char** argv)
 	switch (internalSettings->libMode)
 	{
 		case ITMLibSettings::LIBMODE_BASIC:
-			mainEngine = new ITMBasicEngine<ITMVoxel, ITMVoxelIndex>(internalSettings, imageSource->getCalib(),
-			                                                         imageSource->getRGBImageSize(),
-			                                                         imageSource->getDepthImageSize());
+			mainEngine = new ITMBasicEngine(internalSettings, imageSource->getCalib(),
+			                                imageSource->getRGBImageSize(),
+			                                imageSource->getDepthImageSize());
 			break;
 		case ITMLibSettings::LIBMODE_BASIC_SURFELS:
 			mainEngine = new ITMBasicSurfelEngine<ITMSurfelT>(internalSettings, imageSource->getCalib(),
@@ -49,9 +49,9 @@ int main(int argc, char** argv)
 			                                                  imageSource->getDepthImageSize());
 			break;
 		case ITMLibSettings::LIBMODE_LOOPCLOSURE:
-			mainEngine = new ITMMultiEngine<ITMVoxel, ITMVoxelIndex>(internalSettings, imageSource->getCalib(),
-			                                                         imageSource->getRGBImageSize(),
-			                                                         imageSource->getDepthImageSize());
+			mainEngine = new ITMMultiEngine(internalSettings, imageSource->getCalib(),
+			                                imageSource->getRGBImageSize(),
+			                                imageSource->getDepthImageSize());
 			break;
 		default:
 			throw std::runtime_error("Unsupported library mode!");

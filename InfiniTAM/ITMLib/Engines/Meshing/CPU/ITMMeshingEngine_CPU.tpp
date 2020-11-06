@@ -5,11 +5,10 @@
 
 using namespace ITMLib;
 
-template<class TVoxel>
-void ITMMeshingEngine_CPU<TVoxel, ITMVoxelBlockHash>::MeshScene(ITMMesh *mesh, const ITMScene<TVoxel, ITMVoxelBlockHash> *scene)
+void ITMMeshingEngine_CPU::MeshScene(ITMMesh *mesh, const Scene *scene)
 {
 	ITMMesh::Triangle *triangles = mesh->triangles->GetData(MEMORYDEVICE_CPU);
-	const TVoxel *localVBA = scene->localVBA.GetVoxelBlocks();
+	const ITMVoxel *localVBA = scene->localVBA.GetVoxelBlocks();
 	const ITMHashEntry *hashTable = scene->index.GetEntries();
 
 	int noTriangles = 0, noMaxTriangles = mesh->noMaxTriangles, noTotalEntries = scene->index.noTotalEntries;

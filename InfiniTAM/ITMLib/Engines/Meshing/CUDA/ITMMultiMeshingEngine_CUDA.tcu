@@ -17,8 +17,7 @@ __global__ void meshScene_device(ITMMesh::Triangle *triangles, unsigned int *noT
 template<class TMultiIndex>
 __global__ void findAllocateBlocks(Vector4s *visibleBlockGlobalPos, const TMultiIndex *hashTables, int noTotalEntries);
 
-template<class TVoxel>
-ITMMultiMeshingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::ITMMultiMeshingEngine_CUDA(void)
+ITMMultiMeshingEngine_CUDA::ITMMultiMeshingEngine_CUDA(void)
 {
 	ORcudaSafeCall(cudaMalloc((void**)&visibleBlockGlobalPos_device, SDF_LOCAL_BLOCK_NUM * sizeof(Vector4s) * MAX_NUM_LOCALMAPS));
 	ORcudaSafeCall(cudaMalloc((void**)&noTriangles_device, sizeof(unsigned int)));
@@ -27,8 +26,7 @@ ITMMultiMeshingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::ITMMultiMeshingEngine_CUD
 	ORcudaSafeCall(cudaMalloc((void**)&voxelData_device, sizeof(MultiVoxelData)));
 }
 
-template<class TVoxel>
-ITMMultiMeshingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::~ITMMultiMeshingEngine_CUDA(void)
+ITMMultiMeshingEngine_CUDA::~ITMMultiMeshingEngine_CUDA(void)
 {
 	ORcudaSafeCall(cudaFree(visibleBlockGlobalPos_device));
 	ORcudaSafeCall(cudaFree(noTriangles_device));
@@ -37,8 +35,7 @@ ITMMultiMeshingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::~ITMMultiMeshingEngine_CU
 	ORcudaSafeCall(cudaFree(voxelData_device));
 }
 
-template<class TVoxel>
-void ITMMultiMeshingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::MeshScene(ITMMesh *mesh, const ITMVoxelMapGraphManager<TVoxel, ITMVoxelBlockHash> & sceneManager)
+void ITMMultiMeshingEngine_CUDA::MeshScene(ITMMesh *mesh, const MultiSceneManager & sceneManager)
 {
 	const ITMSceneParams & sceneParams = *(sceneManager.getLocalMap(0)->scene->sceneParams);
 	int numLocalMaps = (int)sceneManager.numLocalMaps();
@@ -65,9 +62,6 @@ void ITMMultiMeshingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::MeshScene(ITMMesh *m
 
 	ITMMesh::Triangle *triangles = mesh->triangles->GetData(MEMORYDEVICE_CUDA);
 
-	typedef ITMMultiVoxel<TVoxel> VD;
-	typedef ITMMultiIndex<ITMVoxelBlockHash> ID;
-
 	int noMaxTriangles = mesh->noMaxTriangles, noTotalEntries = ITMVoxelBlockHash::noTotalEntries;
 	float factor = sceneParams.voxelSize;
 
@@ -78,7 +72,7 @@ void ITMMultiMeshingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::MeshScene(ITMMesh *m
 		dim3 cudaBlockSize(256);
 		dim3 gridSize((int)ceil((float)noTotalEntries / (float)cudaBlockSize.x), numLocalMaps);
 
-		findAllocateBlocks<typename ID::IndexData> << <gridSize, cudaBlockSize >> >(visibleBlockGlobalPos_device, indexData_device, noTotalEntries);
+		findAllocateBlocks<typename MultiIndexData::IndexData> << <gridSize, cudaBlockSize >> >(visibleBlockGlobalPos_device, indexData_device, noTotalEntries);
 		ORcudaKernelCheck;
 	}
 
@@ -86,7 +80,7 @@ void ITMMultiMeshingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::MeshScene(ITMMesh *m
 		dim3 cudaBlockSize(SDF_BLOCK_SIZE, SDF_BLOCK_SIZE, SDF_BLOCK_SIZE);
 		dim3 gridSize(SDF_LOCAL_BLOCK_NUM / 16, 16, numLocalMaps);
 
-		meshScene_device<VD, typename ID::IndexData> << <gridSize, cudaBlockSize >> >(triangles, noTriangles_device, factor, noTotalEntries, noMaxTriangles,
+		meshScene_device<MultiVoxelData, typename MultiIndexData::IndexData> << <gridSize, cudaBlockSize >> >(triangles, noTriangles_device, factor, noTotalEntries, noMaxTriangles,
 			visibleBlockGlobalPos_device, voxelData_device, indexData_device);
 		ORcudaKernelCheck;
 

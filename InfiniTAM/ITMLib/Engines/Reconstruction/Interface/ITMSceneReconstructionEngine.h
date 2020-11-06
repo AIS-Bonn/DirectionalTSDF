@@ -15,102 +15,106 @@
 
 namespace ITMLib
 {
-	typedef struct
+typedef struct
+{
+	float sdfSum;
+	float weightSum;
+
+	_CPU_AND_GPU_CODE_
+	inline void reset()
 	{
-		float sdfSum;
-		float weightSum;
+		sdfSum = 0.0f;
+		weightSum = 0.0f;
+	}
 
-		_CPU_AND_GPU_CODE_
-		inline void reset()
-		{
-			sdfSum = 0.0f;
-			weightSum = 0.0f;
-		}
-
-		_CPU_AND_GPU_CODE_
-		inline void update(float sdf, float weight)
-		{
+	_CPU_AND_GPU_CODE_
+	inline void update(float sdf, float weight)
+	{
 #ifdef __CUDA_ARCH__
-			atomicAdd(&sdfSum, weight * sdf);
-			atomicAdd(&weightSum, weight);
+		atomicAdd(&sdfSum, weight * sdf);
+		atomicAdd(&weightSum, weight);
 #else
-			sdfSum += weight * sdf;
-			weightSum += weight;
+		sdfSum += weight * sdf;
+		weightSum += weight;
 #endif
-		}
-	} VoxelRayCastingSum;
+	}
+} VoxelRayCastingSum;
 
-	/** \brief
-	    Interface to engines implementing the main KinectFusion
-	    depth integration process.
+/** \brief
+		Interface to engines implementing the main KinectFusion
+		depth integration process.
 
-	    These classes basically manage
-	    an ITMLib::Objects::ITMScene and fuse new image information
-	    into them.
+		These classes basically manage
+		an ITMLib::Objects::ITMScene and fuse new image information
+		into them.
+*/
+class ITMSceneReconstructionEngine
+{
+public:
+	explicit ITMSceneReconstructionEngine(std::shared_ptr<const ITMLibSettings> settings)
+		: settings(std::move(settings)), entriesRayCasting(nullptr)
+	{}
+
+	/** Clear and reset a scene to set up a new empty
+			one.
 	*/
-	class ITMSceneReconstructionEngine
+	virtual void ResetScene(Scene* scene) = 0;
+
+	/** Given a view with a new depth image, compute the
+			visible blocks, allocate them and update the hash
+			table so that the new image data can be integrated.
+	*/
+	virtual void AllocateSceneFromDepth(Scene* scene, const ITMView* view, const ITMTrackingState* trackingState,
+	                                    const ITMRenderState* renderState, bool onlyUpdateVisibleList = false,
+	                                    bool resetVisibleList = false) = 0;
+
+	/** Update the voxel blocks by integrating depth and
+			possibly colour information from the given view.
+	*/
+	void IntegrateIntoScene(Scene* scene, const ITMView* view,
+	                        const ITMTrackingState* trackingState, const ITMRenderState* renderState)
 	{
-	public:
-		explicit ITMSceneReconstructionEngine(std::shared_ptr<const ITMLibSettings> settings)
-			:settings(std::move(settings)), entriesRayCasting(nullptr)
-		{ }
-
-		/** Clear and reset a scene to set up a new empty
-		    one.
-		*/
-		virtual void ResetScene(ITMScene<ITMVoxel, ITMVoxelIndex> *scene) = 0;
-
-		/** Given a view with a new depth image, compute the
-		    visible blocks, allocate them and update the hash
-		    table so that the new image data can be integrated.
-		*/
-		virtual void AllocateSceneFromDepth(ITMScene<ITMVoxel,ITMVoxelIndex> *scene, const ITMView *view, const ITMTrackingState *trackingState,
-			const ITMRenderState *renderState, bool onlyUpdateVisibleList = false, bool resetVisibleList = false) = 0;
-
-		/** Update the voxel blocks by integrating depth and
-		    possibly colour information from the given view.
-		*/
-		void IntegrateIntoScene(ITMScene<ITMVoxel, ITMVoxelIndex>* scene, const ITMView* view,
-			const ITMTrackingState* trackingState, const ITMRenderState* renderState)
+		if (this->settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_VOXEL_PROJECTION)
 		{
-			if (this->settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_VOXEL_PROJECTION)
-			{
-				IntegrateIntoSceneVoxelProjection(scene, view, trackingState, renderState);
-			}
-			else
-			{
-				IntegrateIntoSceneRayCasting(scene, view, trackingState, renderState);
-			}
-		}
-
-		ITMReconstructionTimeStats &GetTimeStats()
+			IntegrateIntoSceneVoxelProjection(scene, view, trackingState, renderState);
+		} else
 		{
-			return timeStats;
+			IntegrateIntoSceneRayCasting(scene, view, trackingState, renderState);
 		}
+	}
 
-		const ITMReconstructionTimeStats &GetTimeStats() const
-		{
-			return timeStats;
-		}
+	ITMReconstructionTimeStats& GetTimeStats()
+	{
+		return timeStats;
+	}
 
-		ITMSceneReconstructionEngine(void) { }
-		virtual ~ITMSceneReconstructionEngine(void) { }
+	const ITMReconstructionTimeStats& GetTimeStats() const
+	{
+		return timeStats;
+	}
 
-	protected:
-		std::shared_ptr<const ITMLibSettings> settings;
+	ITMSceneReconstructionEngine(void)
+	{}
 
-		/**
-		 * Per-hash entry summation values for ray casting fusion update
-		 */
-		ORUtils::MemoryBlock<VoxelRayCastingSum> *entriesRayCasting;
+	virtual ~ITMSceneReconstructionEngine(void)
+	{}
 
-		ITMReconstructionTimeStats timeStats;
+protected:
+	std::shared_ptr<const ITMLibSettings> settings;
 
-		virtual void IntegrateIntoSceneVoxelProjection(ITMScene<ITMVoxel, ITMVoxelIndex>* scene, const ITMView* view,
-		                                               const ITMTrackingState* trackingState,
-		                                               const ITMRenderState* renderState) = 0;
+	/**
+	 * Per-hash entry summation values for ray casting fusion update
+	 */
+	ORUtils::MemoryBlock<VoxelRayCastingSum>* entriesRayCasting;
 
-		virtual void IntegrateIntoSceneRayCasting(ITMScene<ITMVoxel,ITMVoxelIndex> *scene, const ITMView *view,
-		                                          const ITMTrackingState *trackingState, const ITMRenderState *renderState) = 0;
-	};
+	ITMReconstructionTimeStats timeStats;
+
+	virtual void IntegrateIntoSceneVoxelProjection(Scene* scene, const ITMView* view,
+	                                               const ITMTrackingState* trackingState,
+	                                               const ITMRenderState* renderState) = 0;
+
+	virtual void IntegrateIntoSceneRayCasting(Scene* scene, const ITMView* view,
+	                                          const ITMTrackingState* trackingState,
+	                                          const ITMRenderState* renderState) = 0;
+};
 }

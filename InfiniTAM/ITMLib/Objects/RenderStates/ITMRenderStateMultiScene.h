@@ -8,16 +8,15 @@
 
 namespace ITMLib {
 
-	template<class TVoxel, class TIndex>
-	class ITMRenderStateMultiScene : public ITMRenderState 
+	class ITMRenderStateMultiScene : public ITMRenderState
 	{
 	private:
 		MemoryDeviceType memoryType;
 
 	public:
-		typedef typename ITMMultiIndex<TIndex>::IndexData MultiIndexData;
-		typedef ITMMultiVoxel<TVoxel> MultiVoxelData;
-		typedef ITMVoxelMapGraphManager<TVoxel, TIndex> MultiSceneManager;
+		typedef typename ITMMultiIndex<ITMVoxelIndex>::IndexData MultiIndexData;
+		typedef ITMMultiVoxel<ITMVoxel> MultiVoxelData;
+		typedef ITMVoxelMapGraphManager<ITMVoxel> MultiSceneManager;
 
 #ifndef COMPILE_WITHOUT_CUDA
 		MultiIndexData *indexData_device;

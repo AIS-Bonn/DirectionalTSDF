@@ -169,11 +169,11 @@ computeUpdatedVoxelColorInfo(ITMVoxel& voxel, const TSDFDirection direction,
 	voxel.w_color = ITMVoxel::floatToWeight(newW, sceneParams.maxW);
 }
 
-template<bool hasColor, bool hasConfidence>
+template<bool hasColor>
 struct ComputeUpdatedVoxelInfo;
 
 template<>
-struct ComputeUpdatedVoxelInfo<false, false>
+struct ComputeUpdatedVoxelInfo<false>
 {
 	_CPU_AND_GPU_CODE_ static void compute(ITMVoxel& voxel, const TSDFDirection direction,
 	                                       const Vector4f& pt_world,
@@ -193,7 +193,7 @@ struct ComputeUpdatedVoxelInfo<false, false>
 };
 
 template<>
-struct ComputeUpdatedVoxelInfo<true, false>
+struct ComputeUpdatedVoxelInfo<true>
 {
 	_CPU_AND_GPU_CODE_ static void compute(ITMVoxel& voxel, const TSDFDirection direction,
 	                                       const Vector4f& pt_world,
@@ -213,49 +213,6 @@ struct ComputeUpdatedVoxelInfo<true, false>
 		computeUpdatedVoxelColorInfo(voxel, direction, pt_world, M_rgb, projParams_rgb, sceneParams, eta, rgb, imgSize_rgb);
 	}
 };
-
-//template<>
-//struct ComputeUpdatedVoxelInfo<false, true>
-//{
-//	_CPU_AND_GPU_CODE_ static void compute(ITMVoxel& voxel, const TSDFDirection direction,
-//	                                       const Vector4f& pt_world,
-//	                                       const Matrix4f& M_d, const Vector4f& projParams_d,
-//	                                       const Matrix4f& M_rgb, const Vector4f& projParams_rgb,
-//	                                       const ITMFusionParams& fusionParams,
-//	                                       const ITMSceneParams& sceneParams,
-//	                                       const float* depth,
-//	                                       const Vector4f* depthNormals,
-//	                                       const float* confidence,
-//	                                       const Vector2i& imgSize_d,
-//	                                       const Vector4u* rgb, const Vector2i& imgSize_rgb)
-//	{
-//		computeUpdatedVoxelDepthInfo(voxel, direction, pt_world, M_d, projParams_d, fusionParams, sceneParams, depth,
-//		                             depthNormals, confidence, imgSize_d);
-//	}
-//};
-//
-//template<>
-//struct ComputeUpdatedVoxelInfo<true, true>
-//{
-//	_CPU_AND_GPU_CODE_ static void compute(ITMVoxel& voxel, const TSDFDirection direction,
-//	                                       const Vector4f& pt_world,
-//	                                       const Matrix4f& M_d, const Vector4f& projParams_d,
-//	                                       const Matrix4f& M_rgb, const Vector4f& projParams_rgb,
-//	                                       const ITMFusionParams& fusionParams,
-//	                                       const ITMSceneParams& sceneParams,
-//	                                       const float* depth,
-//	                                       const Vector4f* depthNormals,
-//	                                       const float* confidence,
-//	                                       const Vector2i& imgSize_d,
-//	                                       const Vector4u* rgb, const Vector2i& imgSize_rgb)
-//	{
-//		float eta = computeUpdatedVoxelDepthInfo(voxel, direction, pt_world, M_d, projParams_d, fusionParams, sceneParams,
-//		                                         depth, depthNormals, confidence,
-//		                                         imgSize_d);
-//		if ((eta > sceneParams.mu) || (fabs(eta / sceneParams.mu) > 0.25f)) return;
-//		computeUpdatedVoxelColorInfo(voxel, direction, pt_world, M_rgb, projParams_rgb, sceneParams, eta, rgb, imgSize_rgb);
-//	}
-//};
 
 _CPU_AND_GPU_CODE_ static void voxelProjectionCarveSpace(const ITMVoxel& voxel,
                                                          VoxelRayCastingSum& voxelRayCastingSum,
@@ -715,7 +672,6 @@ inline void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f
 
 /**
  * Collect and combine summed voxels after ray cast update.
- * @tparam TVoxel
  */
 _CPU_AND_GPU_CODE_
 inline void rayCastCombine(ITMVoxel& voxel, const VoxelRayCastingSum& rayCastingSum, const ITMSceneParams& sceneParams)

@@ -6,14 +6,14 @@
 
 namespace ITMLib
 {
-	template<class TVoxel, class TIndex>
-	ITMVoxelMapGraphManager<TVoxel, TIndex>::ITMVoxelMapGraphManager(const std::shared_ptr<const ITMLibSettings>& _settings, const ITMVisualisationEngine<TVoxel, TIndex> *_visualisationEngine, const ITMDenseMapper<TVoxel, TIndex> *_denseMapper, const Vector2i & _trackedImageSize)
+	template<class TVoxel>
+	ITMVoxelMapGraphManager<TVoxel>::ITMVoxelMapGraphManager(const std::shared_ptr<const ITMLibSettings>& _settings, const ITMVisualisationEngine *_visualisationEngine, const ITMDenseMapper *_denseMapper, const Vector2i & _trackedImageSize)
 		: settings(_settings), visualisationEngine(_visualisationEngine), denseMapper(_denseMapper), trackedImageSize(_trackedImageSize)
 	{
 	}
 
-	template<class TVoxel, class TIndex>
-	ITMVoxelMapGraphManager<TVoxel, TIndex>::~ITMVoxelMapGraphManager(void)
+	template<class TVoxel>
+	ITMVoxelMapGraphManager<TVoxel>::~ITMVoxelMapGraphManager(void)
 	{
 		while (allData.size() > 0)
 		{
@@ -22,18 +22,18 @@ namespace ITMLib
 		}
 	}
 
-	template<class TVoxel, class TIndex>
-	int ITMVoxelMapGraphManager<TVoxel, TIndex>::createNewLocalMap(void)
+	template<class TVoxel>
+	int ITMVoxelMapGraphManager<TVoxel>::createNewLocalMap(void)
 	{
 		int newIdx = (int)allData.size();
-		allData.push_back(new ITMLocalMap<TVoxel, TIndex>(settings, visualisationEngine, trackedImageSize));
+		allData.push_back(new ITMLocalMap<TVoxel>(settings, visualisationEngine, trackedImageSize));
 
 		denseMapper->ResetScene(allData[newIdx]->scene);
 		return newIdx;
 	}
 
-	template<class TVoxel, class TIndex>
-	void ITMVoxelMapGraphManager<TVoxel, TIndex>::removeLocalMap(int localMapId)
+	template<class TVoxel>
+	void ITMVoxelMapGraphManager<TVoxel>::removeLocalMap(int localMapId)
 	{
 		if ((localMapId < 0) || ((unsigned)localMapId >= allData.size())) return;
 
@@ -46,8 +46,8 @@ namespace ITMLib
 		allData.erase(allData.begin() + localMapId);
 	}
 
-	template<class TVoxel, class TIndex>
-	ITMPoseConstraint & ITMVoxelMapGraphManager<TVoxel, TIndex>::getRelation(int fromLocalMap, int toLocalMap)
+	template<class TVoxel>
+	ITMPoseConstraint & ITMVoxelMapGraphManager<TVoxel>::getRelation(int fromLocalMap, int toLocalMap)
 	{
 		ConstraintList & m = getLocalMap(fromLocalMap)->relations;
 		return m[toLocalMap];
@@ -55,8 +55,8 @@ namespace ITMLib
 
 	static const ITMPoseConstraint invalidPoseConstraint;
 
-	template<class TVoxel, class TIndex>
-	const ITMPoseConstraint & ITMVoxelMapGraphManager<TVoxel, TIndex>::getRelation_const(int fromLocalMap, int toLocalMap) const
+	template<class TVoxel>
+	const ITMPoseConstraint & ITMVoxelMapGraphManager<TVoxel>::getRelation_const(int fromLocalMap, int toLocalMap) const
 	{
 		if ((fromLocalMap < 0) || (fromLocalMap >= (int)allData.size())) return invalidPoseConstraint;
 
@@ -67,8 +67,8 @@ namespace ITMLib
 		return it->second;
 	}
 
-	template<class TVoxel, class TIndex>
-	void ITMVoxelMapGraphManager<TVoxel, TIndex>::eraseRelation(int fromLocalMap, int toLocalMap)
+	template<class TVoxel>
+	void ITMVoxelMapGraphManager<TVoxel>::eraseRelation(int fromLocalMap, int toLocalMap)
 	{
 		if ((fromLocalMap < 0) || (fromLocalMap >= (int)allData.size())) return;
 
@@ -76,8 +76,8 @@ namespace ITMLib
 		m.erase(toLocalMap);
 	}
 
-	template<class TVoxel, class TIndex>
-	bool ITMVoxelMapGraphManager<TVoxel, TIndex>::resetTracking(int localMapId, const ORUtils::SE3Pose & pose)
+	template<class TVoxel>
+	bool ITMVoxelMapGraphManager<TVoxel>::resetTracking(int localMapId, const ORUtils::SE3Pose & pose)
 	{
 		if ((localMapId < 0) || ((unsigned)localMapId >= allData.size())) return false;
 		allData[localMapId]->trackingState->pose_d->SetFrom(&pose);
@@ -85,20 +85,20 @@ namespace ITMLib
 		return true;
 	}
 
-	template<class TVoxel, class TIndex>
-	int ITMVoxelMapGraphManager<TVoxel, TIndex>::getLocalMapSize(int localMapId) const
+	template<class TVoxel>
+	int ITMVoxelMapGraphManager<TVoxel>::getLocalMapSize(int localMapId) const
 	{
 		if ((localMapId < 0) || ((unsigned)localMapId >= allData.size())) return -1;
 
-		ITMScene<TVoxel, TIndex> *scene = allData[localMapId]->scene;
+		ITMScene<TVoxel> *scene = allData[localMapId]->scene;
 		return scene->index.getNumAllocatedVoxelBlocks() - scene->localVBA.lastFreeBlockId - 1;
 	}
 
-	template<class TVoxel, class TIndex>
-	int ITMVoxelMapGraphManager<TVoxel, TIndex>::countVisibleBlocks(int localMapId, int minBlockId, int maxBlockId, bool invertIds) const
+	template<class TVoxel>
+	int ITMVoxelMapGraphManager<TVoxel>::countVisibleBlocks(int localMapId, int minBlockId, int maxBlockId, bool invertIds) const
 	{
 		if ((localMapId < 0) || ((unsigned)localMapId >= allData.size())) return -1;
-		const ITMLocalMap<TVoxel, TIndex> *localMap = allData[localMapId];
+		const ITMLocalMap<TVoxel> *localMap = allData[localMapId];
 
 		if (invertIds) 
 		{
@@ -115,8 +115,8 @@ namespace ITMLib
 		bool operator()(const std::vector<int> & a, const std::vector<int> & b) { return a.size() > b.size(); }
 	};
 
-	template<class TVoxel, class TIndex>
-	ORUtils::SE3Pose ITMVoxelMapGraphManager<TVoxel, TIndex>::findTransformation(int fromLocalMapId, int toLocalMapId) const
+	template<class TVoxel>
+	ORUtils::SE3Pose ITMVoxelMapGraphManager<TVoxel>::findTransformation(int fromLocalMapId, int toLocalMapId) const
 	{
 		ORUtils::SE3Pose fromLocalMapPose, toLocalMapPose;
 		if ((fromLocalMapId >= 0) || ((size_t)fromLocalMapId < allData.size())) fromLocalMapPose = allData[fromLocalMapId]->estimatedGlobalPose;

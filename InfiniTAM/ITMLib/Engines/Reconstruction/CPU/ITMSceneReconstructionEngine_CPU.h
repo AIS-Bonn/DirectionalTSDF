@@ -13,17 +13,17 @@ protected:
 	ORUtils::MemoryBlock<Vector4s> *blockCoords;
 	ORUtils::MemoryBlock<TSDFDirection> *blockDirections;
 
-	void IntegrateIntoSceneVoxelProjection(ITMScene<ITMVoxel, ITMVoxelIndex> *scene,
+	void IntegrateIntoSceneVoxelProjection(Scene *scene,
 		const ITMView *view, const ITMTrackingState *trackingState,
 		const ITMRenderState *renderState) override;
 
-	void IntegrateIntoSceneRayCasting(ITMScene<ITMVoxel,ITMVoxelIndex> *scene, const ITMView *view,
+	void IntegrateIntoSceneRayCasting(Scene *scene, const ITMView *view,
 																		const ITMTrackingState *trackingState, const ITMRenderState *renderState) override;
 
 public:
-	void ResetScene(ITMScene<ITMVoxel, ITMVoxelIndex> *scene) override;
+	void ResetScene(Scene *scene) override;
 
-	void AllocateSceneFromDepth(ITMScene<ITMVoxel, ITMVoxelIndex> *scene, const ITMView *view, const ITMTrackingState *trackingState,
+	void AllocateSceneFromDepth(Scene *scene, const ITMView *view, const ITMTrackingState *trackingState,
 		const ITMRenderState *renderState, bool onlyUpdateVisibleList = false, bool resetVisibleList = false) override;
 
 	explicit ITMSceneReconstructionEngine_CPU(std::shared_ptr<const ITMLibSettings> settings);

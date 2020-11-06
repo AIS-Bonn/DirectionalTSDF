@@ -410,7 +410,7 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 				uiEngine->outImage[0]->ChangeDims(uiEngine->mainEngine->GetView()->depth->noDims);
 			}
 
-			ITMMultiEngine<ITMVoxel, ITMVoxelIndex> *multiEngine = dynamic_cast<ITMMultiEngine<ITMVoxel, ITMVoxelIndex>*>(uiEngine->mainEngine);
+			ITMMultiEngine *multiEngine = dynamic_cast<ITMMultiEngine*>(uiEngine->mainEngine);
 			if (multiEngine != nullptr)
 			{
 				int idx = multiEngine->findPrimaryLocalMapIdx();
@@ -441,7 +441,7 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 	{
 		uiEngine->integrationActive = !uiEngine->integrationActive;
 
-		ITMBasicEngine<ITMVoxel, ITMVoxelIndex> *basicEngine = dynamic_cast<ITMBasicEngine<ITMVoxel, ITMVoxelIndex>*>(uiEngine->mainEngine);
+		ITMBasicEngine *basicEngine = dynamic_cast<ITMBasicEngine*>(uiEngine->mainEngine);
 		if (basicEngine != nullptr)
 		{
 			if (uiEngine->integrationActive) basicEngine->turnOnIntegration();
@@ -471,7 +471,7 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 	break;
 	case 'r':
 	{
-		ITMBasicEngine<ITMVoxel, ITMVoxelIndex> *basicEngine = dynamic_cast<ITMBasicEngine<ITMVoxel, ITMVoxelIndex>*>(uiEngine->mainEngine);
+		ITMBasicEngine *basicEngine = dynamic_cast<ITMBasicEngine*>(uiEngine->mainEngine);
 		if (basicEngine != nullptr) basicEngine->resetAll();
 
 		ITMBasicSurfelEngine<ITMSurfelT> *basicSurfelEngine = dynamic_cast<ITMBasicSurfelEngine<ITMSurfelT>*>(uiEngine->mainEngine);
@@ -511,7 +511,7 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 	case '[':
 	case ']':
 	{
-		ITMMultiEngine<ITMVoxel, ITMVoxelIndex> *multiEngine = dynamic_cast<ITMMultiEngine<ITMVoxel, ITMVoxelIndex>*>(uiEngine->mainEngine);
+		ITMMultiEngine *multiEngine = dynamic_cast<ITMMultiEngine*>(uiEngine->mainEngine);
 		if (multiEngine != nullptr)
 		{
 			int idx = multiEngine->getFreeviewLocalMapIdx();

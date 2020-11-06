@@ -22,19 +22,18 @@ namespace ITMLib
 		 *
 		 * \param deviceType  The device on which the visualisation engine should operate.
 		 */
-		template <typename TVoxel, typename TIndex>
-		static ITMMultiVisualisationEngine<TVoxel, TIndex> *MakeVisualisationEngine(ITMLibSettings::DeviceType deviceType, const std::shared_ptr<const ITMLibSettings>& settings)
+		static ITMMultiVisualisationEngine *MakeVisualisationEngine(ITMLibSettings::DeviceType deviceType, const std::shared_ptr<const ITMLibSettings>& settings)
 		{
-			ITMMultiVisualisationEngine<TVoxel, TIndex> *visualisationEngine = NULL;
+			ITMMultiVisualisationEngine *visualisationEngine = nullptr;
 
 			switch (deviceType)
 			{
 			case ITMLibSettings::DEVICE_CPU:
-				visualisationEngine = new ITMMultiVisualisationEngine_CPU<TVoxel, TIndex>(settings);
+				visualisationEngine = new ITMMultiVisualisationEngine_CPU(settings);
 				break;
 			case ITMLibSettings::DEVICE_CUDA:
 #ifndef COMPILE_WITHOUT_CUDA
-				visualisationEngine = new ITMMultiVisualisationEngine_CUDA<TVoxel, TIndex>(settings);
+				visualisationEngine = new ITMMultiVisualisationEngine_CUDA(settings);
 #endif
 				break;
 			}

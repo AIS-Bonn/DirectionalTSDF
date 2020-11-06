@@ -20,27 +20,26 @@ namespace ITMLib
 {
 	/** \brief
 	*/
-	template <typename TVoxel, typename TIndex>
 	class ITMMultiEngine : public ITMMainEngine
 	{
 	private:
 		std::shared_ptr<const ITMLibSettings> settings;
 
 		ITMLowLevelEngine *lowLevelEngine;
-		ITMVisualisationEngine<TVoxel, TIndex> *visualisationEngine;
-		ITMMultiVisualisationEngine<TVoxel, TIndex> *multiVisualisationEngine;
+		ITMVisualisationEngine *visualisationEngine;
+		ITMMultiVisualisationEngine *multiVisualisationEngine;
 
-		ITMMultiMeshingEngine<TVoxel, TIndex> *meshingEngine;
+		ITMMultiMeshingEngine *meshingEngine;
 
 		ITMViewBuilder *viewBuilder;
 		ITMTrackingController *trackingController;
 		ITMTracker *tracker;
 		ITMIMUCalibrator *imuCalibrator;
-		ITMDenseMapper<TVoxel, TIndex> *denseMapper;
+		ITMDenseMapper *denseMapper;
 
 		FernRelocLib::Relocaliser<float> *relocaliser;
 
-		ITMVoxelMapGraphManager<TVoxel, TIndex> *mapManager;
+		ITMVoxelMapGraphManager<ITMVoxel> *mapManager;
 		ITMActiveMapManager *mActiveDataManager;
 		ITMGlobalAdjustmentEngine *mGlobalAdjustmentEngine;
 		bool mScheduleGlobalAdjustment;

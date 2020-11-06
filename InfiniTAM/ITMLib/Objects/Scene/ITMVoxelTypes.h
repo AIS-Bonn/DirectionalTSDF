@@ -24,8 +24,6 @@ struct ITMVoxel_f_rgb
 	}
 
 	static const CONSTPTR(bool) hasColorInformation = true;
-	static const CONSTPTR(bool) hasConfidenceInformation = false;
-	static const CONSTPTR(bool) hasSemanticInformation = false;
 
 	/** Value of the truncated signed distance transformation. */
 	float sdf;
@@ -64,8 +62,6 @@ struct ITMVoxel_s_rgb
 	}
 
 	static const CONSTPTR(bool) hasColorInformation = true;
-	static const CONSTPTR(bool) hasConfidenceInformation = false;
-	static const CONSTPTR(bool) hasSemanticInformation = false;
 
 	/** Value of the truncated signed distance transformation. */
 	short sdf;
@@ -103,8 +99,6 @@ struct ITMVoxel_s
 	}
 
 	static const CONSTPTR(bool) hasColorInformation = false;
-	static const CONSTPTR(bool) hasConfidenceInformation = false;
-	static const CONSTPTR(bool) hasSemanticInformation = false;
 
 	/** Value of the truncated signed distance transformation. */
 	short sdf;
@@ -136,8 +130,6 @@ struct ITMVoxel_f
 	}
 
 	static const CONSTPTR(bool) hasColorInformation = false;
-	static const CONSTPTR(bool) hasConfidenceInformation = false;
-	static const CONSTPTR(bool) hasSemanticInformation = false;
 
 	/** Value of the truncated signed distance transformation. */
 	float sdf;
@@ -152,39 +144,3 @@ struct ITMVoxel_f
 		w_depth = 0;
 	}
 };
-
-struct ITMVoxel_f_conf
-{
-	typedef float WeightType;
-
-	_CPU_AND_GPU_CODE_ static float SDF_initialValue() { return 1.0f; }
-	_CPU_AND_GPU_CODE_ static float valueToFloat(float x) { return x; }
-	_CPU_AND_GPU_CODE_ static float floatToValue(float x) { return x; }
-
-	_CPU_AND_GPU_CODE_ static float weightToFloat(WeightType w, int maxW) {
-		return static_cast<float>(w);
-	}
-	_CPU_AND_GPU_CODE_ static WeightType floatToWeight(float w, int maxW) {
-		return static_cast<WeightType>(w);
-	}
-
-	static const CONSTPTR(bool) hasColorInformation = false;
-	static const CONSTPTR(bool) hasConfidenceInformation = true;
-	static const CONSTPTR(bool) hasSemanticInformation = false;
-
-	/** Value of the truncated signed distance transformation. */
-	float sdf;
-	/** Number of fused observations that make up @p sdf. */
-	WeightType w_depth;
-	/** Padding that may or may not improve performance on certain GPUs */
-	//uchar pad;
-	float confidence;
-
-	_CPU_AND_GPU_CODE_ ITMVoxel_f_conf()
-	{
-		sdf = SDF_initialValue();
-		w_depth = 0;
-		confidence = 0.0f;
-	}
-};
-

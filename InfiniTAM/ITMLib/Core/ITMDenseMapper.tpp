@@ -8,30 +8,26 @@
 #include "ITMLib/Utils/ITMTimer.h"
 using namespace ITMLib;
 
-template<class TVoxel, class TIndex>
-ITMDenseMapper<TVoxel, TIndex>::ITMDenseMapper(const std::shared_ptr<const ITMLibSettings>& settings)
+ITMDenseMapper::ITMDenseMapper(const std::shared_ptr<const ITMLibSettings>& settings)
 {
-	sceneRecoEngine = ITMSceneReconstructionEngineFactory::MakeSceneReconstructionEngine<TVoxel,TIndex>(settings);
-	swappingEngine = settings->swappingMode != ITMLibSettings::SWAPPINGMODE_DISABLED ? ITMSwappingEngineFactory::MakeSwappingEngine<TVoxel,TIndex>(settings->deviceType) : NULL;
+	sceneRecoEngine = ITMSceneReconstructionEngineFactory::MakeSceneReconstructionEngine(settings);
+	swappingEngine = settings->swappingMode != ITMLibSettings::SWAPPINGMODE_DISABLED ? ITMSwappingEngineFactory::MakeSwappingEngine<ITMVoxel>(settings->deviceType) : nullptr;
 
 	swappingMode = settings->swappingMode;
 }
 
-template<class TVoxel, class TIndex>
-ITMDenseMapper<TVoxel,TIndex>::~ITMDenseMapper()
+ITMDenseMapper::~ITMDenseMapper()
 {
 	delete sceneRecoEngine;
 	delete swappingEngine;
 }
 
-template<class TVoxel, class TIndex>
-void ITMDenseMapper<TVoxel,TIndex>::ResetScene(ITMScene<TVoxel,TIndex> *scene) const
+void ITMDenseMapper::ResetScene(Scene *scene) const
 {
 	sceneRecoEngine->ResetScene(scene);
 }
 
-template<class TVoxel, class TIndex>
-void ITMDenseMapper<TVoxel,TIndex>::ProcessFrame(const ITMView *view, const ITMTrackingState *trackingState, ITMScene<TVoxel,TIndex> *scene, ITMRenderState *renderState, bool resetVisibleList)
+void ITMDenseMapper::ProcessFrame(const ITMView *view, const ITMTrackingState *trackingState, Scene *scene, ITMRenderState *renderState, bool resetVisibleList)
 {
 	sceneRecoEngine->GetTimeStats().Reset();
 
@@ -63,14 +59,12 @@ void ITMDenseMapper<TVoxel,TIndex>::ProcessFrame(const ITMView *view, const ITMT
 	sceneRecoEngine->GetTimeStats().swapping += timer.Tock();
 }
 
-template<class TVoxel, class TIndex>
-void ITMDenseMapper<TVoxel,TIndex>::UpdateVisibleList(const ITMView *view, const ITMTrackingState *trackingState, ITMScene<TVoxel,TIndex> *scene, ITMRenderState *renderState, bool resetVisibleList)
+void ITMDenseMapper::UpdateVisibleList(const ITMView *view, const ITMTrackingState *trackingState, Scene *scene, ITMRenderState *renderState, bool resetVisibleList)
 {
 	sceneRecoEngine->AllocateSceneFromDepth(scene, view, trackingState, renderState, true, resetVisibleList);
 }
 
-template<class TVoxel, class TIndex>
-const ITMSceneReconstructionEngine* ITMDenseMapper<TVoxel, TIndex>::GetSceneReconstructionEngine() const
+const ITMSceneReconstructionEngine* ITMDenseMapper::GetSceneReconstructionEngine() const
 {
 	return sceneRecoEngine;
 }

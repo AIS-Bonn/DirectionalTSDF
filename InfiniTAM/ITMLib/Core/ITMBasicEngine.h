@@ -15,7 +15,6 @@
 
 namespace ITMLib
 {
-	template <typename TVoxel, typename TIndex>
 	class ITMBasicEngine : public ITMMainEngine
 	{
 	private:
@@ -25,15 +24,15 @@ namespace ITMLib
 		int framesProcessed, consecutiveGoodFrames, relocalisationCount;
 
 		ITMLowLevelEngine *lowLevelEngine;
-		ITMVisualisationEngine<TVoxel, TIndex> *visualisationEngine;
+		ITMVisualisationEngine *visualisationEngine;
 
-		ITMMeshingEngine<TVoxel, TIndex> *meshingEngine;
+		ITMMeshingEngine *meshingEngine;
 
 		ITMViewBuilder *viewBuilder;
-		ITMDenseMapper<TVoxel, TIndex> *denseMapper;
+		ITMDenseMapper *denseMapper;
 		ITMTrackingController *trackingController;
 
-		ITMScene<TVoxel, TIndex> *scene;
+		Scene *scene;
 		ITMRenderState *renderState_live;
 		ITMRenderState *renderState_freeview;
 
@@ -57,7 +56,7 @@ namespace ITMLib
 		{ return scene->localVBA.noAllocationsPerDirection; }
 
 		/// Gives access to the internal world representation
-		ITMScene<TVoxel, TIndex>* GetScene() { return scene; }
+		Scene* GetScene() { return scene; }
 
 		ITMTrackingState::TrackingResult ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement = nullptr, const ORUtils::SE3Pose* pose = nullptr) override;
 

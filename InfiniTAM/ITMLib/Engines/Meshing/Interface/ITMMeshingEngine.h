@@ -9,11 +9,10 @@
 
 namespace ITMLib
 {
-	template<class TVoxel, class TIndex>
 	class ITMMeshingEngine
 	{
 	public:
-		virtual void MeshScene(ITMMesh *mesh, const ITMScene<TVoxel,TIndex> *scene) = 0;
+		virtual void MeshScene(ITMMesh *mesh, const Scene *scene) = 0;
 
 		ITMMeshingEngine(void) { }
 		virtual ~ITMMeshingEngine(void) { }

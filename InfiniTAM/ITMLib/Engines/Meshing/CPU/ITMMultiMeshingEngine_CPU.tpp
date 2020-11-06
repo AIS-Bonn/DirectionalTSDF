@@ -6,8 +6,7 @@
 
 using namespace ITMLib;
 
-template<class TVoxel>
-inline void ITMMultiMeshingEngine_CPU<TVoxel, ITMVoxelBlockHash>::MeshScene(ITMMesh * mesh, const MultiSceneManager & sceneManager)
+inline void ITMMultiMeshingEngine_CPU::MeshScene(ITMMesh * mesh, const MultiSceneManager & sceneManager)
 {
 	int numLocalMaps = (int)sceneManager.numLocalMaps();
 	if (numLocalMaps > MAX_NUM_LOCALMAPS) numLocalMaps = MAX_NUM_LOCALMAPS;

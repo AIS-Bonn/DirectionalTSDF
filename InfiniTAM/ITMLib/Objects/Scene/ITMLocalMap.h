@@ -39,20 +39,20 @@ namespace ITMLib {
 
 	typedef std::map<int, ITMPoseConstraint> ConstraintList;
 
-	template<class TVoxel, class TIndex>
+	template<class TVoxel>
 	class ITMLocalMap
 	{
 	public:
-		ITMScene<TVoxel, TIndex> *scene;
+		Scene *scene;
 		ITMRenderState *renderState;
 		ITMTrackingState *trackingState;
 		ConstraintList relations;
 		ORUtils::SE3Pose estimatedGlobalPose;
 
-		ITMLocalMap(const std::shared_ptr<const ITMLibSettings>& settings, const ITMVisualisationEngine<TVoxel, TIndex> *visualisationEngine, const Vector2i & trackedImageSize)
+		ITMLocalMap(const std::shared_ptr<const ITMLibSettings>& settings, const ITMVisualisationEngine *visualisationEngine, const Vector2i & trackedImageSize)
 		{
 			MemoryDeviceType memoryType = settings->deviceType == ITMLibSettings::DEVICE_CUDA ? MEMORYDEVICE_CUDA : MEMORYDEVICE_CPU;
-			scene = new ITMScene<TVoxel, TIndex>(&settings->sceneParams, settings->swappingMode == ITMLibSettings::SWAPPINGMODE_ENABLED, memoryType);
+			scene = new ITMScene<TVoxel>(&settings->sceneParams, settings->swappingMode == ITMLibSettings::SWAPPINGMODE_ENABLED, memoryType);
 			renderState = visualisationEngine->CreateRenderState(scene, trackedImageSize);
 			trackingState = new ITMTrackingState(trackedImageSize, memoryType);
 		}

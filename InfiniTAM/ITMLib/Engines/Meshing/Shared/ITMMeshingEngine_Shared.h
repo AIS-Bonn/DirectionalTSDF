@@ -191,7 +191,7 @@ _CPU_AND_GPU_CODE_ inline bool findPointNeighbors(THREADPTR(Vector3f) *p, THREAD
 	return true;
 }
 
-_CPU_AND_GPU_CODE_ inline Vector3f sdfInterp(const THREADPTR(Vector3f) &p1, const THREADPTR(Vector3f) &p2, float valp1, float valp2)
+_CPU_AND_GPU_CODE_ inline Vector3f sdfInterp(const Vector3f &p1, Vector3f &p2, float valp1, float valp2)
 {
 	if (fabs(0.0f - valp1) < 0.00001f) return p1;
 	if (fabs(0.0f - valp2) < 0.00001f) return p2;
@@ -200,13 +200,12 @@ _CPU_AND_GPU_CODE_ inline Vector3f sdfInterp(const THREADPTR(Vector3f) &p1, cons
 	return p1 + ((0.0f - valp1) / (valp2 - valp1)) * (p2 - p1);
 }
 
-template<class TVoxel>
-_CPU_AND_GPU_CODE_ inline int buildVertList(THREADPTR(Vector3f) *vertList, Vector3i globalPos, Vector3i localPos, const CONSTPTR(TVoxel) *localVBA, const CONSTPTR(ITMHashEntry) *hashTable)
+_CPU_AND_GPU_CODE_ inline int buildVertList(Vector3f *vertList, Vector3i globalPos, Vector3i localPos, const ITMVoxel *localVBA, const ITMHashEntry *hashTable)
 {
 	Vector3f points[8]; float sdfVals[8];
 
 	// FIXME: directional
-	if (!findPointNeighbors(points, sdfVals, globalPos + localPos, ITMLib::TSDFDirection::NONE, localVBA, hashTable)) return -1;
+	if (!findPointNeighbors<ITMVoxel>(points, sdfVals, globalPos + localPos, ITMLib::TSDFDirection::NONE, localVBA, hashTable)) return -1;
 
 	int cubeIndex = 0;
 	if (sdfVals[0] < 0) cubeIndex |= 1; if (sdfVals[1] < 0) cubeIndex |= 2;

@@ -24,16 +24,10 @@
 
 namespace ITMLib
 {
-	template class ITMBasicEngine<ITMVoxel, ITMVoxelIndex>;
 	template class ITMBasicSurfelEngine<ITMSurfel_grey>;
 	template class ITMBasicSurfelEngine<ITMSurfel_rgb>;
-	template class ITMMultiEngine<ITMVoxel, ITMVoxelIndex>;
-	template class ITMDenseMapper<ITMVoxel, ITMVoxelIndex>;
-	template class ITMVoxelMapGraphManager<ITMVoxel, ITMVoxelIndex>;
-	template class ITMVisualisationEngine_CPU<ITMVoxel, ITMVoxelIndex>;
-	template class ITMMeshingEngine_CPU<ITMVoxel, ITMVoxelIndex>;
-	template class ITMMultiMeshingEngine_CPU<ITMVoxel, ITMVoxelIndex>;
-	template class ITMSwappingEngine_CPU<ITMVoxel, ITMVoxelIndex>;
+	template class ITMVoxelMapGraphManager<ITMVoxel>;
+	template class ITMSwappingEngine_CPU<ITMVoxel>;
 
 	template class ITMDenseSurfelMapper<ITMSurfel_grey>;
 	template class ITMDenseSurfelMapper<ITMSurfel_rgb>;

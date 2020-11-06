@@ -71,9 +71,9 @@ namespace ITMLib
 			timeStats.rendering = timer.Tock();
 		}
 
-		template <typename TVoxel, typename TIndex>
-		void Prepare(ITMTrackingState *trackingState, const ITMScene<TVoxel,TIndex> *scene, const ITMView *view,
-			const ITMVisualisationEngine<TVoxel,TIndex> *visualisationEngine, ITMRenderState *renderState)
+		template <typename TVoxel>
+		void Prepare(ITMTrackingState *trackingState, const ITMScene<TVoxel> *scene, const ITMView *view,
+			const ITMVisualisationEngine *visualisationEngine, ITMRenderState *renderState)
 		{
 			ITMTimer timer;
 			timer.Tick();

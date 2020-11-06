@@ -7,17 +7,17 @@
 using namespace ITMLib;
 
 template<class TVoxel>
-ITMSwappingEngine_CPU<TVoxel,ITMVoxelBlockHash>::ITMSwappingEngine_CPU(void)
+ITMSwappingEngine_CPU<TVoxel>::ITMSwappingEngine_CPU(void)
 {
 }
 
 template<class TVoxel>
-ITMSwappingEngine_CPU<TVoxel,ITMVoxelBlockHash>::~ITMSwappingEngine_CPU(void)
+ITMSwappingEngine_CPU<TVoxel>::~ITMSwappingEngine_CPU(void)
 {
 }
 
 template<class TVoxel>
-int ITMSwappingEngine_CPU<TVoxel, ITMVoxelBlockHash>::LoadFromGlobalMemory(ITMScene<TVoxel, ITMVoxelBlockHash> *scene)
+int ITMSwappingEngine_CPU<TVoxel>::LoadFromGlobalMemory(ITMScene<TVoxel> *scene)
 {
 	ITMGlobalCache<TVoxel> *globalCache = scene->globalCache;
 
@@ -66,7 +66,7 @@ int ITMSwappingEngine_CPU<TVoxel, ITMVoxelBlockHash>::LoadFromGlobalMemory(ITMSc
 }
 
 template<class TVoxel>
-void ITMSwappingEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateGlobalIntoLocal(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, ITMRenderState *renderState)
+void ITMSwappingEngine_CPU<TVoxel>::IntegrateGlobalIntoLocal(ITMScene<TVoxel> *scene, ITMRenderState *renderState)
 {
 	ITMGlobalCache<TVoxel> *globalCache = scene->globalCache;
 
@@ -104,7 +104,7 @@ void ITMSwappingEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateGlobalIntoLocal(
 }
 
 template<class TVoxel>
-void ITMSwappingEngine_CPU<TVoxel, ITMVoxelBlockHash>::SaveToGlobalMemory(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, ITMRenderState *renderState)
+void ITMSwappingEngine_CPU<TVoxel>::SaveToGlobalMemory(ITMScene<TVoxel> *scene, ITMRenderState *renderState)
 {
 	ITMGlobalCache<TVoxel> *globalCache = scene->globalCache;
 
@@ -176,7 +176,7 @@ void ITMSwappingEngine_CPU<TVoxel, ITMVoxelBlockHash>::SaveToGlobalMemory(ITMSce
 }
 
 template<class TVoxel>
-void ITMSwappingEngine_CPU<TVoxel, ITMVoxelBlockHash>::CleanLocalMemory(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, ITMRenderState *renderState)
+void ITMSwappingEngine_CPU<TVoxel>::CleanLocalMemory(ITMScene<TVoxel> *scene, ITMRenderState *renderState)
 {
 	ITMHashEntry *hashTable = scene->index.GetEntries();
 	HashEntryVisibilityType *entriesVisibleType = ((ITMRenderState_VH*)renderState)->GetEntriesVisibleType();

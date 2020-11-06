@@ -3,6 +3,7 @@
 #include "ITMMeshingEngine_CUDA.h"
 
 #include <algorithm>
+#include <ITMLib/ITMLibDefines.h>
 
 #include "../Shared/ITMMeshingEngine_Shared.h"
 #include "../../../Utils/ITMCUDAUtils.h"
@@ -10,9 +11,8 @@
 
 using namespace ITMLib;
 
-template<class TVoxel>
 __global__ void meshScene_device(ITMMesh::Triangle *triangles, unsigned int *noTriangles_device, float factor, int noTotalEntries,
-	int noMaxTriangles, const Vector4s *visibleBlockGlobalPos, const TVoxel *localVBA, const ITMHashEntry *hashTable);
+	int noMaxTriangles, const Vector4s *visibleBlockGlobalPos, const ITMVoxel *localVBA, const ITMHashEntry *hashTable);
 
 template<int dummy>
 __global__ void findAllocateBlocks(Vector4s *visibleBlockGlobalPos, const ITMHashEntry *hashTable, int noTotalEntries)
@@ -26,25 +26,22 @@ __global__ void findAllocateBlocks(Vector4s *visibleBlockGlobalPos, const ITMHas
 		visibleBlockGlobalPos[currentHashEntry.ptr] = Vector4s(currentHashEntry.pos.x, currentHashEntry.pos.y, currentHashEntry.pos.z, 1);
 }
 
-template<class TVoxel>
-ITMMeshingEngine_CUDA<TVoxel,ITMVoxelBlockHash>::ITMMeshingEngine_CUDA(void) 
+ITMMeshingEngine_CUDA::ITMMeshingEngine_CUDA(void)
 {
 	ORcudaSafeCall(cudaMalloc((void**)&visibleBlockGlobalPos_device, SDF_LOCAL_BLOCK_NUM * sizeof(Vector4s)));
 	ORcudaSafeCall(cudaMalloc((void**)&noTriangles_device, sizeof(unsigned int)));
 }
 
-template<class TVoxel>
-ITMMeshingEngine_CUDA<TVoxel,ITMVoxelBlockHash>::~ITMMeshingEngine_CUDA(void) 
+ITMMeshingEngine_CUDA::~ITMMeshingEngine_CUDA(void)
 {
 	ORcudaSafeCall(cudaFree(visibleBlockGlobalPos_device));
 	ORcudaSafeCall(cudaFree(noTriangles_device));
 }
 
-template<class TVoxel>
-void ITMMeshingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::MeshScene(ITMMesh *mesh, const ITMScene<TVoxel, ITMVoxelBlockHash> *scene)
+void ITMMeshingEngine_CUDA::MeshScene(ITMMesh *mesh, const Scene *scene)
 {
 	ITMMesh::Triangle *triangles = mesh->triangles->GetData(MEMORYDEVICE_CUDA);
-	const TVoxel *localVBA = scene->localVBA.GetVoxelBlocks();
+	const ITMVoxel *localVBA = scene->localVBA.GetVoxelBlocks();
 	const ITMHashEntry *hashTable = scene->index.GetEntries();
 
 	int noMaxTriangles = mesh->noMaxTriangles, noTotalEntries = scene->index.noTotalEntries;
@@ -65,7 +62,7 @@ void ITMMeshingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::MeshScene(ITMMesh *mesh, 
 		dim3 cudaBlockSize(SDF_BLOCK_SIZE, SDF_BLOCK_SIZE, SDF_BLOCK_SIZE);
 		dim3 gridSize(SDF_LOCAL_BLOCK_NUM / 16, 16);
 
-		meshScene_device<TVoxel> << <gridSize, cudaBlockSize >> >(triangles, noTriangles_device, factor, noTotalEntries, noMaxTriangles,
+		meshScene_device << <gridSize, cudaBlockSize >> >(triangles, noTriangles_device, factor, noTotalEntries, noMaxTriangles,
 			visibleBlockGlobalPos_device, localVBA, hashTable);
 		ORcudaKernelCheck;
 
@@ -79,9 +76,8 @@ void ITMMeshingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::MeshScene(ITMMesh *mesh, 
   }
 }
 
-template<class TVoxel>
-__global__ void meshScene_device(ITMMesh::Triangle *triangles, unsigned int *noTriangles_device, float factor, int noTotalEntries, 
-	int noMaxTriangles, const Vector4s *visibleBlockGlobalPos, const TVoxel *localVBA, const ITMHashEntry *hashTable)
+__global__ void meshScene_device(ITMMesh::Triangle *triangles, unsigned int *noTriangles_device, float factor, int noTotalEntries,
+	int noMaxTriangles, const Vector4s *visibleBlockGlobalPos, const ITMVoxel *localVBA, const ITMHashEntry *hashTable)
 {
 	const Vector4s globalPos_4s = visibleBlockGlobalPos[blockIdx.x + gridDim.x * blockIdx.y];
 

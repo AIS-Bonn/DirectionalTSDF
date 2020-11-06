@@ -23,8 +23,7 @@ static const float F_maxdistattemptreloc = 0.05f;
 // loop closure global adjustment runs on a separate thread
 static const bool separateThreadGlobalAdjustment = true;
 
-template <typename TVoxel, typename TIndex>
-ITMMultiEngine<TVoxel, TIndex>::ITMMultiEngine(const std::shared_ptr<const ITMLibSettings>& settings, const ITMRGBDCalib& calib, Vector2i imgSize_rgb, Vector2i imgSize_d)
+ITMMultiEngine::ITMMultiEngine(const std::shared_ptr<const ITMLibSettings>& settings, const ITMRGBDCalib& calib, Vector2i imgSize_rgb, Vector2i imgSize_d)
 	:settings(settings)
 {
 	if ((imgSize_d.x == -1) || (imgSize_d.y == -1)) imgSize_d = imgSize_rgb;
@@ -32,15 +31,15 @@ ITMMultiEngine<TVoxel, TIndex>::ITMMultiEngine(const std::shared_ptr<const ITMLi
 	const ITMLibSettings::DeviceType deviceType = settings->deviceType;
 	lowLevelEngine = ITMLowLevelEngineFactory::MakeLowLevelEngine(deviceType);
 	viewBuilder = ITMViewBuilderFactory::MakeViewBuilder(calib, deviceType);
-	visualisationEngine = ITMVisualisationEngineFactory::MakeVisualisationEngine<TVoxel, TIndex>(deviceType, settings);
+	visualisationEngine = ITMVisualisationEngineFactory::MakeVisualisationEngine(deviceType, settings);
 
 	meshingEngine = NULL;
 	if (settings->createMeshingEngine)
-		meshingEngine = ITMMultiMeshingEngineFactory::MakeMeshingEngine<TVoxel, TIndex>(deviceType);
+		meshingEngine = ITMMultiMeshingEngineFactory::MakeMeshingEngine(deviceType);
 
 	renderState_freeview = NULL; //will be created by the visualisation engine
 
-	denseMapper = new ITMDenseMapper<TVoxel, TIndex>(settings);
+	denseMapper = new ITMDenseMapper(settings);
 
 	imuCalibrator = new ITMIMUCalibrator_iPad();
 	tracker = ITMTrackerFactory::Instance().Make(imgSize_rgb, imgSize_d, settings, lowLevelEngine, imuCalibrator, &settings->sceneParams);
@@ -48,7 +47,7 @@ ITMMultiEngine<TVoxel, TIndex>::ITMMultiEngine(const std::shared_ptr<const ITMLi
 	trackedImageSize = trackingController->GetTrackedImageSize(imgSize_rgb, imgSize_d);
 
 	freeviewLocalMapIdx = 0;
-	mapManager = new ITMVoxelMapGraphManager<TVoxel, TIndex>(settings, visualisationEngine, denseMapper, trackedImageSize);
+	mapManager = new ITMVoxelMapGraphManager<ITMVoxel>(settings, visualisationEngine, denseMapper, trackedImageSize);
 	mActiveDataManager = new ITMActiveMapManager(mapManager);
 	mActiveDataManager->initiateNewLocalMap(true);
 
@@ -62,12 +61,11 @@ ITMMultiEngine<TVoxel, TIndex>::ITMMultiEngine(const std::shared_ptr<const ITMLi
 	mScheduleGlobalAdjustment = false;
 	if (separateThreadGlobalAdjustment) mGlobalAdjustmentEngine->startSeparateThread();
 
-	multiVisualisationEngine = ITMMultiVisualisationEngineFactory::MakeVisualisationEngine<TVoxel,TIndex>(deviceType, settings);
+	multiVisualisationEngine = ITMMultiVisualisationEngineFactory::MakeVisualisationEngine(deviceType, settings);
 	renderState_multiscene = NULL;
 }
 
-template <typename TVoxel, typename TIndex>
-ITMMultiEngine<TVoxel, TIndex>::~ITMMultiEngine(void)
+ITMMultiEngine::~ITMMultiEngine(void)
 {
 	if (renderState_multiscene != NULL) delete renderState_multiscene;
 
@@ -95,8 +93,7 @@ ITMMultiEngine<TVoxel, TIndex>::~ITMMultiEngine(void)
 	delete multiVisualisationEngine;
 }
 
-template <typename TVoxel, typename TIndex>
-void ITMMultiEngine<TVoxel, TIndex>::changeFreeviewLocalMapIdx(ORUtils::SE3Pose *pose, int newIdx)
+void ITMMultiEngine::changeFreeviewLocalMapIdx(ORUtils::SE3Pose *pose, int newIdx)
 {
 	//if ((newIdx < 0) || ((unsigned)newIdx >= mapManager->numLocalMaps())) return;
 
@@ -109,8 +106,7 @@ void ITMMultiEngine<TVoxel, TIndex>::changeFreeviewLocalMapIdx(ORUtils::SE3Pose 
 	freeviewLocalMapIdx = newIdx;
 }
 
-template <typename TVoxel, typename TIndex>
-ITMTrackingState* ITMMultiEngine<TVoxel, TIndex>::GetTrackingState(void)
+ITMTrackingState* ITMMultiEngine::GetTrackingState(void)
 {
 	int idx = mActiveDataManager->findPrimaryLocalMapIdx();
 	if (idx < 0) idx = 0;
@@ -139,8 +135,7 @@ struct TodoListEntry {
 	bool preprepare;
 };
 
-template <typename TVoxel, typename TIndex>
-ITMTrackingState::TrackingResult ITMMultiEngine<TVoxel, TIndex>::ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement, const ORUtils::SE3Pose* pose)
+ITMTrackingState::TrackingResult ITMMultiEngine::ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement, const ORUtils::SE3Pose* pose)
 {
 	std::vector<TodoListEntry> todoList;
 	ITMTrackingState::TrackingResult primaryLocalMapTrackingResult;
@@ -219,7 +214,7 @@ ITMTrackingState::TrackingResult ITMMultiEngine<TVoxel, TIndex>::ProcessFrame(IT
 			continue;
 		}
 
-		ITMLocalMap<TVoxel, TIndex> *currentLocalMap = NULL;
+		ITMLocalMap<ITMVoxel> *currentLocalMap = nullptr;
 		int currentLocalMapIdx = mActiveDataManager->getLocalMapIndex(todoList[i].dataId);
 		currentLocalMap = mapManager->getLocalMap(currentLocalMapIdx);
 
@@ -308,8 +303,7 @@ ITMTrackingState::TrackingResult ITMMultiEngine<TVoxel, TIndex>::ProcessFrame(IT
 	return primaryLocalMapTrackingResult;
 }
 
-template <typename TVoxel, typename TIndex>
-void ITMMultiEngine<TVoxel, TIndex>::SaveSceneToMesh(const char *modelFileName)
+void ITMMultiEngine::SaveSceneToMesh(const char *modelFileName)
 {
 	if (meshingEngine == NULL) return;
 
@@ -321,26 +315,22 @@ void ITMMultiEngine<TVoxel, TIndex>::SaveSceneToMesh(const char *modelFileName)
 	delete mesh;
 }
 
-template <typename TVoxel, typename TIndex>
-void ITMMultiEngine<TVoxel, TIndex>::SaveToFile()
+void ITMMultiEngine::SaveToFile()
 {
 
 }
 
-template <typename TVoxel, typename TIndex>
-void ITMMultiEngine<TVoxel, TIndex>::LoadFromFile()
+void ITMMultiEngine::LoadFromFile()
 {
 
 }
 
-template <typename TVoxel, typename TIndex>
-Vector2i ITMMultiEngine<TVoxel, TIndex>::GetImageSize(void) const
+Vector2i ITMMultiEngine::GetImageSize(void) const
 {
 	return trackedImageSize;
 }
 
-template <typename TVoxel, typename TIndex>
-void ITMMultiEngine<TVoxel, TIndex>::GetImage(ITMUChar4Image *out, GetImageType getImageType, ORUtils::SE3Pose *pose, const ITMIntrinsics *intrinsics, bool normalsFromSDF)
+void ITMMultiEngine::GetImage(ITMUChar4Image *out, GetImageType getImageType, ORUtils::SE3Pose *pose, const ITMIntrinsics *intrinsics, bool normalsFromSDF)
 {
 	if (view == NULL) return;
 
@@ -359,7 +349,7 @@ void ITMMultiEngine<TVoxel, TIndex>::GetImage(ITMUChar4Image *out, GetImageType 
 	case ITMMainEngine::InfiniTAM_IMAGE_ORIGINAL_DEPTH:
 		out->ChangeDims(view->depth->noDims);
 		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA) view->depth->UpdateHostFromDevice();
-		ITMVisualisationEngine<TVoxel, TIndex>::DepthToUchar4(out, view->depth);
+		ITMVisualisationEngine::DepthToUchar4(out, view->depth);
 		break;
     case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_VOLUME: //TODO: add colour rendering
 	case ITMMainEngine::InfiniTAM_IMAGE_SCENERAYCAST:
@@ -370,7 +360,7 @@ void ITMMultiEngine<TVoxel, TIndex>::GetImage(ITMUChar4Image *out, GetImageType 
 		int visualisationLocalMapIdx = mActiveDataManager->findBestVisualisationLocalMapIdx();
 		if (visualisationLocalMapIdx < 0) break; // TODO: clear image? what else to do when tracking is lost?
 
-		ITMLocalMap<TVoxel, TIndex> *activeLocalMap = mapManager->getLocalMap(visualisationLocalMapIdx);
+		ITMLocalMap<ITMVoxel> *activeLocalMap = mapManager->getLocalMap(visualisationLocalMapIdx);
 
 		IITMVisualisationEngine::RenderRaycastSelection raycastType;
 		if (activeLocalMap->trackingState->age_pointCloud <= 0) raycastType = IITMVisualisationEngine::RENDER_FROM_OLD_RAYCAST;
@@ -402,7 +392,7 @@ void ITMMultiEngine<TVoxel, TIndex>::GetImage(ITMUChar4Image *out, GetImageType 
 	{
 		if (freeviewLocalMapIdx >= 0)
 		{
-			ITMLocalMap<TVoxel, TIndex> *activeData = mapManager->getLocalMap(freeviewLocalMapIdx);
+			ITMLocalMap<ITMVoxel> *activeData = mapManager->getLocalMap(freeviewLocalMapIdx);
 			if (renderState_freeview == NULL) renderState_freeview = visualisationEngine->CreateRenderState(activeData->scene, out->noDims);
 
 			visualisationEngine->FindVisibleBlocks(activeData->scene, pose, intrinsics, renderState_freeview);
@@ -431,8 +421,7 @@ void ITMMultiEngine<TVoxel, TIndex>::GetImage(ITMUChar4Image *out, GetImageType 
 	};
 }
 
-template<typename TVoxel, typename TIndex>
-const unsigned int* ITMMultiEngine<TVoxel, TIndex>::GetAllocationsPerDirection()
+const unsigned int* ITMMultiEngine::GetAllocationsPerDirection()
 {
   throw std::logic_error("GetAllocationsPerDirection not implemented");
 	return nullptr;
