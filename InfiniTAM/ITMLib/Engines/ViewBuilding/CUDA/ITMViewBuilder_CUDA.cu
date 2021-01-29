@@ -95,7 +95,7 @@ void ITMViewBuilder_CUDA::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImag
 	if (modelSensorNoise)
 	{
 		timer.Tick();
-//#define FILTER_NORMALS
+#define FILTER_NORMALS
 #ifdef FILTER_NORMALS
 		this->ComputeNormalAndWeights(this->normals, view->depthUncertainty, view->depth,
 		                              view->calib.intrinsics_d.projectionParamsSimple.all);

@@ -3,7 +3,7 @@
 #include "ITMDepthTracker.h"
 #include "../../../ORUtils/Cholesky.h"
 
-#include <math.h>
+#include <cmath>
 
 using namespace ITMLib;
 
@@ -189,7 +189,7 @@ void ITMDepthTracker::UpdatePoseQuality(int noValidPoints_old, float *hessian_go
 	if (iterationType == TRACKER_ITERATION_BOTH) {
 		ORUtils::Cholesky cholA(hessian_good, 6);
 		det = cholA.Determinant();
-		if (isnan(det)) det = 0.0f;
+		if (std::isnan(det)) det = 0.0f;
 	}
 
 	float det_norm_v1 = 0.0f;
@@ -198,7 +198,7 @@ void ITMDepthTracker::UpdatePoseQuality(int noValidPoints_old, float *hessian_go
 		for (int i = 0; i < 6 * 6; ++i) h[i] = hessian_good[i] * normFactor_v1;
 		ORUtils::Cholesky cholA(h, 6);
 		det_norm_v1 = cholA.Determinant();
-		if (isnan(det_norm_v1)) det_norm_v1 = 0.0f;
+		if (std::isnan(det_norm_v1)) det_norm_v1 = 0.0f;
 	}
 
 	float det_norm_v2 = 0.0f;
@@ -207,7 +207,7 @@ void ITMDepthTracker::UpdatePoseQuality(int noValidPoints_old, float *hessian_go
 		for (int i = 0; i < 6 * 6; ++i) h[i] = hessian_good[i] * normFactor_v2;
 		ORUtils::Cholesky cholA(h, 6);
 		det_norm_v2 = cholA.Determinant();
-		if (isnan(det_norm_v2)) det_norm_v2 = 0.0f;
+		if (std::isnan(det_norm_v2)) det_norm_v2 = 0.0f;
 	}
 
 	float finalResidual_v2 = sqrt(((float)noValidPoints_old * f_old + (float)(noValidPointsMax - noValidPoints_old) * distThresh[0]) / (float)noValidPointsMax);

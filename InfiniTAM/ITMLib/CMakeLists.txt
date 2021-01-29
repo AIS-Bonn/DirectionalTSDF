@@ -623,4 +623,4 @@ SOURCE_GROUP(Utils FILES ${ITMLIB_UTILS_SOURCES} ${ITMLIB_UTILS_HEADERS})
 
 INCLUDE(${PROJECT_SOURCE_DIR}/cmake/SetCUDALibTarget.cmake)
 ADD_DEPENDENCIES(${targetname} yaml-cpp-project)
-TARGET_LINK_LIBRARIES(${targetname} yaml-cpp)
+TARGET_LINK_LIBRARIES(${targetname} yaml-cpp stdgpu::stdgpu)

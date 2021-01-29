@@ -3,7 +3,6 @@
 #pragma once
 
 #include <memory>
-#include <math.h>
 #include <ITMLib/ITMLibDefines.h>
 
 #include "ITMLib/Objects/RenderStates/ITMRenderState.h"

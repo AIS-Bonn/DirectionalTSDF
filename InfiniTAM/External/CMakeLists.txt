@@ -9,3 +9,11 @@ ExternalProject_Add(
 )
 add_library(yaml-cpp UNKNOWN IMPORTED)
 include_directories(SYSTEM "${PROJECT_BINARY_DIR}/usr/include")
+
+# Exclude the examples from the build
+set(STDGPU_BUILD_EXAMPLES OFF CACHE INTERNAL "")
+
+# Exclude the tests from the build
+set(STDGPU_BUILD_TESTS OFF CACHE INTERNAL "")
+
+add_subdirectory(stdgpu)

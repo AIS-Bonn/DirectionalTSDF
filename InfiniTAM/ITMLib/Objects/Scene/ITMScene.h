@@ -42,8 +42,9 @@ namespace ITMLib
 			index.LoadFromDirectory(outputDirectory);			
 		}
 
-		ITMScene(const ITMSceneParams *_sceneParams, bool _useSwapping, MemoryDeviceType _memoryType)
-			: sceneParams(_sceneParams), index(_memoryType), localVBA(_memoryType, index.getNumAllocatedVoxelBlocks(), index.getVoxelBlockSize())
+		ITMScene(const ITMSceneParams* _sceneParams, bool _useSwapping, MemoryDeviceType _memoryType)
+			: sceneParams(_sceneParams), index(_memoryType),
+			  localVBA(_memoryType, index.getNumAllocatedVoxelBlocks(), index.getVoxelBlockSize())
 		{
 			if (_useSwapping) globalCache = new ITMGlobalCache<TVoxel>();
 			else globalCache = NULL;

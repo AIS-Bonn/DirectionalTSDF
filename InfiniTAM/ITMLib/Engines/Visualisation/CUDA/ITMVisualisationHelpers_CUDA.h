@@ -8,6 +8,9 @@
 #include "../Shared/ITMVisualisationEngine_Shared.h"
 #include "../../../Utils/ITMCUDAUtils.h"
 
+#include <stdgpu/unordered_set_fwd>
+#include <stdgpu/unordered_map_fwd>
+
 namespace ITMLib
 {
 	// declaration of device functions
@@ -34,7 +37,11 @@ namespace ITMLib
 	__global__ void forwardProject_device(Vector4f *forwardProjection, const Vector4f *pointsRay, Vector2i imgSize, Matrix4f M,
 		Vector4f projParams, float voxelSize);
 
-	template<class TVoxel, class TIndex>
+	__global__ void findVisibleBlocks_device(stdgpu::unordered_set<Vector3s> visibleBlocks, const ITMHashEntry* hashTable,
+	                                         int noTotalEntries, Matrix4f M, Vector4f projParams, Vector2i imgSize,
+	                                         float voxelSize);
+
+template<class TVoxel, class TIndex>
 	__global__ void genericRaycast_device(Vector4f *out_ptsRay, Vector6f *raycastDirectionalContribution, HashEntryVisibilityType *entriesVisibleType, const TVoxel *voxelData,
 		const typename TIndex::IndexData *voxelIndex, Vector2i imgSize, Matrix4f invM, Vector4f invProjParams,
 		const ITMSceneParams sceneParams, const Vector2f *minmaximg, bool directionalTSDF)

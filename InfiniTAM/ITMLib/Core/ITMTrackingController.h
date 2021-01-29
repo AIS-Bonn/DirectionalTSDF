@@ -73,7 +73,7 @@ namespace ITMLib
 
 		template <typename TVoxel>
 		void Prepare(ITMTrackingState *trackingState, const ITMScene<TVoxel> *scene, const ITMView *view,
-			const ITMVisualisationEngine *visualisationEngine, ITMRenderState *renderState)
+			ITMVisualisationEngine *visualisationEngine, ITMRenderState *renderState)
 		{
 			ITMTimer timer;
 			timer.Tick();

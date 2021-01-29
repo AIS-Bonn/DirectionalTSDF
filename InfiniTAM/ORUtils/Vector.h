@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include <math.h>
+#include <cmath>
 #include <ostream>
 
 #include "MathUtils.h"
@@ -346,6 +346,10 @@ namespace ORUtils {
 		// inequality
 		_CPU_AND_GPU_CODE_ friend bool operator != (const Vector3<T> &lhs, const Vector3<T> &rhs) {
 			return (lhs.x != rhs.x) || (lhs.y != rhs.y) || (lhs.z != rhs.z);
+		}
+
+		_CPU_AND_GPU_CODE_ friend bool operator == (const Vector3<T> &lhs, const Vector3<T> &rhs) {
+			return (lhs.x == rhs.x) && (lhs.y == rhs.y) && (lhs.z == rhs.z);
 		}
 
 		////////////////////////////////////////////////////////////////////////////////

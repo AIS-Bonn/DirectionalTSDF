@@ -30,7 +30,7 @@ namespace ITMLib
 		and tracker.
 		*/
 		ORUtils::MemoryBlock<HashEntryVisibilityType> *entriesVisibleType;
-           
+
 	public:
 		/** Number of entries in the live list. */
 		int noVisibleEntries;

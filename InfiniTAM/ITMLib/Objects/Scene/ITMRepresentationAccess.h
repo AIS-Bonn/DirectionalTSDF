@@ -350,26 +350,30 @@ _CPU_AND_GPU_CODE_ inline Vector4f readFromSDF_color4u_interpolated(const CONSTP
 	return ret4 / 255.0f;
 }
 
+#define ReadVoxelSDFDiscardZero(dst, pos) voxel = readVoxel(voxelData, voxelIndex, pos, direction, vmIndex); if (voxel.w_depth == 0) return Vector3f(0, 0, 0); dst = voxel.sdf;
+
 template<class TVoxel, class TIndex>
 _CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(const CONSTPTR(TVoxel) *voxelData,
 	const CONSTPTR(TIndex) *voxelIndex, const THREADPTR(Vector3f) &point, const TSDFDirection direction)
 {
 	int vmIndex;
 
-	Vector3f ret;
+	TVoxel voxel;
+
+	Vector3f ret(0, 0, 0);
 	Vector3f coeff; Vector3i pos; TO_INT_FLOOR3(pos, coeff, point);
 	Vector3f ncoeff(1.0f - coeff.x, 1.0f - coeff.y, 1.0f - coeff.z);
 
 	// all 8 values are going to be reused several times
 	Vector4f front, back;
-	front.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 0), direction, vmIndex).sdf;
-	front.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 0), direction, vmIndex).sdf;
-	front.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 0), direction, vmIndex).sdf;
-	front.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 0), direction, vmIndex).sdf;
-	back.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 1), direction, vmIndex).sdf;
-	back.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 1), direction, vmIndex).sdf;
-	back.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 1), direction, vmIndex).sdf;
-	back.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 1), direction, vmIndex).sdf;
+	ReadVoxelSDFDiscardZero(front.x, pos + Vector3i(0, 0, 0));
+	ReadVoxelSDFDiscardZero(front.y, pos + Vector3i(1, 0, 0));
+	ReadVoxelSDFDiscardZero(front.z, pos + Vector3i(0, 1, 0));
+	ReadVoxelSDFDiscardZero(front.w, pos + Vector3i(1, 1, 0));
+	ReadVoxelSDFDiscardZero(back.x, pos + Vector3i(0, 0, 1));
+	ReadVoxelSDFDiscardZero(back.y, pos + Vector3i(1, 0, 1));
+	ReadVoxelSDFDiscardZero(back.z, pos + Vector3i(0, 1, 1));
+	ReadVoxelSDFDiscardZero(back.w, pos + Vector3i(1, 1, 1));
 
 	Vector4f tmp;
 	float p1, p2, v1;
@@ -378,10 +382,10 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(const CONSTPTR(TVo
 		front.z *  coeff.y * ncoeff.z +
 		back.x  * ncoeff.y *  coeff.z +
 		back.z  *  coeff.y *  coeff.z;
-	tmp.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(-1, 0, 0), direction, vmIndex).sdf;
-	tmp.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(-1, 1, 0), direction, vmIndex).sdf;
-	tmp.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(-1, 0, 1), direction, vmIndex).sdf;
-	tmp.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(-1, 1, 1), direction, vmIndex).sdf;
+	ReadVoxelSDFDiscardZero(tmp.x, pos + Vector3i(-1, 0, 0));
+	ReadVoxelSDFDiscardZero(tmp.y, pos + Vector3i(-1, 1, 0));
+	ReadVoxelSDFDiscardZero(tmp.z, pos + Vector3i(-1, 0, 1));
+	ReadVoxelSDFDiscardZero(tmp.w, pos + Vector3i(-1, 1, 1));
 	p2 = tmp.x * ncoeff.y * ncoeff.z +
 		tmp.y *  coeff.y * ncoeff.z +
 		tmp.z * ncoeff.y *  coeff.z +
@@ -392,10 +396,10 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(const CONSTPTR(TVo
 		front.w *  coeff.y * ncoeff.z +
 		back.y  * ncoeff.y *  coeff.z +
 		back.w  *  coeff.y *  coeff.z;
-	tmp.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(2, 0, 0), direction, vmIndex).sdf;
-	tmp.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(2, 1, 0), direction, vmIndex).sdf;
-	tmp.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(2, 0, 1), direction, vmIndex).sdf;
-	tmp.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(2, 1, 1), direction, vmIndex).sdf;
+	ReadVoxelSDFDiscardZero(tmp.x, pos + Vector3i(2, 0, 0));
+	ReadVoxelSDFDiscardZero(tmp.y, pos + Vector3i(2, 1, 0));
+	ReadVoxelSDFDiscardZero(tmp.z, pos + Vector3i(2, 0, 1));
+	ReadVoxelSDFDiscardZero(tmp.w, pos + Vector3i(2, 1, 1));
 	p2 = tmp.x * ncoeff.y * ncoeff.z +
 		tmp.y *  coeff.y * ncoeff.z +
 		tmp.z * ncoeff.y *  coeff.z +
@@ -408,10 +412,10 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(const CONSTPTR(TVo
 		front.y *  coeff.x * ncoeff.z +
 		back.x  * ncoeff.x *  coeff.z +
 		back.y  *  coeff.x *  coeff.z;
-	tmp.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, -1, 0), direction, vmIndex).sdf;
-	tmp.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, -1, 0), direction, vmIndex).sdf;
-	tmp.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, -1, 1), direction, vmIndex).sdf;
-	tmp.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, -1, 1), direction, vmIndex).sdf;
+	ReadVoxelSDFDiscardZero(tmp.x, pos + Vector3i(0, -1, 0));
+	ReadVoxelSDFDiscardZero(tmp.y, pos + Vector3i(1, -1, 0));
+	ReadVoxelSDFDiscardZero(tmp.z, pos + Vector3i(0, -1, 1));
+	ReadVoxelSDFDiscardZero(tmp.w, pos + Vector3i(1, -1, 1));
 	p2 = tmp.x * ncoeff.x * ncoeff.z +
 		tmp.y *  coeff.x * ncoeff.z +
 		tmp.z * ncoeff.x *  coeff.z +
@@ -422,10 +426,10 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(const CONSTPTR(TVo
 		front.w *  coeff.x * ncoeff.z +
 		back.z  * ncoeff.x *  coeff.z +
 		back.w  *  coeff.x *  coeff.z;
-	tmp.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 2, 0), direction, vmIndex).sdf;
-	tmp.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 2, 0), direction, vmIndex).sdf;
-	tmp.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 2, 1), direction, vmIndex).sdf;
-	tmp.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 2, 1), direction, vmIndex).sdf;
+	ReadVoxelSDFDiscardZero(tmp.x, pos + Vector3i(0, 2, 0));
+	ReadVoxelSDFDiscardZero(tmp.y, pos + Vector3i(1, 2, 0));
+	ReadVoxelSDFDiscardZero(tmp.z, pos + Vector3i(0, 2, 1));
+	ReadVoxelSDFDiscardZero(tmp.w, pos + Vector3i(1, 2, 1));
 	p2 = tmp.x * ncoeff.x * ncoeff.z +
 		tmp.y *  coeff.x * ncoeff.z +
 		tmp.z * ncoeff.x *  coeff.z +
@@ -438,10 +442,10 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(const CONSTPTR(TVo
 		front.y *  coeff.x * ncoeff.y +
 		front.z * ncoeff.x *  coeff.y +
 		front.w *  coeff.x *  coeff.y;
-	tmp.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, -1), direction, vmIndex).sdf;
-	tmp.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, -1), direction, vmIndex).sdf;
-	tmp.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, -1), direction, vmIndex).sdf;
-	tmp.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, -1), direction, vmIndex).sdf;
+	ReadVoxelSDFDiscardZero(tmp.x, pos + Vector3i(0, 0, -1));
+	ReadVoxelSDFDiscardZero(tmp.y, pos + Vector3i(1, 0, -1));
+	ReadVoxelSDFDiscardZero(tmp.z, pos + Vector3i(0, 1, -1));
+	ReadVoxelSDFDiscardZero(tmp.w, pos + Vector3i(1, 1, -1));
 	p2 = tmp.x * ncoeff.x * ncoeff.y +
 		tmp.y *  coeff.x * ncoeff.y +
 		tmp.z * ncoeff.x *  coeff.y +
@@ -452,10 +456,10 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(const CONSTPTR(TVo
 		back.y *  coeff.x * ncoeff.y +
 		back.z * ncoeff.x *  coeff.y +
 		back.w *  coeff.x *  coeff.y;
-	tmp.x = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 2), direction, vmIndex).sdf;
-	tmp.y = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 2), direction, vmIndex).sdf;
-	tmp.z = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 2), direction, vmIndex).sdf;
-	tmp.w = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 2), direction, vmIndex).sdf;
+	ReadVoxelSDFDiscardZero(tmp.x, pos + Vector3i(0, 0, 2));
+	ReadVoxelSDFDiscardZero(tmp.y, pos + Vector3i(1, 0, 2));
+	ReadVoxelSDFDiscardZero(tmp.z, pos + Vector3i(0, 1, 2));
+	ReadVoxelSDFDiscardZero(tmp.w, pos + Vector3i(1, 1, 2));
 	p2 = tmp.x * ncoeff.x * ncoeff.y +
 		tmp.y *  coeff.x * ncoeff.y +
 		tmp.z * ncoeff.x *  coeff.y +

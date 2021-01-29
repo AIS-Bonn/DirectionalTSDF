@@ -3,7 +3,7 @@
 #include "ITMColorTracker.h"
 #include "../../../ORUtils/Cholesky.h"
 
-#include <math.h>
+#include <cmath>
 
 using namespace ITMLib;
 

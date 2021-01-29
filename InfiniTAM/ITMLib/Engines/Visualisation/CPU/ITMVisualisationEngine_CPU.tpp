@@ -113,18 +113,12 @@ void ITMVisualisationEngine_CPU::FindVisibleBlocks(const Scene* scene,
 	//build visible list
 	for (int targetIdx = 0; targetIdx < noTotalEntries; targetIdx++)
 	{
-		unsigned char hashVisibleType = 0;// = entriesVisibleType[targetIdx];
 		const ITMHashEntry& hashEntry = hashTable[targetIdx];
 
 		if (hashEntry.ptr >= 0)
 		{
 			bool isVisible, isVisibleEnlarged;
 			checkBlockVisibility<false>(isVisible, isVisibleEnlarged, hashEntry.pos, M, projParams, voxelSize, imgSize);
-			hashVisibleType = isVisible;
-		}
-
-		if (hashVisibleType > 0)
-		{
 			visibleEntryIDs[noVisibleEntries] = targetIdx;
 			noVisibleEntries++;
 		}
@@ -154,7 +148,7 @@ int ITMVisualisationEngine_CPU::CountVisibleBlocks(const Scene* scene,
 
 void ITMVisualisationEngine_CPU::CreateExpectedDepths(const Scene* scene,
                                                       const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
-                                                      ITMRenderState* renderState) const
+                                                      ITMRenderState* renderState)
 {
 	Vector2i imgSize = renderState->renderingRangeImage->noDims;
 	Vector2f* minmaxData = renderState->renderingRangeImage->GetData(MEMORYDEVICE_CPU);
@@ -695,4 +689,11 @@ void ITMVisualisationEngine_CPU::RenderTrackingError(ITMUChar4Image* outRenderin
 			processPixelError(data, pointsRay, normalsRay, depthImage, depthImagePose, sceneRenderingPose,
 			                  view->calib.intrinsics_d.projectionParamsSimple.all, imgSize, maxError, x, y);
 		}
+}
+
+void ITMVisualisationEngine_CPU::ComputeRenderingTSDF(const Scene* scene, const ORUtils::SE3Pose* pose,
+                                                      const ITMIntrinsics* intrinsics,
+                                                      ITMRenderState* renderState)
+{
+
 }

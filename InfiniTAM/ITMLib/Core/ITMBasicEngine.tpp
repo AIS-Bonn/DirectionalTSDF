@@ -113,14 +113,17 @@ void ITMBasicEngine::SaveToFile()
 	std::string saveOutputDirectory = "State/";
 	std::string relocaliserOutputDirectory = saveOutputDirectory + "Relocaliser/";
 	std::string sceneOutputDirectory = saveOutputDirectory + "Scene/";
+	std::string renderOutputDirectory = saveOutputDirectory + "Render/";
 
 	MakeDir(saveOutputDirectory.c_str());
 	MakeDir(relocaliserOutputDirectory.c_str());
 	MakeDir(sceneOutputDirectory.c_str());
+	MakeDir(renderOutputDirectory.c_str());
 
 	if (relocaliser) relocaliser->SaveToDirectory(relocaliserOutputDirectory);
 
 	scene->SaveToDirectory(sceneOutputDirectory);
+	visualisationEngine->SaveRenderTSDF(renderOutputDirectory);
 }
 
 void ITMBasicEngine::LoadFromFile()

@@ -120,6 +120,12 @@ namespace ITMLib
 			delete excessAllocationList;
 		}
 
+		void Reset()
+		{
+			hashEntries->Clear();
+			excessAllocationList->Clear();
+		}
+
 		/** Get the list of actual entries in the hash table. */
 		const ITMHashEntry *GetEntries(void) const { return hashEntries->GetData(memoryType); }
 		ITMHashEntry *GetEntries(void) { return hashEntries->GetData(memoryType); }

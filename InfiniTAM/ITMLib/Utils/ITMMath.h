@@ -91,3 +91,18 @@ inline Vector3f cross(Vector3f a, Vector3f b)
 		a.x * b.y - a.y * b.x
 		);
 }
+
+namespace std {
+
+template <>
+struct hash<Vector3i>
+{
+	std::size_t operator()(const Vector3i& k) const
+	{
+		return ((std::hash<int>()(k.x)
+		         ^ (std::hash<int>()(k.y) << 1)) >> 1)
+		       ^ (std::hash<int>()(k.z) << 1);
+	}
+};
+
+}

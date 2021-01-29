@@ -25,8 +25,45 @@ enum class TSDFDirection : std::uint8_t
 	Z_NEG,
 	NONE = 255
 };
-
 typedef std::underlying_type<TSDFDirection>::type TSDFDirection_type;
+
+struct TSDFDirectionColor_
+{
+	_CPU_AND_GPU_CODE_
+	Vector3f operator [] (size_t i) const
+	{
+		const Vector3f directionColor[6] = {
+			Vector3f(1, 0, 0),
+			Vector3f(0, 1, 0),
+			Vector3f(1, 1, 0),
+			Vector3f(0, 0, 1),
+			Vector3f(1, 0, 1),
+			Vector3f(0, 1, 1)
+		};
+		return directionColor[i];
+	}
+};
+_CPU_AND_GPU_CODE_
+const static TSDFDirectionColor_ TSDFDirectionColor; // instantiate to allow operator usage
+
+struct TSDFDirectionVector_
+{
+	_CPU_AND_GPU_CODE_
+	Vector3f operator [] (size_t i) const
+	{
+		const Vector3f directionVectors[N_DIRECTIONS] = {
+			Vector3f(1, 0, 0),
+			Vector3f(-1, 0, 0),
+			Vector3f(0, 1, 0),
+			Vector3f(0, -1, 0),
+			Vector3f(0, 0, 1),
+			Vector3f(0, 0, -1)
+		};
+		return directionVectors[i];
+	}
+};
+_CPU_AND_GPU_CODE_
+const static TSDFDirectionVector_ TSDFDirectionVector;
 
 _CPU_AND_GPU_CODE_
 inline const char* TSDFDirectionToString(TSDFDirection direction)
@@ -54,15 +91,7 @@ inline const char* TSDFDirectionToString(TSDFDirection direction)
 _CPU_AND_GPU_CODE_
 inline float DirectionAngle(const Vector3f& normal, TSDFDirection direction)
 {
-	const Vector3f TSDFDirectionVectors[N_DIRECTIONS] = {
-		Vector3f(1,  0,  0),
-		Vector3f(-1, 0,  0),
-		Vector3f(0,  1,  0),
-		Vector3f(0,  -1, 0),
-		Vector3f(0,  0,  1),
-		Vector3f(0,  0,  -1)
-	};
-	float angleCos = dot(normal, TSDFDirectionVectors[static_cast<TSDFDirection_type>(direction)]);
+	float angleCos = dot(normal, TSDFDirectionVector[static_cast<TSDFDirection_type>(direction)]);
 	angleCos = MAX(MIN(angleCos, 1), -1);
 	return acos(angleCos);
 }

@@ -3,8 +3,8 @@
 #pragma once
 
 #include "MathUtils.h"
-#include <math.h>
-#include <string.h>
+#include <cmath>
+#include <cstring>
 
 /*This class is based on the homkermap.c functions from VLFeat www.vlfeat.org */
 

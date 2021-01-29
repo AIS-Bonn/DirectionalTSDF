@@ -2,6 +2,39 @@
 
 #pragma once
 
+#include "ITMMath.h"
+#include <stdgpu/functional.h>
+
+namespace stdgpu {
+
+template <>
+struct hash<Vector3s>
+{
+	inline STDGPU_HOST_DEVICE
+	stdgpu::index_t operator()(const Vector3s& k) const
+	{
+		return ((stdgpu::hash<short>()(k.x)
+		         ^ (stdgpu::hash<short>()(k.y) << 1)) >> 1)
+		       ^ (stdgpu::hash<short>()(k.z) << 1);
+	}
+};
+
+//template <>
+//template <typename T>
+//struct hash<Vector3<T>>
+//{
+//	inline STDGPU_HOST_DEVICE
+//	stdgpu::index_t operator()(const Vector3<T>& k) const
+//	{
+//		return ((stdgpu::hash<T>()(k.x)
+//		         ^ (stdgpu::hash<T>()(k.y) << 1)) >> 1)
+//		       ^ (stdgpu::hash<T>()(k.z) << 1);
+//	}
+//};
+
+}
+
+
 template<class T>
 inline __device__ void warpReduce(volatile T* sdata, int tid) {
 	sdata[tid] += sdata[tid + 32];
@@ -73,27 +106,27 @@ __device__ int computePrefixSum_device(uint element, T *sum, int localSize, int 
 	return offset;
 }
 
-__device__ static inline void atomicMin(float* address, float val)
-{
-	int* address_as_i = (int*)address;
-	int old = *address_as_i, assumed;
-	do {
-		assumed = old;
-		old = ::atomicCAS(address_as_i, assumed,
-			__float_as_int(::fminf(val, __int_as_float(assumed))));
-	} while (assumed != old);
-}
+//__device__ static inline void atomicMin(float* address, float val)
+//{
+//	int* address_as_i = (int*)address;
+//	int old = *address_as_i, assumed;
+//	do {
+//		assumed = old;
+//		old = ::atomicCAS(address_as_i, assumed,
+//			__float_as_int(::fminf(val, __int_as_float(assumed))));
+//	} while (assumed != old);
+//}
 
-__device__ static inline void atomicMax(float* address, float val)
-{
-	int* address_as_i = (int*)address;
-	int old = *address_as_i, assumed;
-	do {
-		assumed = old;
-		old = ::atomicCAS(address_as_i, assumed,
-			__float_as_int(::fmaxf(val, __int_as_float(assumed))));
-	} while (assumed != old);
-}
+//__device__ static inline void atomicMax(float* address, float val)
+//{
+//	int* address_as_i = (int*)address;
+//	int old = *address_as_i, assumed;
+//	do {
+//		assumed = old;
+//		old = ::atomicCAS(address_as_i, assumed,
+//			__float_as_int(::fmaxf(val, __int_as_float(assumed))));
+//	} while (assumed != old);
+//}
 
 template<typename T>
 __global__ void memsetKernel_device(T *devPtr, const T val, size_t nwords)

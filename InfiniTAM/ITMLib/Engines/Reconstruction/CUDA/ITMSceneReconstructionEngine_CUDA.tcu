@@ -47,7 +47,7 @@ void rayCastCombine_device(
 )
 {
 	int x = threadIdx.x, y = threadIdx.y, z = threadIdx.z;
-	int locId = x + y * SDF_BLOCK_SIZE + z * SDF_BLOCK_SIZE * SDF_BLOCK_SIZE;
+	int locId = VoxelIndicesToOffset(x, y, z);
 	int entryId = blockIdx.x;
 
 	const ITMHashEntry &hashEntry = hashTable[visibleEntryIds[entryId]];
@@ -175,8 +175,8 @@ __global__ void integrateIntoScene_device(ITMVoxel *localVBA, const ITMHashEntry
 	pt_model.z = (float)(globalPos.z + z) * _voxelSize;
 	pt_model.w = 1.0f;
 
-	ComputeUpdatedVoxelInfo<ITMVoxel::hasColorInformation>::compute(
-		localVoxelBlock[locId], TSDFDirection(currentHashEntry.direction),
+	std::conditional<ITMVoxel::hasColorInformation, ComputeUpdatedVoxelInfo<true, ITMVoxel>, ComputeUpdatedVoxelInfo<false, ITMVoxel>>::type::compute(
+			localVoxelBlock[locId], TSDFDirection(currentHashEntry.direction),
 		pt_model, M_d, projParams_d, M_rgb, projParams_rgb, fusionParams, sceneParams, depth, depthNormals, confidence,
 		depthImgSize, rgb, rgbImgSize);
 }

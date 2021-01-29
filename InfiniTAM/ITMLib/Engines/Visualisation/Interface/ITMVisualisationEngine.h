@@ -72,7 +72,8 @@ class ITMVisualisationEngine : public IITMVisualisationEngine
 {
 public:
 	explicit ITMVisualisationEngine(std::shared_ptr<const ITMLibSettings> settings)
-		: settings(std::move(settings))
+		: settings(std::move(settings)),
+		renderIndex(nullptr), renderVBA(nullptr), renderVisibleEntryIDs(nullptr), renderNoVisibleEntries(0)
 	{}
 
 	virtual ~ITMVisualisationEngine() = default;
@@ -91,6 +92,9 @@ public:
 	virtual void FindVisibleBlocks(const Scene* scene, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
 	                               ITMRenderState* renderState) const = 0;
 
+	virtual void ComputeRenderingTSDF(const Scene* scene, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
+	                                  ITMRenderState* renderState) = 0;
+
 	/** Given a render state, Count the number of visible blocks
 	with minBlockId <= blockID <= maxBlockId .
 	*/
@@ -102,7 +106,7 @@ public:
 	an image.
 	*/
 	virtual void CreateExpectedDepths(const Scene* scene, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
-	                                  ITMRenderState* renderState) const = 0;
+	                                  ITMRenderState* renderState) = 0;
 
 	/** This will render an image using raycasting. */
 	virtual void RenderImage(const Scene* scene, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
@@ -137,7 +141,28 @@ public:
 	virtual void RenderTrackingError(ITMUChar4Image* outRendering, const ITMTrackingState* trackingState,
 	                                 const ITMView* view) const = 0;
 
+	void SaveRenderTSDF(const std::string& outputDirectory)
+	{
+		if (not renderVBA or not renderIndex)
+			return;
+		renderVBA->SaveToDirectory(outputDirectory);
+		renderIndex->SaveToDirectory(outputDirectory);
+	}
+
 protected:
 	std::shared_ptr<const ITMLibSettings> settings;
+
+	ITMVoxelBlockHash* renderIndex;
+	ITMLocalVBA<ITMVoxel>* renderVBA;
+	ORUtils::MemoryBlock<int> *renderVisibleEntryIDs;
+	int renderNoVisibleEntries;
+
+	/** True, if directional TSDF is combined to default TSDF for rendering
+	 * @return
+	 */
+	bool CombineTSDFForRendering() const
+	{
+		return this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL and DIRECTIONAL_RENDERING_MODE == 1;
+	}
 };
 }

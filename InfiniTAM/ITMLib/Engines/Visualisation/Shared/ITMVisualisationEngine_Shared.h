@@ -52,7 +52,7 @@ static const CONSTPTR(int) renderingBlockSizeY = 16;
  * @param upperLeft
  * @param lowerRight
  * @param zRange
- * @return
+ * @return true, if within image and z-range
  */
 _CPU_AND_GPU_CODE_ inline bool ProjectSingleBlock(const THREADPTR(Vector3s)& blockPos, const THREADPTR(Matrix4f)& pose,
                                                   const THREADPTR(Vector4f)& intrinsics,
@@ -369,21 +369,12 @@ _CPU_AND_GPU_CODE_ inline void drawPixelColourDirectional(
 	DEVICEPTR(Vector4u)& dest, const CONSTPTR(Vector3f)& point, const Vector6f& directionalContribution,
 	const float angle, const CONSTPTR(TVoxel)* voxelBlockData, const CONSTPTR(typename TIndex::IndexData)* indexData)
 {
-	const Vector3f directionColors[6] = {
-		Vector3f(1, 0, 0),
-		Vector3f(0, 1, 0),
-		Vector3f(1, 1, 0),
-		Vector3f(0, 0, 1),
-		Vector3f(1, 0, 1),
-		Vector3f(0, 1, 1)
-	};
-
 	Vector4f color (0, 0, 0, 255);
 
 	// Debugging: color in contributing directions
 	for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
 	{
-		const Vector3f& clr = directionColors[direction];
+		const Vector3f& clr = TSDFDirectionColor[direction];
 		color.x += MIN(clr.x * 255.0f * directionalContribution[direction], 255.0f);
 		color.y += MIN(clr.y * 255.0f * directionalContribution[direction], 255.0f);
 		color.z += MIN(clr.z * 255.0f * directionalContribution[direction], 255.0f);
@@ -543,6 +534,9 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 	distance_out = totalLength / sceneParams.oneOverVoxelSize;
 	// multiply by transition: negative transition <=> negative confidence!
 	pt_out = Vector4f(pt_result, confidence);
+
+	if (x == 320 and y == 240)
+		printf("[%f, %f, %f]\n", pt_out.x, pt_out.y, pt_out.z);
 
 	return true;
 }
@@ -1012,13 +1006,11 @@ _CPU_AND_GPU_CODE_ inline bool castRay(DEVICEPTR(Vector4f)& pt_out, Vector6f* di
                                        bool directionalTSDF)
 {
 	float distance;
-	if (directionalTSDF)
+	if (directionalTSDF and DIRECTIONAL_RENDERING_MODE != 1)
 //		return castRayDirectional<TVoxel, TIndex>(pt_out, directionalContribution, entriesVisibleType, x, y, voxelData,
 //		                                           voxelIndex, invM, invProjParams, sceneParams, minMaxImg);
-	return castRayDirectional2<TVoxel, TIndex>(pt_out, directionalContribution, entriesVisibleType, x, y, voxelData,
-	                                          voxelIndex, invM, invProjParams, sceneParams, minMaxImg);
-//		return castRayDefault<TVoxel, TIndex>(pt_out, distance, entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams,
-//																					sceneParams, minMaxImg, TSDFDirection::Z_NEG);
+		return castRayDirectional2<TVoxel, TIndex>(pt_out, directionalContribution, entriesVisibleType, x, y, voxelData,
+																							voxelIndex, invM, invProjParams, sceneParams, minMaxImg);
 	else
 		return castRayDefault<TVoxel, TIndex>(pt_out, distance, entriesVisibleType, x, y, voxelData, voxelIndex, invM,
 		                                      invProjParams, sceneParams, minMaxImg);

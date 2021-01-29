@@ -43,11 +43,14 @@ public:
 	void FindVisibleBlocks(const Scene* scene, const ORUtils::SE3Pose* pose,
 	                       const ITMIntrinsics* intrinsics, ITMRenderState* renderState) const override;
 
+	void ComputeRenderingTSDF(const Scene* scene, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
+	                          ITMRenderState* renderState) override;
+
 	int CountVisibleBlocks(const Scene* scene, const ITMRenderState* renderState, int minBlockId,
 	                       int maxBlockId) const override;
 
 	void CreateExpectedDepths(const Scene* scene, const ORUtils::SE3Pose* pose,
-	                          const ITMIntrinsics* intrinsics, ITMRenderState* renderState) const override;
+	                          const ITMIntrinsics* intrinsics, ITMRenderState* renderState) override;
 
 protected:
 	void GenericRaycast(const Scene* scene, const Vector2i& imgSize, const Matrix4f& invM,

@@ -44,11 +44,14 @@ public:
 	void FindVisibleBlocks(const Scene* scene, const ORUtils::SE3Pose* pose,
 	                       const ITMIntrinsics* intrinsics, ITMRenderState* renderState) const;
 
+	void ComputeRenderingTSDF(const Scene* scene, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
+	                          ITMRenderState* renderState) override;
+
 	int CountVisibleBlocks(const Scene* scene, const ITMRenderState* renderState, int minBlockId,
 	                       int maxBlockId) const;
 
 	void CreateExpectedDepths(const Scene* scene, const ORUtils::SE3Pose* pose,
-	                          const ITMIntrinsics* intrinsics, ITMRenderState* renderState) const;
+	                          const ITMIntrinsics* intrinsics, ITMRenderState* renderState);
 
 protected:
 	uint* noTotalPoints_device;
