@@ -67,6 +67,8 @@ namespace InfiniTAM
 			void _initialise(int argc, char** argv, AppData* appData, ITMLib::ITMMainEngine *mainEngine) override;
 			bool _processFrame() override;
 
+			void printPixelInformation(int x, int y);
+
 		public:
 			static UIEngine* Instance(void) {
 				if (instance == NULL) instance = new UIEngine();

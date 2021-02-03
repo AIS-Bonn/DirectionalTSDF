@@ -538,6 +538,41 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 	else uiEngine->outImageType[0] = uiEngine->colourModes_main[uiEngine->currentColourMode].type;
 }
 
+void UIEngine::printPixelInformation(int x, int y)
+{
+	Vector2f c1(winReg[0][0], winReg[0][1]);
+	Vector2f c2(winReg[0][2], winReg[0][1]);
+	Vector2f c3(winReg[0][2], winReg[0][3]);
+	Vector2f c4(winReg[0][0], winReg[0][3]);
+	Vector2f p_window(static_cast<float>(x) / glutGet(GLUT_WINDOW_WIDTH), static_cast<float>(y) / glutGet(GLUT_WINDOW_HEIGHT));
+
+	Vector2f p_image(
+		(p_window.x - c1.x) / (c2.x - c1.x),
+		1 - (c4.y - p_window.y - c1.y) / (c4.y - c1.y)
+		);
+
+	Vector2i imgSize = mainEngine->GetImageSize();
+	Vector2i idx_image(imgSize.width * p_image.x, imgSize.height * p_image.y);
+	if (idx_image.x < 0 or idx_image.x >= imgSize.width or idx_image.y < 0 or idx_image.y >= imgSize.height)
+		return;
+
+	mainEngine->GetTrackingState()->pointCloud->locations->UpdateHostFromDevice();
+	Vector4f point = mainEngine->GetTrackingState()->pointCloud->locations->GetData(MEMORYDEVICE_CPU)[mainEngine->GetImageSize().width * idx_image.y + idx_image.x];
+
+	if (point.w <= 0)
+	{
+		printf("img(xy)[%i, %i]\tNo data\n", idx_image.x, idx_image.y);
+		return;
+	}
+
+	const float voxelSize = this->appData->internalSettings->sceneParams.voxelSize;
+	Vector3i voxelIdx = (1 / voxelSize * point.toVector3()).toInt();
+
+	printf("img(xy)[%i, %i]\tpoint(xyz)(%f, %f, %f)\tvoxel(xyz)(%i, %i, %i)\n",
+		idx_image.x, idx_image.y, point.x, point.y, point.z,
+		voxelIdx.x, voxelIdx.y, voxelIdx.z);
+}
+
 void UIEngine::glutMouseButtonFunction(int button, int state, int x, int y)
 {
 	UIEngine *uiEngine = UIEngine::Instance();
@@ -546,7 +581,9 @@ void UIEngine::glutMouseButtonFunction(int button, int state, int x, int y)
 	{
 		switch (button)
 		{
-		case GLUT_LEFT_BUTTON: uiEngine->mouseState = 1; break;
+		case GLUT_LEFT_BUTTON: uiEngine->mouseState = 1;
+			uiEngine->printPixelInformation(x, y);
+			break;
 		case GLUT_MIDDLE_BUTTON: uiEngine->mouseState = 3; break;
 		case GLUT_RIGHT_BUTTON: uiEngine->mouseState = 2; break;
 		default: break;
