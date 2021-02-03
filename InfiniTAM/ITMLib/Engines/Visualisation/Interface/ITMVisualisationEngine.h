@@ -157,6 +157,10 @@ protected:
 	ORUtils::MemoryBlock<int> *renderVisibleEntryIDs;
 	int renderNoVisibleEntries;
 
+	int frameCounter = 0;
+	int lastTSDFCombineFrameCounter = 0;
+	ORUtils::SE3Pose lastTSDFCombinePose;
+
 	/** True, if directional TSDF is combined to default TSDF for rendering
 	 * @return
 	 */

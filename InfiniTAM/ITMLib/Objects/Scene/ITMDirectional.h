@@ -13,7 +13,7 @@ _CPU_AND_GPU_CODE_
 const static size_t N_DIRECTIONS = 6;
 
 _CPU_AND_GPU_CODE_
-const static float direction_angle_threshold = 0.60 * M_PI_2;
+const static float direction_angle_threshold = 1.25 * M_PI_4;
 
 enum class TSDFDirection : std::uint8_t
 {
@@ -88,6 +88,13 @@ inline const char* TSDFDirectionToString(TSDFDirection direction)
 	return "UNKNOWN";
 }
 
+/**
+ * Computes the angle between the normal and direction vector.
+ *
+ * The angle is computed as acos of the dot product -> [0, pi].
+ * @param normal
+ * @param angles
+ */
 _CPU_AND_GPU_CODE_
 inline float DirectionAngle(const Vector3f& normal, TSDFDirection direction)
 {

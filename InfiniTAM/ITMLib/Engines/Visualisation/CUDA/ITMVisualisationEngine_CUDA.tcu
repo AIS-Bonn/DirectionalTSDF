@@ -89,25 +89,27 @@ combineDirectionalTSDFViewPoint(ITMVoxel* renderVoxelData, ITMHashEntry* renderH
 
 	int linearIdx = threadIdx.x;
 	typename ITMVoxelBlockHash::IndexCache cache[N_DIRECTIONS];
-//
-	Vector3f voxelPos = (blockToVoxelPos(Vector3i(blockPos.x, blockPos.y, blockPos.z))
-	                     + voxelOffsetToCoordinate(linearIdx)).toFloat();
-
-	Vector3f rayDirection = (voxelPos * voxelSize - (invM * Vector4f(0, 0, 0, 1)).toVector3()).normalised();
 
 	Vector3i voxelPosIdx = blockToVoxelPos(Vector3i(blockPos.x, blockPos.y, blockPos.z))
 	                       + voxelOffsetToCoordinate(linearIdx);
+	Vector3f voxelPos = voxelPosIdx.toFloat();
+
+	Vector3f rayDirection = (voxelPos * voxelSize - (invM * Vector4f(0, 0, 0, 1)).toVector3()).normalised();
 
 	Vector3f colorCombined(0, 0, 0);
 	float sdfCombined = 0;
 	float weightCombined = 0;
 
-	bool freeSpace = false;
+	Vector3f colorCombinedNoGradient(0, 0, 0);
+	float sdfCombinedNoGradient = 0;
+	float weightCombinedNoGradient = 0;
+
+	Vector3f colorFreeSpace(0, 0, 0);
 	float freeSpaceWeight = 0;
 	float freeSpaceSDF = 0;
+
 	Vector3f gradientCombined(0, 0, 0);
 	Vector3f gradientFreeSpace(0, 0, 0);
-	Vector3f colorFreeSpace(0, 0, 0);
 	for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
 	{
 		float confidence = 0;
@@ -121,12 +123,11 @@ combineDirectionalTSDFViewPoint(ITMVoxel* renderVoxelData, ITMHashEntry* renderH
 		Vector3f gradient = computeSingleNormalFromSDF(voxelData, hashTable, voxelPos, TSDFDirection(directionIdx));
 
 		float weight =
-//			(sdf > 0.0f and confidence > 0.0f) * DirectionAngle(-rayDirection, TSDFDirection(directionIdx)) * 1e-6 // minimum weight to ensure fewer data-less voxels
-//			+ DirectionWeight(DirectionAngle(gradient, TSDFDirection(directionIdx))) * ORUtils::dot(gradient, -rayDirection) * // FIXME: direction weight too strict? but helps with perpendicular walls -> hole [or not]
-				+ (DirectionAngle(gradient, TSDFDirection(directionIdx)) < M_PI_2) * ORUtils::dot(gradient, -rayDirection) *
-			  confidence;
+			DirectionWeight(DirectionAngle(gradient, TSDFDirection(directionIdx))) * ORUtils::dot(gradient, -rayDirection) // FIXME: direction weight too strict? but helps with perpendicular walls -> hole [or not]
+			//				+ (DirectionAngle(gradient, TSDFDirection(directionIdx)) < M_PI_2) * ORUtils::dot(gradient, -rayDirection)
+			* confidence;
 
-//		if (voxelPosIdx.x == 0 and voxelPosIdx.y == 19 and voxelPosIdx.z == 104)
+//		if (voxelPosIdx.x == 22 and voxelPosIdx.y == -21 and voxelPosIdx.z == 10)
 //			printf("[%i] (%f, %f) [%f, %f, %f] (%.12f, %.12f, %.12f) -> %.12f\n", directionIdx, sdf, confidence,
 //				gradient.x, gradient.y, gradient.z,
 //			  DirectionAngle(gradient, TSDFDirection(directionIdx)),
@@ -153,7 +154,6 @@ combineDirectionalTSDFViewPoint(ITMVoxel* renderVoxelData, ITMHashEntry* renderH
 
 			if (carve)
 			{
-				freeSpace = true;
 				weight = DirectionAngle(-rayDirection, TSDFDirection(directionIdx)) * 1e-6 // minimum weight to ensure fewer data-less voxels
 								 + confidence;
 				weight = MAX(weight, 0);
@@ -165,6 +165,11 @@ combineDirectionalTSDFViewPoint(ITMVoxel* renderVoxelData, ITMHashEntry* renderH
 			}
 		}
 		weight = MAX(weight, 0);
+
+		float weightNoGradient = MAX(0, DirectionAngle(-rayDirection, TSDFDirection(directionIdx)) * confidence);
+		weightCombinedNoGradient += weightNoGradient;
+		sdfCombinedNoGradient += weightNoGradient * sdf;
+		colorCombinedNoGradient += weightNoGradient * TSDFDirectionColor[directionIdx];
 
 		sdfCombined += weight * sdf;
 		weightCombined += weight;
@@ -181,7 +186,14 @@ combineDirectionalTSDFViewPoint(ITMVoxel* renderVoxelData, ITMHashEntry* renderH
 		colorCombined /= weightCombined;
 		if (hasGradient)
 			gradientCombined = gradientCombined.normalised();
-	} else {
+	} else if (weightCombinedNoGradient > 0)
+	{
+		sdfCombined = sdfCombinedNoGradient / weightCombinedNoGradient;
+		colorCombined = colorCombinedNoGradient / weightCombinedNoGradient;
+		weightCombined = weightCombinedNoGradient;
+		gradientCombined = Vector3f(0, 0, 0);
+	} else
+	{
 		sdfCombined = 1;
 		weightCombined = 0;
 		gradientCombined = Vector3f(0, 0, 0);
@@ -194,14 +206,13 @@ combineDirectionalTSDFViewPoint(ITMVoxel* renderVoxelData, ITMHashEntry* renderH
 			gradientFreeSpace = gradientFreeSpace.normalised();
 	}
 
-
-//	if (voxelPosIdx.x == 0 and voxelPosIdx.y == 19 and voxelPosIdx.z == 104)
+//	if (voxelPosIdx.x == 44 and voxelPosIdx.y == 60 and voxelPosIdx.z == 244)
 //	{
-//		printf("%i (%.10f, %.10f)(%.10f, %.10f)  [%f, %f, %f]X[%f, %f, %f] = %f [FS: %i]\t", freeSpace, freeSpaceSDF, freeSpaceWeight, sdfCombined, weightCombined,
+//		printf("%i (%.10f, %.10f)(%.10f, %.10f)  [%f, %f, %f]X[%f, %f, %f] = %f [FS: %i]\t", freeSpaceWeight > 0, freeSpaceSDF, freeSpaceWeight, sdfCombined, weightCombined,
 //		       gradientFreeSpace.x, gradientFreeSpace.y, gradientFreeSpace.z,
 //		       gradientCombined.x, gradientCombined.y, gradientCombined.z,
 //		       dot(gradientFreeSpace, gradientCombined),
-//						(freeSpace
+//						(freeSpaceWeight > 0
 //								and ((
 //											 hasGradient and hasFreeSpaceGradient
 //											 and dot(gradientFreeSpace, gradientCombined) < 0.5 // if same surface, use normal combination instead of free space (prevent dents in surface)
@@ -212,14 +223,12 @@ combineDirectionalTSDFViewPoint(ITMVoxel* renderVoxelData, ITMHashEntry* renderH
 //		);
 //	}
 
-	if (freeSpace
-			and ((
-			hasGradient and hasFreeSpaceGradient
-	    and dot(gradientFreeSpace, gradientCombined) < 0.5 // if same surface, use normal combination instead of free space (prevent dents in surface)
-	    and dot(gradientFreeSpace, gradientCombined) > -0.5 // if opposite surface, don't carve
-
-	) or (not hasGradient and not hasFreeSpaceGradient))
-		)
+	if (freeSpaceWeight > 0
+	    and ((hasGradient and hasFreeSpaceGradient
+	          and dot(gradientFreeSpace, gradientCombined) <
+	              0.5 // if same surface, use normal combination instead of free space (prevent dents in surface)
+	          and dot(gradientFreeSpace, gradientCombined) > -0.5 // if opposite surface, don't carve
+	         ) or (not hasGradient and not hasFreeSpaceGradient)))
 	{
 		voxelBlock[linearIdx].sdf = ITMVoxel::floatToValue(freeSpaceSDF);
 		voxelBlock[linearIdx].w_depth = ITMVoxel::floatToWeight(freeSpaceWeight, maxW);
@@ -264,12 +273,12 @@ void ITMVisualisationEngine_CUDA::ComputeRenderingTSDF(const Scene* scene, const
 	Vector3s* visibleBlocksList = createDeviceArray<Vector3s>(N);
 	thrust::copy(visibleBlocks.device_range().begin(), visibleBlocks.device_range().end(), stdgpu::device_begin(visibleBlocksList));
 
-//	renderIndex->Reset(); // slow, probably sufficient to clean every once in a while
+	renderIndex->Reset(); // slow, probably sufficient to clean every once in a while
 	combineDirectionalTSDFViewPoint << < N, 512 >> > (renderVBA->GetVoxelBlocks(), renderIndex->GetEntries(),
 		renderVisibleEntryIDs->GetData(MEMORYDEVICE_CUDA), visibleBlocksList, N,
 		scene->localVBA.GetVoxelBlocks(), scene->index.GetEntries(), pose->GetInvM(), scene->sceneParams->voxelSize, scene->sceneParams->mu, scene->sceneParams->maxW);
 	ORcudaKernelCheck;
-	std::cout << timer.Tock() << std::endl;
+//	std::cout << timer.Tock() << std::endl;
 
 	renderNoVisibleEntries = N;
 
@@ -340,7 +349,25 @@ void ITMVisualisationEngine_CUDA::CreateExpectedDepths(const Scene* scene, const
                                                        ITMRenderState* renderState)
 {
 	if (CombineTSDFForRendering())
-		ComputeRenderingTSDF(scene, pose, intrinsics, renderState);
+	{
+		Vector3f v1 = pose->GetR() * Vector3f(1, 0, 0);
+		Vector3f v2 = lastTSDFCombinePose.GetR() * Vector3f(1, 0, 0);
+		float relativePoseAngle = acos(MAX(MIN(dot(v1, v2), 1), -1));
+		if (frameCounter < 10 // initialization phase, many changes in TSDF
+		    or frameCounter - lastTSDFCombineFrameCounter > 50 // update sometimes, even if camera static
+		    or ORUtils::length(lastTSDFCombinePose.GetT() - pose->GetT()) > 0.05 // update, if camera translates
+		    or relativePoseAngle > 0.05 * M_PI_2 // update, if camera rotates
+			)
+		{
+			printf("CombineTSDFForRendering() frames: %i\ttranslation: %f\tangle: %f\n",
+			       frameCounter - lastTSDFCombineFrameCounter,
+			       ORUtils::length(lastTSDFCombinePose.GetT() - pose->GetT()), relativePoseAngle);
+			ComputeRenderingTSDF(scene, pose, intrinsics, renderState);
+			lastTSDFCombinePose = *pose;
+			lastTSDFCombineFrameCounter = frameCounter;
+		}
+	}
+	frameCounter++;
 
 	float voxelSize = scene->sceneParams->voxelSize;
 

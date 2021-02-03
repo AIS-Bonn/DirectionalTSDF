@@ -535,9 +535,6 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 	// multiply by transition: negative transition <=> negative confidence!
 	pt_out = Vector4f(pt_result, confidence);
 
-	if (x == 320 and y == 240)
-		printf("[%f, %f, %f]\n", pt_out.x, pt_out.y, pt_out.z);
-
 	return true;
 }
 
