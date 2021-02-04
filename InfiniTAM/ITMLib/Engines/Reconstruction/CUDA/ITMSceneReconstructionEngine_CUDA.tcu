@@ -60,8 +60,8 @@ void rayCastCombine_device(
 
 __global__
 void rayCastUpdate_device(
-	Vector2i imgSize, float* depth, Vector4f* depthNormals,
-	const Matrix4f invM_d,
+	Vector2i imgSize_d, Vector2i imgSize_rgb, float* depth, Vector4f* depthNormals, Vector4u* rgb,
+	const Matrix4f invM_d, const Matrix4f invM_rgb,
 	const Vector4f invProjParams_d, const Vector4f invProjParams_rgb,
 	const ITMFusionParams fusionParams,
 	const ITMSceneParams sceneParams,
@@ -72,10 +72,10 @@ void rayCastUpdate_device(
 	int x = threadIdx.x + blockIdx.x * blockDim.x;
 	int y = threadIdx.y + blockIdx.y * blockDim.y;
 
-	if (x >= imgSize.x or y >= imgSize.y)
+	if (x >= imgSize_d.x or y >= imgSize_d.y)
 		return;
 
-	rayCastUpdate(x, y, imgSize, depth, depthNormals, invM_d,
+	rayCastUpdate(x, y, imgSize_d, imgSize_rgb, depth, depthNormals, rgb, invM_d, invM_rgb,
 	              invProjParams_d, invProjParams_rgb, fusionParams, sceneParams,
 	              hashTable, entriesRayCasting);
 }
@@ -403,7 +403,8 @@ ITMSceneReconstructionEngine_CUDA::IntegrateIntoSceneRayCasting(
 	dim3 gridSizeUpdate((int) ceil((float) depthImgSize.x / (float) blockSizeUpdate.x),
 	                    (int) ceil((float) depthImgSize.y / (float) blockSizeUpdate.y));
 	rayCastUpdate_device << < gridSizeUpdate, blockSizeUpdate >> > (
-		depthImgSize, depth, depthNormals, invM_d, invProjParams_d, projParams_rgb, this->settings->fusionParams, this->settings->sceneParams,
+		depthImgSize, view->rgb->noDims, depth, depthNormals, rgb, invM_d, trackingState->pose_d->GetM(),
+		invProjParams_d, projParams_rgb, this->settings->fusionParams, this->settings->sceneParams,
 			hashTable, entriesRayCasting, localVBA);
 	ORcudaKernelCheck;
 	this->timeStats.fusion += timer.Tock();

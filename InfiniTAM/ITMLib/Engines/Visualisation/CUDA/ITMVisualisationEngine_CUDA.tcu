@@ -120,6 +120,8 @@ combineDirectionalTSDFViewPoint(ITMVoxel* renderVoxelData, ITMHashEntry* renderH
 		if (not vmIndex)
 			continue;
 
+//		Vector3f color = TSDFDirectionColor[directionIdx];
+		Vector3f color = readFromSDF_color4u_interpolated(voxelData, hashTable, voxelPos, TSDFDirection(directionIdx), cache[directionIdx]).toVector3();
 		Vector3f gradient = computeSingleNormalFromSDF(voxelData, hashTable, voxelPos, TSDFDirection(directionIdx));
 
 		float weight =
@@ -160,7 +162,7 @@ combineDirectionalTSDFViewPoint(ITMVoxel* renderVoxelData, ITMHashEntry* renderH
 
 				freeSpaceSDF += weight * sdf;
 				freeSpaceWeight += weight;
-				colorFreeSpace += weight * TSDFDirectionColor[directionIdx];
+				colorFreeSpace += weight * color;
 				gradientFreeSpace += weight * gradient;
 			}
 		}
@@ -169,11 +171,11 @@ combineDirectionalTSDFViewPoint(ITMVoxel* renderVoxelData, ITMHashEntry* renderH
 		float weightNoGradient = MAX(0, DirectionAngle(-rayDirection, TSDFDirection(directionIdx)) * confidence);
 		weightCombinedNoGradient += weightNoGradient;
 		sdfCombinedNoGradient += weightNoGradient * sdf;
-		colorCombinedNoGradient += weightNoGradient * TSDFDirectionColor[directionIdx];
+		colorCombinedNoGradient += weightNoGradient * color;
 
 		sdfCombined += weight * sdf;
 		weightCombined += weight;
-		colorCombined += weight * TSDFDirectionColor[directionIdx];
+		colorCombined += weight * color;
 		gradientCombined += weight * gradient;
 	}
 

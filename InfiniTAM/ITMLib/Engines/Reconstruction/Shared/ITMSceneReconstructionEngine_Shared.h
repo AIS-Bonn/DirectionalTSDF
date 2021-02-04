@@ -522,13 +522,14 @@ inline void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vect
 }
 
 _CPU_AND_GPU_CODE_
-inline void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f* depthNormals,
-                   const Matrix4f& invM_d,
-                   const Vector4f& invProjParams_d, const Vector4f& invProjParams_rgb,
-                   const ITMFusionParams& fusionParams,
-                   const ITMSceneParams& sceneParams,
-                   const ITMHashEntry* hashTable,
-                   VoxelRayCastingSum* entriesRayCasting
+inline void rayCastUpdate(int x, int y, Vector2i imgSize_d, Vector2i imgSize_rgb,
+                          float* depth, Vector4f* depthNormals, const Vector4u* rgb,
+                          const Matrix4f& invM_d, const Matrix4f& M_rgb,
+                          const Vector4f& invProjParams_d, const Vector4f& projParams_rgb,
+                          const ITMFusionParams& fusionParams,
+                          const ITMSceneParams& sceneParams,
+                          const ITMHashEntry* hashTable,
+                          VoxelRayCastingSum* entriesRayCasting
 )
 {
 	const float mu = sceneParams.mu;
@@ -536,7 +537,7 @@ inline void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f
 	const float viewFrustum_max = sceneParams.viewFrustum_max;
 	const float voxelSize = sceneParams.voxelSize;
 
-	int idx = y * imgSize.x + x;
+	int idx = y * imgSize_d.x + x;
 
 	float depthValue = depth[idx];
 	Vector4f normal_camera = depthNormals[idx];
@@ -551,6 +552,13 @@ inline void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f
 	Vector4f pt_camera = Vector4f(reprojectImagePoint(x, y, depthValue, invProjParams_d), 1);
 	Vector3f pt_world = (invM_d * pt_camera).toVector3();
 	Vector3f normal_world = normalCameraToWorld(normal_camera, invM_d);
+
+	Vector3f pt_rgb_camera = M_rgb * pt_world;
+	Vector2f cameraCoordsRGB = project(pt_rgb_camera, projParams_rgb);
+	Vector4f color(0, 0, 0, 0);
+	if ((cameraCoordsRGB.x >= 1) and (cameraCoordsRGB.x <= imgSize_rgb.x - 2)
+	    and (cameraCoordsRGB.y >= 1) and (cameraCoordsRGB.y <= imgSize_rgb.y - 2))
+		color = interpolateBilinear(rgb, cameraCoordsRGB, imgSize_rgb);
 
 	Vector3f viewRay_camera = reprojectImagePoint(x, y, 1, invProjParams_d).normalised();
 
@@ -645,7 +653,8 @@ inline void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f
 				}
 
 				VoxelRayCastingSum& voxelRayCastingSum = entriesRayCasting[index];
-				voxelRayCastingSum.update(distance, weight);
+
+				voxelRayCastingSum.update(distance, weight, color.toVector3(), color.w > 0 ? weight : 0);
 			}
 		} else
 		{
@@ -667,7 +676,7 @@ inline void rayCastUpdate(int x, int y, Vector2i imgSize, float* depth, Vector4f
 			}
 
 			VoxelRayCastingSum& voxelRayCastingSum = entriesRayCasting[index];
-			voxelRayCastingSum.update(distance, weight);
+			voxelRayCastingSum.update(distance, weight, color.toVector3(), color.w > 0 ? weight : 0);
 		}
 	}
 }
@@ -693,8 +702,14 @@ inline void rayCastCombine(ITMVoxel& voxel, const VoxelRayCastingSum& rayCasting
 	float newSDF = (currentWeight * currentSDF + deltaWeight * deltaSDF) / newWeight;
 	newWeight = MIN(newWeight, sceneParams.maxW);
 
+	float currentColorWeight = ITMVoxel::weightToFloat(voxel.w_color, sceneParams.maxW);
+	float newColorWeight = currentColorWeight + rayCastingSum.colorWeightSum;
+	Vector3u newColor = ((currentColorWeight * voxel.clr.toFloat() + rayCastingSum.colorSum) / newColorWeight).toUChar();
+
 	voxel.sdf = ITMVoxel::floatToValue(newSDF);
 	voxel.w_depth = ITMVoxel::floatToWeight(newWeight, sceneParams.maxW);
+	voxel.clr = newColor;
+	voxel.w_color = ITMVoxel::floatToWeight(MIN(newColorWeight, sceneParams.maxW), sceneParams.maxW);
 }
 
 /**

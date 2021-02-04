@@ -63,8 +63,8 @@ void ITMSceneReconstructionEngine_CPU::IntegrateIntoSceneRayCasting(
 	ITMTimer timer;
 	timer.Tick();
 
-	Matrix4f invM_d;
-	trackingState->pose_d->GetM().inv(invM_d);
+	Matrix4f invM_d = trackingState->pose_d->GetInvM();
+
 	Vector4f projParams_d = view->calib.intrinsics_d.projectionParamsSimple.all;
 	Vector4f projParams_rgb = view->calib.intrinsics_rgb.projectionParamsSimple.all;
 
@@ -83,7 +83,7 @@ void ITMSceneReconstructionEngine_CPU::IntegrateIntoSceneRayCasting(
 	/// 1. Ray trace every pixel, sum up results
 	for (int y = 0; y < view->depth->noDims.y; y++) for (int x = 0; x < view->depth->noDims.x; x++)
 	{
-		rayCastUpdate(x, y, view->depth->noDims, depth, depthNormals, invM_d,
+		rayCastUpdate(x, y, view->depth->noDims, view->rgb->noDims, depth, depthNormals, rgb, invM_d, trackingState->pose_d->GetM(),
 		              invProjParams_d, projParams_rgb,
 		              this->settings->fusionParams, this->settings->sceneParams,
 		              hashTable, entriesRayCasting);
