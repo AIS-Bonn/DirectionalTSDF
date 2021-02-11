@@ -6,12 +6,16 @@
 
 namespace ITMLib
 {
+class SummingVoxelMap_CPU;
+
 class ITMSceneReconstructionEngine_CPU : public ITMSceneReconstructionEngine
 {
 protected:
 	ORUtils::MemoryBlock<HashEntryAllocType> *entriesAllocType;
 	ORUtils::MemoryBlock<Vector4s> *blockCoords;
 	ORUtils::MemoryBlock<TSDFDirection> *blockDirections;
+
+	SummingVoxelMap_CPU* summingVoxelMap;
 
 	void IntegrateIntoSceneVoxelProjection(Scene *scene,
 		const ITMView *view, const ITMTrackingState *trackingState,

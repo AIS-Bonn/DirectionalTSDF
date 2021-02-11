@@ -4,33 +4,37 @@
 
 #include "ITMMath.h"
 #include <stdgpu/functional.h>
+#include <ITMLib/Objects/Scene/ITMVoxelBlockHash.h>
 
 namespace stdgpu {
 
-template <>
-struct hash<Vector3s>
+template <typename T>
+struct hash<ORUtils::Vector3<T>>
 {
 	inline STDGPU_HOST_DEVICE
-	stdgpu::index_t operator()(const Vector3s& k) const
+	stdgpu::index_t operator()(const ORUtils::Vector3<T>& k) const
 	{
-		return ((stdgpu::hash<short>()(k.x)
-		         ^ (stdgpu::hash<short>()(k.y) << 1)) >> 1)
-		       ^ (stdgpu::hash<short>()(k.z) << 1);
+//		return ((stdgpu::hash<T>()(k.x) // significantly slower
+//		         ^ (stdgpu::hash<T>()(k.y) << 1)) >> 1)
+//		       ^ (stdgpu::hash<T>()(k.z) << 1);
+		return ITMLib::hash(11536487, k.x)
+		       + ITMLib::hash(14606887, k.y)
+		       + ITMLib::hash(28491781, k.z);
 	}
 };
 
-//template <>
-//template <typename T>
-//struct hash<Vector3<T>>
-//{
-//	inline STDGPU_HOST_DEVICE
-//	stdgpu::index_t operator()(const Vector3<T>& k) const
-//	{
-//		return ((stdgpu::hash<T>()(k.x)
-//		         ^ (stdgpu::hash<T>()(k.y) << 1)) >> 1)
-//		       ^ (stdgpu::hash<T>()(k.z) << 1);
-//	}
-//};
+template <typename T>
+struct hash<ORUtils::Vector4<T>>
+{
+	inline STDGPU_HOST_DEVICE
+	stdgpu::index_t operator()(const ORUtils::Vector4<T>& k) const
+	{
+		return ITMLib::hash(11536487, k.x)
+		       + ITMLib::hash(14606887, k.y)
+		       + ITMLib::hash(28491781, k.z)
+		       + ITMLib::hash(83492791, k.w);
+	}
+};
 
 }
 

@@ -6,6 +6,8 @@
 
 namespace ITMLib
 {
+class SummingVoxelMap_CUDA;
+
 class ITMSceneReconstructionEngine_CUDA : public ITMSceneReconstructionEngine
 {
 private:
@@ -14,6 +16,8 @@ private:
 	HashEntryAllocType *entriesAllocType_device;
 	Vector4s *blockCoords_device;
 	TSDFDirection *blockDirections_device;
+
+	SummingVoxelMap_CUDA* summingVoxelMap;
 
 public:
 	void ResetScene(Scene* scene) override;

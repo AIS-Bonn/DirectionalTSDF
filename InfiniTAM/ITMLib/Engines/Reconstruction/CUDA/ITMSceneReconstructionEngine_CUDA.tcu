@@ -7,10 +7,12 @@
 #include <ITMLib/Utils/ITMSceneParams.h>
 #include <ITMLib/Utils/ITMTimer.h>
 #include "ITMSceneReconstructionEngine_CUDA.h"
+#include "ITMSummingVoxelMap_CUDA.h"
 
 #include "../Shared/ITMSceneReconstructionEngine_Shared.h"
-#include "../../../Objects/RenderStates/ITMRenderState_VH.h"
-#include "../../../Utils/ITMCUDAUtils.h"
+#include "ITMLib/Objects/RenderStates/ITMRenderState_VH.h"
+#include "ITMLib/Utils/ITMCUDAUtils.h"
+#include <stdgpu/unordered_map.cuh>
 
 using namespace ITMLib;
 
@@ -23,7 +25,7 @@ __global__
 rayCastClearSum_device(
 	const ITMVoxelBlockHash::IndexData *hashTable,
 	const int *visibleEntryIds,
-	VoxelRayCastingSum *entriesRayCasting
+	SummingVoxel *entriesRayCasting
 )
 {
 	int x = threadIdx.x, y = threadIdx.y, z = threadIdx.z;
@@ -37,24 +39,29 @@ rayCastClearSum_device(
 	entriesRayCasting[hashEntry.ptr * SDF_BLOCK_SIZE3 + locId].reset();
 }
 
+
 __global__
 void rayCastCombine_device(
 	ITMVoxel *localVBA,
 	const ITMVoxelBlockHash::IndexData *hashTable,
 	const int *visibleEntryIds,
-	const VoxelRayCastingSum *entriesRayCasting,
+	const SummingVoxel *summingVoxels,
 	const ITMSceneParams sceneParams
 )
 {
 	int x = threadIdx.x, y = threadIdx.y, z = threadIdx.z;
 	int locId = VoxelIndicesToOffset(x, y, z);
-	int entryId = blockIdx.x;
+	size_t entryId = blockIdx.x;
 
 	const ITMHashEntry &hashEntry = hashTable[visibleEntryIds[entryId]];
 	if (not hashEntry.IsValid())
 		return;
+
 	ITMVoxel *localVoxelBlock = &(localVBA[hashEntry.ptr * SDF_BLOCK_SIZE3]);
-	const VoxelRayCastingSum *rayCastingSum = &(entriesRayCasting[hashEntry.ptr * SDF_BLOCK_SIZE3]);
+
+	// assumption: summingVoxels added in visibleEntryIds order (valid for ITMSummingVoxelMap_CUDA)
+	const SummingVoxel *rayCastingSum = &(summingVoxels[entryId * SDF_BLOCK_SIZE3]);
+
 	rayCastCombine(localVoxelBlock[locId], rayCastingSum[locId], sceneParams);
 }
 
@@ -65,9 +72,8 @@ void rayCastUpdate_device(
 	const Vector4f invProjParams_d, const Vector4f invProjParams_rgb,
 	const ITMFusionParams fusionParams,
 	const ITMSceneParams sceneParams,
-	const ITMHashEntry* hashTable,
-	VoxelRayCastingSum* entriesRayCasting,
-	ITMVoxel *localVBA)
+	stdgpu::unordered_map<BlockIndex, SummingVoxel*> summingVoxelMap
+	)
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x;
 	int y = threadIdx.y + blockIdx.y * blockDim.y;
@@ -76,8 +82,7 @@ void rayCastUpdate_device(
 		return;
 
 	rayCastUpdate(x, y, imgSize_d, imgSize_rgb, depth, depthNormals, rgb, invM_d, invM_rgb,
-	              invProjParams_d, invProjParams_rgb, fusionParams, sceneParams,
-	              hashTable, entriesRayCasting);
+	              invProjParams_d, invProjParams_rgb, fusionParams, sceneParams, summingVoxelMap);
 }
 
 __global__
@@ -88,7 +93,7 @@ void rayCastCarveSpace_device(
 	const ITMFusionParams fusionParams,
 	const ITMSceneParams sceneParams,
 	const ITMHashEntry* hashTable,
-	VoxelRayCastingSum* entriesRayCasting,
+	stdgpu::unordered_map<BlockIndex, SummingVoxel*> summingVoxelMap,
 	ITMVoxel *localVBA)
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x;
@@ -99,28 +104,31 @@ void rayCastCarveSpace_device(
 
 	rayCastCarveSpace(x, y, imgSize, depth, depthNormals, invM_d,
 	                  invProjParams_d, invProjParams_rgb, fusionParams, sceneParams,
-	                  hashTable, entriesRayCasting, localVBA);
+	                  hashTable, summingVoxelMap, localVBA);
 }
 
 template<bool stopMaxW>
 __global__ void voxelProjectionCarveSpace_device(
-	ITMVoxel *localVBA, VoxelRayCastingSum* entriesRayCasting, const ITMHashEntry *hashTable, int *visibleEntryIDs,
+	ITMVoxel *localVBA, SummingVoxel* summingVoxels,
+	const ITMHashEntry *hashTable, int *visibleEntryIDs,
 	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, const Vector4f *depthNormals,
 	const float *confidence, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d,
 	Vector4f projParams_rgb, const ITMFusionParams fusionParams,
 	const ITMSceneParams sceneParams)
 {
 	Vector3i globalPos;
-	int entryId = visibleEntryIDs[blockIdx.x];
+	int entryId = blockIdx.x;
 
-	const ITMHashEntry &currentHashEntry = hashTable[entryId];
+	const ITMHashEntry &currentHashEntry = hashTable[visibleEntryIDs[entryId]];
 
 	if (currentHashEntry.ptr < 0) return;
 
 	globalPos = currentHashEntry.pos.toInt() * SDF_BLOCK_SIZE;
 
 	ITMVoxel *localVoxelBlock = &(localVBA[currentHashEntry.ptr * SDF_BLOCK_SIZE3]);
-	VoxelRayCastingSum *localRayCastingSum = &(entriesRayCasting[currentHashEntry.ptr * SDF_BLOCK_SIZE3]);
+
+	// assumption: summingVoxels added in visibleEntryIds order (valid for ITMSummingVoxelMap_CUDA)
+	SummingVoxel *localRayCastingSum = &(summingVoxels[entryId * SDF_BLOCK_SIZE3]);
 
 	int x = threadIdx.x, y = threadIdx.y, z = threadIdx.z;
 
@@ -353,13 +361,9 @@ ITMSceneReconstructionEngine_CUDA::ITMSceneReconstructionEngine_CUDA(
 	ORcudaSafeCall(cudaMalloc((void**) &entriesAllocType_device, noTotalEntries * sizeof(HashEntryAllocType)));
 	ORcudaSafeCall(cudaMalloc((void**) &blockCoords_device, noTotalEntries * sizeof(Vector4s)));
 	ORcudaSafeCall(cudaMalloc((void**) &blockDirections_device, noTotalEntries * sizeof(TSDFDirection)));
-	if (settings->fusionParams.fusionMode != FusionMode::FUSIONMODE_VOXEL_PROJECTION)
-	{
-		this->entriesRayCasting = new ORUtils::MemoryBlock<VoxelRayCastingSum>(
-			ITMVoxelBlockHash::noLocalEntries * SDF_BLOCK_SIZE3, MEMORYDEVICE_CUDA);
-	}
-}
 
+	summingVoxelMap = new SummingVoxelMap_CUDA;
+}
 
 void
 ITMSceneReconstructionEngine_CUDA::IntegrateIntoSceneRayCasting(
@@ -382,21 +386,11 @@ ITMSceneReconstructionEngine_CUDA::IntegrateIntoSceneRayCasting(
 
 	Vector2i depthImgSize = view->depth->noDims;
 
-	VoxelRayCastingSum* entriesRayCasting = nullptr;
-	entriesRayCasting = this->entriesRayCasting->GetData(MEMORYDEVICE_CUDA);
-
 	Vector4f invProjParams_d = invertProjectionParams(projParams_d);
-
-	/// 1. Clear ray casting sum fields
 	auto* renderState_vh = (ITMRenderState_VH*) renderState;
-	dim3 blockSizeCombine(SDF_BLOCK_SIZE, SDF_BLOCK_SIZE, SDF_BLOCK_SIZE);
-	dim3 gridSizeCombine(renderState_vh->noVisibleEntries);
-	rayCastClearSum_device << < gridSizeCombine, blockSizeCombine >> > (
-		hashTable,
-			renderState_vh->GetVisibleEntryIDs(),
-			entriesRayCasting
-	);
-	ORcudaKernelCheck;
+
+	/// 1. Initialize summing voxel map (allocate and reset)
+	summingVoxelMap->Init(hashTable, renderState_vh->GetVisibleEntryIDs(), renderState_vh->noVisibleEntries);
 
 	/// 2. Ray cast update for every pixel
 	dim3 blockSizeUpdate(16, 16);
@@ -405,7 +399,7 @@ ITMSceneReconstructionEngine_CUDA::IntegrateIntoSceneRayCasting(
 	rayCastUpdate_device << < gridSizeUpdate, blockSizeUpdate >> > (
 		depthImgSize, view->rgb->noDims, depth, depthNormals, rgb, invM_d, trackingState->pose_d->GetM(),
 		invProjParams_d, projParams_rgb, this->settings->fusionParams, this->settings->sceneParams,
-			hashTable, entriesRayCasting, localVBA);
+		summingVoxelMap->getMap());
 	ORcudaKernelCheck;
 	this->timeStats.fusion += timer.Tock();
 
@@ -417,7 +411,7 @@ ITMSceneReconstructionEngine_CUDA::IntegrateIntoSceneRayCasting(
 		{
 			rayCastCarveSpace_device << < gridSizeUpdate, blockSizeUpdate >> > (
 				depthImgSize, depth, depthNormals, invM_d, invProjParams_d, projParams_rgb, this->settings->fusionParams, this->settings->sceneParams,
-					hashTable, entriesRayCasting, localVBA);
+					hashTable, summingVoxelMap->getMap(), localVBA);
 			ORcudaKernelCheck;
 		} else
 		{
@@ -429,7 +423,7 @@ ITMSceneReconstructionEngine_CUDA::IntegrateIntoSceneRayCasting(
 			dim3 blockSizeVoxelProjection(SDF_BLOCK_SIZE, SDF_BLOCK_SIZE, SDF_BLOCK_SIZE);
 			dim3 gridSizeVoxelProjection(renderState_vh->noVisibleEntries);
 			voxelProjectionCarveSpace_device<false> << < gridSizeVoxelProjection, blockSizeVoxelProjection >> > (
-				localVBA, entriesRayCasting, hashTable, visibleEntryIDs,
+				localVBA, summingVoxelMap->getVoxels(), hashTable, visibleEntryIDs,
 					rgb, rgbImgSize, depth, depthNormals,
 					confidence, depthImgSize, M_d, M_rgb, projParams_d,
 					projParams_rgb, this->settings->fusionParams,
@@ -439,13 +433,15 @@ ITMSceneReconstructionEngine_CUDA::IntegrateIntoSceneRayCasting(
 	}
 	this->timeStats.carving = timer.Tock();
 
-	/// 4. Collect per voxel summation values, update voxel
+	/// 4. Collect per summation voxels, update actual voxel
 	timer.Tick();
+	dim3 blockSizeCombine(SDF_BLOCK_SIZE, SDF_BLOCK_SIZE, SDF_BLOCK_SIZE);
+	dim3 gridSizeCombine(renderState_vh->noVisibleEntries);
 	rayCastCombine_device << < gridSizeCombine, blockSizeCombine >> > (
 		localVBA,
 			hashTable,
 			renderState_vh->GetVisibleEntryIDs(),
-			entriesRayCasting,
+			summingVoxelMap->getVoxels(),
 			this->settings->sceneParams
 	);
 	ORcudaKernelCheck;
@@ -460,10 +456,7 @@ ITMSceneReconstructionEngine_CUDA::~ITMSceneReconstructionEngine_CUDA(void)
 	ORcudaSafeCall(cudaFree(entriesAllocType_device));
 	ORcudaSafeCall(cudaFree(blockCoords_device));
 	ORcudaSafeCall(cudaFree(blockDirections_device));
-	if (this->settings->fusionParams.fusionMode != FusionMode::FUSIONMODE_VOXEL_PROJECTION)
-	{
-		delete this->entriesRayCasting;
-	}
+	delete summingVoxelMap;
 }
 
 void ITMSceneReconstructionEngine_CUDA::ResetScene(Scene* scene)

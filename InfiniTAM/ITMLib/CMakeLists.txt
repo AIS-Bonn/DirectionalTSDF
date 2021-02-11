@@ -162,6 +162,7 @@ Engines/Reconstruction/CPU/ITMSurfelSceneReconstructionEngine_CPU.tpp
 SET(ITMLIB_ENGINES_RECONSTRUCTION_CPU_HEADERS
 Engines/Reconstruction/CPU/ITMSceneReconstructionEngine_CPU.h
 Engines/Reconstruction/CPU/ITMSurfelSceneReconstructionEngine_CPU.h
+Engines/Reconstruction/CPU/ITMSummingVoxelMap_CPU.h
 )
 
 ##
@@ -173,6 +174,7 @@ Engines/Reconstruction/CUDA/ITMSurfelSceneReconstructionEngine_CUDA.tcu
 SET(ITMLIB_ENGINES_RECONSTRUCTION_CUDA_HEADERS
 Engines/Reconstruction/CUDA/ITMSceneReconstructionEngine_CUDA.h
 Engines/Reconstruction/CUDA/ITMSurfelSceneReconstructionEngine_CUDA.h
+Engines/Reconstruction/CUDA/ITMSummingVoxelMap_CUDA.h
 )
 
 ##
@@ -375,6 +377,8 @@ Objects/Scene/ITMRepresentationAccess.h
 Objects/Scene/ITMScene.h
 Objects/Scene/ITMSurfelScene.h
 Objects/Scene/ITMSurfelTypes.h
+Objects/Scene/ITMSummingVoxel.h
+  Engines/Reconstruction/Shared/ITMSummingVoxelMap.h
 Objects/Scene/ITMVoxelBlockHash.h
 Objects/Scene/ITMVoxelTypes.h
 )

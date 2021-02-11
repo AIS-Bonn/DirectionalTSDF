@@ -94,14 +94,26 @@ inline Vector3f cross(Vector3f a, Vector3f b)
 
 namespace std {
 
-template <>
-struct hash<Vector3i>
+template <typename T>
+struct hash<ORUtils::Vector3<T>>
 {
-	std::size_t operator()(const Vector3i& k) const
+	inline std::size_t operator()(const ORUtils::Vector3<T>& k) const
 	{
-		return ((std::hash<int>()(k.x)
-		         ^ (std::hash<int>()(k.y) << 1)) >> 1)
-		       ^ (std::hash<int>()(k.z) << 1);
+		return ((std::hash<T>()(k.x)
+		         ^ (std::hash<T>()(k.y) << 1)) >> 1)
+		       ^ (std::hash<T>()(k.z) << 1);
+	}
+};
+
+template <typename T>
+struct hash<ORUtils::Vector4<T>>
+{
+	inline std::size_t operator()(const ORUtils::Vector4<T>& k) const
+	{
+		return ((std::hash<T>()(k.x)
+		         ^ (std::hash<T>()(k.y) << 1)) >> 1)
+		       ^ (std::hash<T>()(k.z) << 1)
+		       ^ (std::hash<T>()(k.w) << 1);
 	}
 };
 

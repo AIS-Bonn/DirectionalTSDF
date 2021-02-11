@@ -1,6 +1,8 @@
 // Copyright 2014-2017 Oxford University Innovation Limited and the authors of InfiniTAM
 
+#include <unordered_map>
 #include "ITMSceneReconstructionEngine_CPU.h"
+#include "ITMSummingVoxelMap_CPU.h"
 
 #include "ITMLib/Objects/RenderStates/ITMRenderState_VH.h"
 #include "ITMLib/Engines/Reconstruction/Shared/ITMFusionWeight.hpp"
@@ -14,12 +16,7 @@ ITMSceneReconstructionEngine_CPU::ITMSceneReconstructionEngine_CPU(std::shared_p
 	entriesAllocType = new ORUtils::MemoryBlock<HashEntryAllocType>(noTotalEntries, MEMORYDEVICE_CPU);
 	blockCoords = new ORUtils::MemoryBlock<Vector4s>(noTotalEntries, MEMORYDEVICE_CPU);
 	blockDirections = new ORUtils::MemoryBlock<TSDFDirection>(noTotalEntries, MEMORYDEVICE_CPU);
-
-	if (settings->fusionParams.fusionMode != FusionMode::FUSIONMODE_VOXEL_PROJECTION)
-	{
-		this->entriesRayCasting = new ORUtils::MemoryBlock<VoxelRayCastingSum>(
-			ITMVoxelBlockHash::noLocalEntries * SDF_BLOCK_SIZE3, MEMORYDEVICE_CPU);
-	}
+	summingVoxelMap = new SummingVoxelMap_CPU;
 }
 
 ITMSceneReconstructionEngine_CPU::~ITMSceneReconstructionEngine_CPU(void)
@@ -27,10 +24,7 @@ ITMSceneReconstructionEngine_CPU::~ITMSceneReconstructionEngine_CPU(void)
 	delete entriesAllocType;
 	delete blockCoords;
 	delete blockDirections;
-	if (this->settings->fusionParams.fusionMode != FusionMode::FUSIONMODE_VOXEL_PROJECTION)
-	{
-		delete this->entriesRayCasting;
-	}
+	delete summingVoxelMap;
 }
 
 void ITMSceneReconstructionEngine_CPU::ResetScene(Scene *scene)
@@ -75,23 +69,23 @@ void ITMSceneReconstructionEngine_CPU::IntegrateIntoSceneRayCasting(
 	ITMVoxel *localVBA = scene->localVBA.GetVoxelBlocks();
 	ITMHashEntry *hashTable = scene->index.GetEntries();
 
-	VoxelRayCastingSum *entriesRayCasting = nullptr;
-	entriesRayCasting = this->entriesRayCasting->GetData(MEMORYDEVICE_CPU);
-
 	Vector4f invProjParams_d = invertProjectionParams(projParams_d);
+	const ITMRenderState_VH *renderState_vh = dynamic_cast<const ITMRenderState_VH*>(renderState);
 
-	/// 1. Ray trace every pixel, sum up results
+	/// 1. Initialize summing voxel map (allocate and reset)
+	summingVoxelMap->Init(hashTable, renderState_vh->GetVisibleEntryIDs(), renderState_vh->noVisibleEntries);
+
+	/// 2. Ray trace every pixel, sum up results
 	for (int y = 0; y < view->depth->noDims.y; y++) for (int x = 0; x < view->depth->noDims.x; x++)
 	{
 		rayCastUpdate(x, y, view->depth->noDims, view->rgb->noDims, depth, depthNormals, rgb, invM_d, trackingState->pose_d->GetM(),
 		              invProjParams_d, projParams_rgb,
 		              this->settings->fusionParams, this->settings->sceneParams,
-		              hashTable, entriesRayCasting);
+		              summingVoxelMap->getMap());
 	}
 	this->timeStats.fusion += timer.Tock();
 
-	/// 2. Ray trace space carve every pixel, sum up results
-	const ITMRenderState_VH *renderState_vh = dynamic_cast<const ITMRenderState_VH*>(renderState);
+	/// 3. Ray trace space carve every pixel, sum up results
 	int noVisibleEntries = renderState_vh->noVisibleEntries;
 	const int *visibleEntryIds = renderState_vh->GetVisibleEntryIDs();
 	if (this->settings->fusionParams.useSpaceCarving)
@@ -104,7 +98,7 @@ void ITMSceneReconstructionEngine_CPU::IntegrateIntoSceneRayCasting(
 				rayCastCarveSpace(x, y, view->depth->noDims, depth, depthNormals, invM_d,
 				                  invProjParams_d, projParams_rgb,
 				                  this->settings->fusionParams, this->settings->sceneParams,
-				                  hashTable, entriesRayCasting, localVBA);
+				                  hashTable, summingVoxelMap->getMap(), localVBA);
 			}
 		} else
 		{
@@ -124,7 +118,7 @@ void ITMSceneReconstructionEngine_CPU::IntegrateIntoSceneRayCasting(
 				Vector3i globalPos = blockToVoxelPos(Vector3i(currentHashEntry.pos.x, currentHashEntry.pos.y, currentHashEntry.pos.z));
 
 				ITMVoxel *localVoxelBlock = &(localVBA[currentHashEntry.ptr * (SDF_BLOCK_SIZE3)]);
-				VoxelRayCastingSum *localRayCastingSum = &(entriesRayCasting[currentHashEntry.ptr * (SDF_BLOCK_SIZE3)]);
+				SummingVoxel *localRayCastingSum = &(summingVoxelMap->getVoxels()[currentHashEntry.ptr * (SDF_BLOCK_SIZE3)]);
 
 				for (int z = 0; z < SDF_BLOCK_SIZE; z++) for (int y = 0; y < SDF_BLOCK_SIZE; y++) for (int x = 0; x < SDF_BLOCK_SIZE; x++)
 						{
@@ -151,7 +145,7 @@ void ITMSceneReconstructionEngine_CPU::IntegrateIntoSceneRayCasting(
 		this->timeStats.carving += timer.Tock();
 	}
 
-	/// 3. Collect per-voxel summation values, fuse into voxels
+	/// 4. Collect per-voxel summation values, fuse into voxels
 	timer.Tick();
 	for (int entryId = 0; entryId < noVisibleEntries; entryId++)
 	{
@@ -159,7 +153,7 @@ void ITMSceneReconstructionEngine_CPU::IntegrateIntoSceneRayCasting(
 		if (currentHashEntry.ptr < 0) continue;
 
 		ITMVoxel *localVoxelBlock = &(localVBA[currentHashEntry.ptr * SDF_BLOCK_SIZE3]);
-		const VoxelRayCastingSum *rayCastingSum = &(entriesRayCasting[currentHashEntry.ptr * SDF_BLOCK_SIZE3]);
+		const SummingVoxel *rayCastingSum = &(summingVoxelMap->getVoxels()[currentHashEntry.ptr * SDF_BLOCK_SIZE3]);
 
 		for (int locId = 0; locId < SDF_BLOCK_SIZE3; locId++)
 		{
@@ -389,12 +383,9 @@ void ITMSceneReconstructionEngine_CPU::AllocateSceneFromDepth(Scene *scene, cons
 	int *visibleEntryIDs = renderState_vh->GetVisibleEntryIDs();
 	HashEntryVisibilityType *entriesVisibleType = renderState_vh->GetEntriesVisibleType();
 	HashEntryAllocType *entriesAllocType = this->entriesAllocType->GetData(MEMORYDEVICE_CPU);
-	VoxelRayCastingSum *entriesRayCasting;
 	Vector4s *blockCoords = this->blockCoords->GetData(MEMORYDEVICE_CPU);
 	TSDFDirection *blockDirections = this->blockDirections->GetData(MEMORYDEVICE_CPU);
 	int noTotalEntries = scene->index.noTotalEntries;
-	if (this->settings->fusionParams.fusionMode != FusionMode::FUSIONMODE_VOXEL_PROJECTION)
-		entriesRayCasting = this->entriesRayCasting->GetData(MEMORYDEVICE_CPU);
 
 	bool useSwapping = scene->globalCache != NULL;
 
@@ -415,8 +406,6 @@ void ITMSceneReconstructionEngine_CPU::AllocateSceneFromDepth(Scene *scene, cons
 	for (int i = 0; i < renderState_vh->noVisibleEntries; i++)
 	{
 		entriesVisibleType[visibleEntryIDs[i]] = PREVIOUSLY_VISIBLE;
-		if (this->settings->fusionParams.fusionMode != FusionMode::FUSIONMODE_VOXEL_PROJECTION)
-			entriesRayCasting[visibleEntryIDs[i]].reset();
 	}
 
 	/// Compute visible and to-be-allocated blocks

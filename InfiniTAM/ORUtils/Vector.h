@@ -217,6 +217,10 @@ namespace ORUtils {
 			return Vector3<int>((int)(this->x), (int)(this->y), (int)(this->z));
 		}
 
+		_CPU_AND_GPU_CODE_ inline Vector3<short> toShort() const {
+			return Vector3<short>((short)(this->x), (short)(this->y), (short)(this->z));
+		}
+
 		_CPU_AND_GPU_CODE_ inline Vector3<int> toInt(Vector3<float> &residual) const {
 			Vector3<int> intRound = toInt();
 			residual = Vector3<float>(this->x - intRound.x, this->y - intRound.y, this->z - intRound.z);
