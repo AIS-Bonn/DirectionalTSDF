@@ -56,6 +56,12 @@ namespace ITMLib
 
 		ITMTrackingState* GetTrackingState() override;
 
+		ITMRenderState* GetRenderState() override
+		{ return renderState_multiscene; }
+
+		ITMRenderState* GetRenderStateFreeview() override
+		{ return renderState_freeview; }
+
 		const unsigned int* GetAllocationsPerDirection() override;
 
 		/// Process a frame with rgb and depth images and (optionally) a corresponding imu measurement

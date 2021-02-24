@@ -556,8 +556,17 @@ void UIEngine::printPixelInformation(int x, int y)
 	if (idx_image.x < 0 or idx_image.x >= imgSize.width or idx_image.y < 0 or idx_image.y >= imgSize.height)
 		return;
 
-	mainEngine->GetTrackingState()->pointCloud->locations->UpdateHostFromDevice();
-	Vector4f point = mainEngine->GetTrackingState()->pointCloud->locations->GetData(MEMORYDEVICE_CPU)[mainEngine->GetImageSize().width * idx_image.y + idx_image.x];
+	Vector4f point(0, 0, 0, 0);
+	if (freeviewActive)
+	{
+		mainEngine->GetRenderStateFreeview()->raycastResult->UpdateHostFromDevice();
+		point = mainEngine->GetRenderStateFreeview()->raycastResult->GetData(MEMORYDEVICE_CPU)[mainEngine->GetImageSize().width * idx_image.y + idx_image.x];
+	}
+	else
+	{
+		mainEngine->GetRenderState()->raycastResult->UpdateHostFromDevice();
+		point = mainEngine->GetRenderState()->raycastResult->GetData(MEMORYDEVICE_CPU)[mainEngine->GetImageSize().width * idx_image.y + idx_image.x];
+	}
 
 	if (point.w <= 0)
 	{
@@ -566,11 +575,16 @@ void UIEngine::printPixelInformation(int x, int y)
 	}
 
 	const float voxelSize = this->appData->internalSettings->sceneParams.voxelSize;
+	point *= voxelSize;
 	Vector3i voxelIdx = (1 / voxelSize * point.toVector3()).toInt();
+	Vector3i blockIdx;
+	unsigned short offset;
+	voxelToBlockPosAndOffset(voxelIdx, blockIdx, offset);
 
-	printf("img(xy)[%i, %i]\tpoint(xyz)(%f, %f, %f)\tvoxel(xyz)(%i, %i, %i)\n",
+	printf("img(xy)[%i, %i]\tpoint(xyz)(%f, %f, %f)\tvoxel(xyz)(%i, %i, %i)	block(xyz)(%i, %i, %i)\n",
 		idx_image.x, idx_image.y, point.x, point.y, point.z,
-		voxelIdx.x, voxelIdx.y, voxelIdx.z);
+		voxelIdx.x, voxelIdx.y, voxelIdx.z, blockIdx.x, blockIdx.y, blockIdx.z
+		);
 }
 
 void UIEngine::glutMouseButtonFunction(int button, int state, int x, int y)

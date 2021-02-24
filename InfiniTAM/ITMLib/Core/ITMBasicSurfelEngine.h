@@ -52,6 +52,13 @@ namespace ITMLib
 		ITMView* GetView() override { return view; }
 		ITMTrackingState* GetTrackingState() override { return trackingState; }
 
+		ITMRenderState* GetRenderState() override
+		{ return nullptr; }
+
+		ITMRenderState* GetRenderStateFreeview() override
+		{ return nullptr; }
+
+
 		const unsigned int* GetAllocationsPerDirection() override;
 
 		ITMTrackingState::TrackingResult ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement = nullptr, const ORUtils::SE3Pose* pose = nullptr) override;

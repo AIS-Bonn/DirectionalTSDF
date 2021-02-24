@@ -52,6 +52,12 @@ namespace ITMLib
 		ITMView* GetView() override { return view; }
 		ITMTrackingState* GetTrackingState() override { return trackingState; }
 
+		ITMRenderState* GetRenderState() override
+		{ return renderState_live; }
+
+		ITMRenderState* GetRenderStateFreeview() override
+		{ return renderState_freeview; }
+
 		virtual const unsigned int* GetAllocationsPerDirection() override
 		{ return scene->localVBA.noAllocationsPerDirection; }
 

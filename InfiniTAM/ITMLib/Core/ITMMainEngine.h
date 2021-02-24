@@ -73,6 +73,10 @@ namespace ITMLib
 		/// Gives access to the current camera pose and additional tracking information
 		virtual ITMTrackingState* GetTrackingState(void) = 0;
 
+		virtual ITMRenderState* GetRenderState(void) = 0;
+
+		virtual ITMRenderState* GetRenderStateFreeview(void) = 0;
+
 		/// Process a frame with rgb and depth images and optionally a corresponding imu measurement
     virtual ITMTrackingState::TrackingResult ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement = nullptr, const ORUtils::SE3Pose* pose = nullptr) = 0;
 
