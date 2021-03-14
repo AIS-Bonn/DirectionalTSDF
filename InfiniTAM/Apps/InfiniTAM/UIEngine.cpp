@@ -13,6 +13,7 @@
 #include <GL/freeglut.h>
 #include <ITMLib/Engines/ViewBuilding/ITMViewBuilderFactory.h>
 #include <ITMLib/Utils/ITMProjectionUtils.h>
+#include <ITMLib/Engines/Reconstruction/Shared/ITMFusionWeight.hpp>
 
 #else
 #if (!defined USING_CMAKE) && (defined _MSC_VER)
@@ -366,24 +367,26 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 		else
 		{
 			printf("started recoding disk ...\n");
-			uiEngine->currentFrameNo = 0;
 			uiEngine->isRecording = true;
 		}
 		break;
 	case 'v':
-		if ((uiEngine->rgbVideoWriter != nullptr) || (uiEngine->depthVideoWriter != nullptr))
+		if ((uiEngine->rgbVideoWriter != nullptr) || (uiEngine->depthVideoWriter != nullptr) || (uiEngine->outputVideoWriter != nullptr))
 		{
 			printf("stop recoding video\n");
 			delete uiEngine->rgbVideoWriter;
 			delete uiEngine->depthVideoWriter;
+			delete uiEngine->outputVideoWriter;
 			uiEngine->rgbVideoWriter = nullptr;
 			uiEngine->depthVideoWriter = nullptr;
+			uiEngine->outputVideoWriter = nullptr;
 		}
 		else
 		{
 			printf("start recoding video\n");
 			uiEngine->rgbVideoWriter = new FFMPEGWriter();
 			uiEngine->depthVideoWriter = new FFMPEGWriter();
+			uiEngine->outputVideoWriter = new FFMPEGWriter();
 		}
 		break;
 	case 27: // esc key
@@ -559,13 +562,25 @@ void UIEngine::printPixelInformation(int x, int y)
 	Vector4f point(0, 0, 0, 0);
 	if (freeviewActive)
 	{
-		mainEngine->GetRenderStateFreeview()->raycastResult->UpdateHostFromDevice();
-		point = mainEngine->GetRenderStateFreeview()->raycastResult->GetData(MEMORYDEVICE_CPU)[mainEngine->GetImageSize().width * idx_image.y + idx_image.x];
+		if (appData->internalSettings->deviceType == ITMLibSettings::DEVICE_CUDA)
+		{
+			ORUtils::Image<Vector4f> image(mainEngine->GetRenderStateFreeview()->raycastResult->noDims, MEMORYDEVICE_CPU);
+			image.SetFrom(mainEngine->GetRenderStateFreeview()->raycastResult, image.CUDA_TO_CPU);
+			point = image.GetData(MEMORYDEVICE_CPU)[mainEngine->GetImageSize().width * idx_image.y + idx_image.x];
+		}
+		else
+			point = mainEngine->GetRenderStateFreeview()->raycastResult->GetData(MEMORYDEVICE_CPU)[mainEngine->GetImageSize().width * idx_image.y + idx_image.x];
 	}
 	else
 	{
-		mainEngine->GetRenderState()->raycastResult->UpdateHostFromDevice();
-		point = mainEngine->GetRenderState()->raycastResult->GetData(MEMORYDEVICE_CPU)[mainEngine->GetImageSize().width * idx_image.y + idx_image.x];
+		if (appData->internalSettings->deviceType == ITMLibSettings::DEVICE_CUDA)
+		{
+			ORUtils::Image<Vector4f> image(mainEngine->GetRenderState()->raycastResult->noDims, MEMORYDEVICE_CPU);
+			image.SetFrom(mainEngine->GetRenderState()->raycastResult, image.CUDA_TO_CPU);
+			point = image.GetData(MEMORYDEVICE_CPU)[mainEngine->GetImageSize().width * idx_image.y + idx_image.x];
+		}
+		else
+			point = mainEngine->GetRenderState()->raycastResult->GetData(MEMORYDEVICE_CPU)[mainEngine->GetImageSize().width * idx_image.y + idx_image.x];
 	}
 
 	if (point.w <= 0)
@@ -777,6 +792,7 @@ void UIEngine::_initialise(int argc, char** argv, AppData* appData, ITMMainEngin
 	this->isRecording = false;
 	this->rgbVideoWriter = nullptr;
 	this->depthVideoWriter = nullptr;
+	this->outputVideoWriter = nullptr;
 
 	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
@@ -874,25 +890,17 @@ void SaveNormalDirectionImage(const ITMView *view, const std::string& path, cons
 		float weights[N_DIRECTIONS];
 		ComputeDirectionAngle(-normal_world.toVector3(), weights);
 
-		const Vector3f directionColors[6] = {
-			Vector3f(1, 0, 0),
-			Vector3f(0, 1, 0),
-			Vector3f(1, 1, 0),
-			Vector3f(0, 0, 1),
-			Vector3f(1, 0, 1),
-			Vector3f(0, 1, 1)
-		};
-
 		float sumWeights = 0;
 		Vector3f colorCombined(0, 0, 0);
 		for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
 		{
-			if (weights[direction] < direction_angle_threshold) continue;
+			float weight = DirectionWeight(weights[direction]);
 
-			colorCombined += weights[direction] * directionColors[direction];
-			sumWeights += weights[direction];
+			colorCombined += weight * TSDFDirectionColor[direction];
+			sumWeights += weight;
 		}
-		colorCombined /= sumWeights;
+		if (sumWeights > 0)
+			colorCombined /= sumWeights;
 		data_to[i].x = static_cast<uchar>(abs(colorCombined.x) * 255);
 		data_to[i].y = static_cast<uchar>(abs(colorCombined.y) * 255);
 		data_to[i].z = static_cast<uchar>(abs(colorCombined.z) * 255);
@@ -992,13 +1000,28 @@ bool UIEngine::_processFrame()
 //		mainEngine->GetView()
 //		SaveErrorImage()
 	}
+
+	// Write input RGB to video
 	if ((rgbVideoWriter != nullptr) && (inputRGBImage->noDims.x != 0)) {
-		if (!rgbVideoWriter->isOpen()) rgbVideoWriter->open("out_rgb.avi", inputRGBImage->noDims.x, inputRGBImage->noDims.y, false, 30);
+		char str[250];
+		sprintf(str, "%s/recording/in_rgb.avi", outFolder);
+		if (!rgbVideoWriter->isOpen()) rgbVideoWriter->open(str, inputRGBImage->noDims.x, inputRGBImage->noDims.y, false, 30);
 		rgbVideoWriter->writeFrame(inputRGBImage);
 	}
+	// Write input depth to video
 	if ((depthVideoWriter != nullptr) && (inputRawDepthImage->noDims.x != 0)) {
-		if (!depthVideoWriter->isOpen()) depthVideoWriter->open("out_d.avi", inputRawDepthImage->noDims.x, inputRawDepthImage->noDims.y, true, 30);
+		char str[250];
+		sprintf(str, "%s/recording/in_d.avi", outFolder);
+		if (!depthVideoWriter->isOpen()) depthVideoWriter->open(str, inputRawDepthImage->noDims.x, inputRawDepthImage->noDims.y, true, 30);
 		depthVideoWriter->writeFrame(inputRawDepthImage);
+	}
+
+	// Write output rendering to video
+	if ((outputVideoWriter != nullptr) && (inputRawDepthImage->noDims.x != 0)) {
+		char str[250];
+		sprintf(str, "%s/recording/out.avi", outFolder);
+		if (!outputVideoWriter->isOpen()) outputVideoWriter->open(str, inputRawDepthImage->noDims.x, inputRawDepthImage->noDims.y, false, 30);
+		outputVideoWriter->writeFrame(outImage[0]);
 	}
 
 #ifndef COMPILE_WITHOUT_CUDA
@@ -1019,6 +1042,7 @@ void UIEngine::Shutdown()
 
 	if (rgbVideoWriter != nullptr) delete rgbVideoWriter;
 	if (depthVideoWriter != nullptr) delete depthVideoWriter;
+	if (outputVideoWriter != nullptr) delete outputVideoWriter;
 
 	for (int w = 0; w < NUM_WIN; w++)
 		delete outImage[w];

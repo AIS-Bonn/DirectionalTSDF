@@ -63,6 +63,7 @@ namespace InfiniTAM
 			bool isRecording;
 			InputSource::FFMPEGWriter *rgbVideoWriter;
 			InputSource::FFMPEGWriter *depthVideoWriter;
+			InputSource::FFMPEGWriter *outputVideoWriter;
 
 			void _initialise(int argc, char** argv, AppData* appData, ITMLib::ITMMainEngine *mainEngine) override;
 			bool _processFrame() override;
