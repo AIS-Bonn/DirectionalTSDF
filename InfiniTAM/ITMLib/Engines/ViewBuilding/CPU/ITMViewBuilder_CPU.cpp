@@ -58,23 +58,18 @@ void ITMViewBuilder_CPU::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage
 	}
 	timeStats.copyImages = timer.Tock();
 
+	timer.Tick();
+	this->DepthFiltering(this->floatImage, view->depth);
+	timeStats.bilateralFilter = timer.Tock();
 	if (useBilateralFilter)
 	{
-		timer.Tick();
-		//5 steps of bilateral filtering
-		this->DepthFiltering(this->floatImage, view->depth);
-		this->DepthFiltering(view->depth, this->floatImage);
-		this->DepthFiltering(this->floatImage, view->depth);
-		this->DepthFiltering(view->depth, this->floatImage);
-		this->DepthFiltering(this->floatImage, view->depth);
 		view->depth->SetFrom(this->floatImage, MemoryBlock<float>::CPU_TO_CPU);
-		timeStats.bilateralFilter = timer.Tock();
 	}
 
 	if (modelSensorNoise)
 	{
 		timer.Tick();
-		this->ComputeNormalAndWeights(this->normals, view->depthUncertainty, view->depth, view->calib.intrinsics_d.projectionParamsSimple.all);
+		this->ComputeNormalAndWeights(this->normals, view->depthUncertainty, this->floatImage, view->calib.intrinsics_d.projectionParamsSimple.all);
 		this->NormalFiltering(view->depthNormal, this->normals);
 		timeStats.normalEstimation = timer.Tock();
 	}
@@ -138,7 +133,7 @@ void ITMViewBuilder_CPU::DepthFiltering(ITMFloatImage *image_out, const ITMFloat
 	const float *imin = image_in->GetData(MEMORYDEVICE_CPU);
 
 	for (int y = 2; y < imgSize.y - 2; y++) for (int x = 2; x < imgSize.x - 2; x++)
-		filterDepth(imout, imin, x, y, imgSize);
+		filterDepth(imout, imin, 5.0, 0.025, x, y, imgSize);
 }
 
 void ITMViewBuilder_CPU::ComputeNormalAndWeights(ITMFloat4Image *normal_out, ITMFloatImage *sigmaZ_out, const ITMFloatImage *depth_in, Vector4f intrinsic)

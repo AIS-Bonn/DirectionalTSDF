@@ -68,4 +68,9 @@ _CPU_AND_GPU_CODE_ inline Vector3f voxelIdxToWorldPos(const Vector3i &voxelIdx, 
 	return voxelIdx.toFloat() * voxelSize;
 }
 
+_CPU_AND_GPU_CODE_ inline Vector3i worldPosToVoxelIdx(const Vector3f &worldPos, const float voxelSize)
+{
+	return ((worldPos + voxelSize * Vector3f(0.5, 0.5, 0.5)) / voxelSize).toInt();
+}
+
 } // namespace ITMLib

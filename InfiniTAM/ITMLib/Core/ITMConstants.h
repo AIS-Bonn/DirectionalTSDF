@@ -12,14 +12,14 @@
 //#define SDF_EXCESS_LIST_SIZE 0x20000  // 0x20000 Size of excess list, used to handle collisions. Also max offset (unsigned short) value.
 
 ////// for loop closure
-#define SDF_LOCAL_BLOCK_NUM 0x10000		// Number of locally stored blocks, currently 2^16
-#define SDF_BUCKET_NUM 0x40000        // Number of Hash Bucket, should be 2^n and bigger than SDF_LOCAL_BLOCK_NUM
-#define SDF_EXCESS_LIST_SIZE 0x8000   // 0x8000 Size of excess list, used to handle collisions. Also max offset (unsigned short) value.
+//#define SDF_LOCAL_BLOCK_NUM 0x10000		// Number of locally stored blocks, currently 2^16
+//#define SDF_BUCKET_NUM 0x40000        // Number of Hash Bucket, should be 2^n and bigger than SDF_LOCAL_BLOCK_NUM
+//#define SDF_EXCESS_LIST_SIZE 0x8000   // 0x8000 Size of excess list, used to handle collisions. Also max offset (unsigned short) value.
 
 //// for directional loop closure
-//#define SDF_LOCAL_BLOCK_NUM 0x20000		// Number of locally stored blocks, currently 2^17
-//#define SDF_BUCKET_NUM 0x80000        // Number of Hash Bucket, should be 2^n and bigger than SDF_LOCAL_BLOCK_NUM
-//#define SDF_EXCESS_LIST_SIZE 0x10000	// 0x8000 Size of excess list, used to handle collisions. Also max offset (unsigned short) value.
+#define SDF_LOCAL_BLOCK_NUM 0x20000		// Number of locally stored blocks, currently 2^17
+#define SDF_BUCKET_NUM 0x80000        // Number of Hash Bucket, should be 2^n and bigger than SDF_LOCAL_BLOCK_NUM
+#define SDF_EXCESS_LIST_SIZE 0x10000	// 0x8000 Size of excess list, used to handle collisions. Also max offset (unsigned short) value.
 
 #define SDF_HASH_MASK (SDF_BUCKET_NUM - 1)  // Used for get hashing value of the bucket index
 #define SDF_TRANSFER_BLOCK_NUM 0x1000       // Maximum number of blocks transfered in one swap operation
@@ -29,3 +29,8 @@
 // 1 for view dir TSDF combination, then default raytracing (slower)
 // 2 for combination between 6 independent renderings and
 #define DIRECTIONAL_RENDERING_MODE 1
+
+// Set to
+// 0 render using fused colors
+// 1 render colors according to direction weight (debug)
+#define RENDER_DIRECTION_COLORS 1

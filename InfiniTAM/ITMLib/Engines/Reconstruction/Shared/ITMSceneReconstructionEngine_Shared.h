@@ -111,17 +111,24 @@ computeUpdatedVoxelDepthInfo(ITMVoxel& voxel, const TSDFDirection direction,
 			{
 				float directionAngle = DirectionAngle(normal_world, direction);
 				float directionWeight = DirectionWeight(directionAngle);
-				newW = depthWeight(depth_measure, normal_camera.toVector3(), viewRay_camera, directionWeight, sceneParams);
+				newW = combinedWeight(depth_measure, distance, normal_camera.toVector3(), viewRay_camera, sceneParams) * directionWeight;
+//				newW *= (ORUtils::dot(normal_camera.toVector3(), -viewRay_camera) > 0.3); // don't fuse too steep angles in directional, as unreliable
 //				if (distance > 0 and directionAngle > direction_angle_threshold and directionAngle < M_PI_2)
 //					newW = 0.01f * weightNormal(normal_camera.toVector3(), viewRay_camera);
 			} else
 			{
-				newW = depthWeight(depth_measure, normal_camera.toVector3(), viewRay_camera, 1, sceneParams);
+				newW = combinedWeight(depth_measure, distance, normal_camera.toVector3(), viewRay_camera, sceneParams);
 			}
 		}
 	}
 	if (newW <= 0)
 		return -1;
+
+//	{
+//		Vector3i voxelIdx = worldPosToVoxelIdx(voxel_world.toVector3(), sceneParams.voxelSize);
+//		if (voxelIdx.x == -4 and voxelIdx.y == -2 and voxelIdx.z == 12)
+//			printf("################%i (%f, %f)\n", direction, newF, newW);
+//	}
 
 	newF = oldW * oldF + newW * newF;
 	newW = oldW + newW;
@@ -138,42 +145,151 @@ computeUpdatedVoxelDepthInfo(ITMVoxel& voxel, const TSDFDirection direction,
 template<typename TVoxel>
 _CPU_AND_GPU_CODE_ inline void
 computeUpdatedVoxelColorInfo(TVoxel& voxel, const TSDFDirection direction,
-                             const Vector4f& pt_world,
-                             const Matrix4f& M_rgb,
-                             const Vector4f& projParams_rgb,
-                             const ITMSceneParams& sceneParams, float eta,
-                             const Vector4u* rgb, const Vector2i& imgSize)
+                             const Vector4f& voxel_world,
+                             const Matrix4f& M_d, const Vector4f& projParams_d,
+                             const Matrix4f& M_rgb, const Vector4f& projParams_rgb,
+                             const ITMFusionParams& fusionParams,
+                             const ITMSceneParams& sceneParams,
+                             const float* depth, const Vector4f* depthNormals, const Vector4u* rgb, const Vector2i& imgSize_d, const Vector2i& imgSize_rgb)
 {
-	Vector4f pt_camera;
-	Vector2f pt_image;
-	Vector3f rgb_measure, oldC, newC;
-	Vector3u buffV3u;
-	float newW, oldW;
+	// project point into image
+	Vector4f voxel_rgb = M_rgb * voxel_world;
+	Vector4f voxel_d = M_d * voxel_world;
+	if (voxel_rgb.z <= 0 or voxel_d.z <= 0) return;
 
-	buffV3u = voxel.clr;
-	oldW = ITMVoxel::weightToFloat(voxel.w_color, sceneParams.maxW);
+	Vector2f voxel_image_d = project(voxel_d.toVector3(), projParams_d);
+	if ((voxel_image_d.x < 1) || (voxel_image_d.x > imgSize_d.width - 2) || (voxel_image_d.y < 1) || (voxel_image_d.y > imgSize_d.height - 2))
+		return;
 
-	oldC = TO_FLOAT3(buffV3u) / 255.0f;
-	newC = oldC;
+	// get depth and normal
+	Vector2i imgCoords_d((int) (voxel_image_d.x + 0.5f), (int) (voxel_image_d.y + 0.5f));
+	int idx_d = imgCoords_d.x + imgCoords_d.y * imgSize_d.width;
+	float depth_measure = depth[idx_d];
+	Vector4f normal_camera = depthNormals[idx_d];
+	if (depth_measure <= 0.0f or normal_camera.w != 1) return;
 
-	pt_camera = M_rgb * pt_world;
+	// get color
+	float colorWeight_new = 1;
+	Vector3f color_new;
+	Vector2f voxel_image_rgb = project(voxel_rgb.toVector3(), projParams_rgb);
+	if ((voxel_image_rgb.x < 1) || (voxel_image_rgb.x > imgSize_rgb.width - 2) || (voxel_image_rgb.y < 1) || (voxel_image_rgb.y > imgSize_rgb.height - 2))
+	{
+		colorWeight_new = 0;
+	}
+	else
+	{
+		color_new = rgb[(int)(voxel_image_rgb.x + 0.5f) + (int)(voxel_image_rgb.y + 0.5f) * imgSize_rgb.width].toVector3().toFloat() / 255.0f;
+//		color_new = TO_VECTOR3(interpolateBilinear(rgb, voxel_image_rgb, imgSize_rgb)) / 255.0f;
+	}
 
-	pt_image.x = projParams_rgb.x * pt_camera.x / pt_camera.z + projParams_rgb.z;
-	pt_image.y = projParams_rgb.y * pt_camera.y / pt_camera.z + projParams_rgb.w;
+	Matrix4f invM_d;
+	M_d.inv(invM_d);
+	Vector3f pt_camera = reprojectImagePoint((int) (voxel_image_d.x + 0.5f), (int) (voxel_image_d.y + 0.5f),
+	                                         depth_measure, invertProjectionParams(projParams_d));
+	Vector3f pt_world = (invM_d * Vector4f(pt_camera, 1)).toVector3();
+	Vector3f normal_world = normalCameraToWorld(normal_camera, invM_d);
+	Vector3f pixelRay_world = (invM_d * Vector4f(voxel_d.toVector3(), 0)).toVector3().normalised();
 
-	if ((pt_image.x < 1) || (pt_image.x > imgSize.x - 2) || (pt_image.y < 1) || (pt_image.y > imgSize.y - 2)) return;
+	float distance;
+	if (fusionParams.fusionMetric == FusionMetric::FUSIONMETRIC_POINT_TO_PLANE)
+	{
+		distance = ORUtils::dot(voxel_world.toVector3() - pt_world, normal_world);
+	} else
+	{
+		// True point-to-point (euclidean distance)
+		distance = ORUtils::dot(voxel_world.toVector3() - pt_world, -pixelRay_world);
 
-	rgb_measure = TO_VECTOR3(interpolateBilinear(rgb, pt_image, imgSize)) / 255.0f;
-	//rgb_measure = rgb[(int)(pt_image.x + 0.5f) + (int)(pt_image.y + 0.5f) * imgSize.x].toVector3().toFloat() / 255.0f;
-	newW = 1;
+		// Original InfiniTAM: assumption is, all surface normals equal the inverse camera Z-axis
+//		Vector3f cameraRay_world = (invM_d * Vector4f(0, 0, -1, 0)).toVector3();
+//		distance = ORUtils::dot(voxel_world.toVector3() - pt_world, cameraRay_world);
+	}
+	if (distance < -sceneParams.mu) return;
 
-	newC = oldC * oldW + rgb_measure * newW;
-	newW = oldW + newW;
-	newC /= newW;
-	newW = MIN(newW, sceneParams.maxW);
+	Vector3f viewRay_camera = reprojectImagePoint(voxel_image_d.x, voxel_image_d.y, 1,
+	                                              invertProjectionParams(projParams_d)).normalised();
 
-	voxel.clr = TO_UCHAR3(newC * 255.0f);
-	voxel.w_color = ITMVoxel::floatToWeight(newW, sceneParams.maxW);
+	float sdf_old = ITMVoxel::valueToFloat(voxel.sdf);
+	float sdf_new = MAX(MIN(1.0f, distance / sceneParams.mu), -1.0f);
+	float depthWeight_new = 1;
+	if (fusionParams.useWeighting) //and distance < carveSurfaceOffset)
+	{
+		if ((distance >= sceneParams.mu or ORUtils::length(voxel_world.toVector3() - pt_world) > 2 * sceneParams.mu)
+//			and false
+			)
+		{ // space carving range (optional)
+//			if (sdf_old > 0) // only apply to negative, as positive might be used for estimating surface -> DEFINITELY WORSE
+//				depthWeight_new = 0.01;
+
+			depthWeight_new *= weightDepth(1, sceneParams) * weightNormal(normal_camera.toVector3(), viewRay_camera); // use constant depth weigh, because outside truncation range
+
+			if (direction != TSDFDirection::NONE)
+			{
+//				depthWeight_new *= static_cast<float>(DirectionAngle(-pixelRay_world, direction) < direction_angle_threshold);
+//				depthWeight_new *= static_cast<float>(DirectionAngle(-pixelRay_world, direction) < 2 * M_PI_4);
+
+//				depthWeight_new *=  DirectionWeight(DirectionAngle(-pixelRay_world, direction));
+				depthWeight_new *=  (M_PI_2 - DirectionAngle(-pixelRay_world, direction)) / M_PI_2;
+			}
+
+			// Check if pixel near to depth gap (large offset to neighboring pixels) in which case, don't carve (retain edges of objects)
+			float voxelSizeImage = sceneParams.voxelSize / voxel_d.z * projParams_d.x;
+			bool dontCarve = false;
+			for (int i = 1; i <= 2 and not dontCarve; i++)
+//			for (int i = 1; i < ceil(voxelSizeImage / 2) and not dontCarve; i++)
+			{
+				dontCarve |= fabs(depth_measure - depth[imgCoords_d.x + i + (imgCoords_d.y + 0) * imgSize_d.width]) > sceneParams.mu;
+				dontCarve |= fabs(depth_measure - depth[imgCoords_d.x - i + (imgCoords_d.y + 0) * imgSize_d.width]) > sceneParams.mu;
+				dontCarve |= fabs(depth_measure - depth[imgCoords_d.x + 0 + (imgCoords_d.y + i) * imgSize_d.width]) > sceneParams.mu;
+				dontCarve |= fabs(depth_measure - depth[imgCoords_d.x + 0 + (imgCoords_d.y - i) * imgSize_d.width]) > sceneParams.mu;
+
+				dontCarve |= depth[imgCoords_d.x + i + (imgCoords_d.y + 0) * imgSize_d.width] <= 0;
+				dontCarve |= depth[imgCoords_d.x - i + (imgCoords_d.y + 0) * imgSize_d.width] <= 0;
+				dontCarve |= depth[imgCoords_d.x + 0 + (imgCoords_d.y + i) * imgSize_d.width] <= 0;
+				dontCarve |= depth[imgCoords_d.x + 0 + (imgCoords_d.y - i) * imgSize_d.width] <= 0;
+			}
+			if (dontCarve)
+				depthWeight_new *= 1e-3; // use really small weight, so errors are carved out eventually
+
+			colorWeight_new = 0;
+		} else
+		{ // inside truncation range
+			depthWeight_new = combinedWeight(depth_measure, distance, normal_camera.toVector3(), viewRay_camera, sceneParams);
+			if (direction != TSDFDirection::NONE)
+			{
+				float directionAngle = DirectionAngle(normal_world, direction);
+				depthWeight_new *= DirectionWeight(directionAngle);
+
+				// Fuse positive values, even if angle larger than threshold for direction (carve freespace)
+//				if (distance > 0 and directionAngle > direction_angle_threshold and DirectionAngle(-pixelRay_world, direction) < 2 * M_PI_4) // too much? problematic with thin objects
+				if (distance > 0 and directionAngle > direction_angle_threshold and DirectionAngle(-pixelRay_world, direction) < direction_angle_threshold)
+					depthWeight_new = combinedWeight(depth_measure, distance, normal_camera.toVector3(), viewRay_camera, sceneParams);
+//					depthWeight_new = weightDepth(1, sceneParams) * weightNormal(normal_camera.toVector3(), viewRay_camera);
+			}
+			colorWeight_new *= MAX(0, depthWeight_new * fabs(1 - sdf_new)); // distance from surface
+		}
+	}
+	if (depthWeight_new <= 0)
+		return;
+
+	// Compute updated values
+	float depthWeight_old = ITMVoxel::weightToFloat(voxel.w_depth, sceneParams.maxW);
+	float colorWeight_old = ITMVoxel::weightToFloat(voxel.w_color, sceneParams.maxW);
+	sdf_new = depthWeight_old * sdf_old + depthWeight_new * sdf_new;
+	depthWeight_new = depthWeight_old + depthWeight_new;
+	sdf_new /= depthWeight_new;
+	depthWeight_new = MIN(depthWeight_new, sceneParams.maxW);
+
+	Vector3f color_old = TO_FLOAT3(voxel.clr) / 255.0f;
+	color_new = color_old * colorWeight_old + color_new * colorWeight_new;
+	colorWeight_new = colorWeight_new + colorWeight_old;
+	color_new /= colorWeight_new;
+	colorWeight_new = MIN(colorWeight_new, sceneParams.maxW);
+
+	// write back
+	voxel.sdf = ITMVoxel::floatToValue(sdf_new);
+	voxel.w_depth = ITMVoxel::floatToWeight(depthWeight_new, sceneParams.maxW);
+	voxel.clr = TO_UCHAR3(color_new * 255.0f);
+	voxel.w_color = ITMVoxel::floatToWeight(colorWeight_new, sceneParams.maxW);
 }
 
 template<bool hasColor, typename TVoxel> // Templating, to prevent building color update parts, if ITMVoxel doesn't contain color
@@ -215,12 +331,8 @@ struct ComputeUpdatedVoxelInfo<true, TVoxel>
 	                                       const Vector2i& imgSize_d,
 	                                       const Vector4u* rgb, const Vector2i& imgSize_rgb)
 	{
-		float eta = computeUpdatedVoxelDepthInfo<TVoxel>(voxel, direction, pt_world, M_d, projParams_d, fusionParams,
-		                                                 sceneParams,
-		                                                 depth, depthNormals, imgSize_d);
-		if ((eta > sceneParams.mu) || (fabs(eta / sceneParams.mu) > 0.25f)) return;
-		computeUpdatedVoxelColorInfo<TVoxel>(voxel, direction, pt_world, M_rgb, projParams_rgb, sceneParams, eta, rgb,
-		                                     imgSize_rgb);
+		computeUpdatedVoxelColorInfo<TVoxel>(voxel, direction, pt_world, M_d, projParams_d, M_rgb, projParams_rgb, fusionParams,
+		                                     sceneParams, depth, depthNormals, rgb, imgSize_d, imgSize_rgb);
 	}
 };
 
@@ -692,8 +804,8 @@ inline void rayCastUpdate(int x, int y, Vector2i imgSize_d, Vector2i imgSize_rgb
 					float directionWeight = DirectionWeight(angles[direction]);
 					float voxelDistanceWeight = 1 - MIN(length(voxelSurfaceOffset) / mu, 1);
 
-					weight = depthWeight(depthValue, normal_camera.toVector3(), viewRay_camera, directionWeight,
-					                     sceneParams);// * voxelDistanceWeight;
+					weight = combinedWeight(depthValue, distance, normal_camera.toVector3(), viewRay_camera,
+					                        sceneParams) * directionWeight;// * voxelDistanceWeight;
 
 					// Normalize by voxel size in camera image (max num rays to hit), so comparable to voxelProjection fusion
 					weight *= 1 / (voxelSideLengthCamera * voxelSideLengthCamera);
@@ -714,7 +826,7 @@ inline void rayCastUpdate(int x, int y, Vector2i imgSize_d, Vector2i imgSize_rgb
 			if (fusionParams.useWeighting)
 			{
 				float voxelDistanceWeight = 1 - MIN(length(voxelSurfaceOffset) / mu, 1);
-				weight = depthWeight(depthValue, normal_camera.toVector3(), viewRay_camera, 1, sceneParams)
+				weight = combinedWeight(depthValue, distance, normal_camera.toVector3(), viewRay_camera, sceneParams)
 				         / powf(voxelSize * 100, 3) * voxelDistanceWeight;
 
 				// Normalize by voxel size in camera image (max num rays to hit), so comparable to voxelProjection fusion

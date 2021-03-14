@@ -95,10 +95,55 @@ _CPU_AND_GPU_CODE_ inline float readFromSDF_float_interpolated(const TMultiVoxel
 }
 
 template<class TMultiVoxel, class TMultiIndex>
+_CPU_AND_GPU_CODE_ inline Vector4f readFromSDF_color4u_uninterpolated(float &confidence,  const TMultiVoxel *voxelData, const TMultiIndex *voxelIndex, const Vector3f & point, const TSDFDirection direction, ITMMultiCache & _cache, const int maxW)
+{
+	typedef typename TMultiIndex::IndexType TIndex;
+
+	confidence = 0;
+	Vector4f accu(0.0f);
+	for (int localMapId = 0; localMapId < voxelIndex->numLocalMaps; ++localMapId)
+	{
+		Vector3f point_local = voxelIndex->poses_vs[localMapId] * point;
+
+		int maxW;
+		typename TIndex::IndexCache cache;
+		float conf_;
+		Vector4f val = readFromSDF_color4u_uninterpolated(conf_, voxelData->voxels[localMapId], voxelIndex->index[localMapId], point_local, direction, cache, maxW);
+
+		accu += (float)maxW * val;
+		confidence += conf_;
+	}
+	if (accu.w < 0.001f) accu.w = 1.0f;
+	return (accu / accu.w);
+}
+
+template<class TMultiVoxel, class TMultiIndex>
 _CPU_AND_GPU_CODE_ inline Vector4f readFromSDF_color4u_interpolated(const TMultiVoxel *voxelData, const TMultiIndex *voxelIndex, const Vector3f & point, const TSDFDirection direction, ITMMultiCache & _cache)
 {
 	typedef typename TMultiIndex::IndexType TIndex;
 
+	Vector4f accu(0.0f);
+	for (int localMapId = 0; localMapId < voxelIndex->numLocalMaps; ++localMapId)
+	{
+		Vector3f point_local = voxelIndex->poses_vs[localMapId] * point;
+
+		int maxW;
+		typename TIndex::IndexCache cache;
+		float conf_;
+		Vector4f val = readFromSDF_color4u_interpolated(voxelData->voxels[localMapId], voxelIndex->index[localMapId], point_local, direction, cache);
+
+		accu += (float)maxW * val;
+	}
+	if (accu.w < 0.001f) accu.w = 1.0f;
+	return (accu / accu.w);
+}
+
+template<class TMultiVoxel, class TMultiIndex>
+_CPU_AND_GPU_CODE_ inline Vector4f readFromSDF_color4u_interpolated(float &confidence,  const TMultiVoxel *voxelData, const TMultiIndex *voxelIndex, const Vector3f & point, const TSDFDirection direction, ITMMultiCache & _cache, const int maxW)
+{
+	typedef typename TMultiIndex::IndexType TIndex;
+
+	confidence = 0;
 	Vector4f accu(0.0f);
 	for (int localMapId = 0; localMapId < voxelIndex->numLocalMaps; ++localMapId) 
 	{
@@ -106,9 +151,11 @@ _CPU_AND_GPU_CODE_ inline Vector4f readFromSDF_color4u_interpolated(const TMulti
 
 		int maxW;
 		typename TIndex::IndexCache cache;
-		Vector4f val = readFromSDF_color4u_interpolated(voxelData->voxels[localMapId], voxelIndex->index[localMapId], point_local, direction, cache, maxW);
+		float conf_;
+		Vector4f val = readFromSDF_color4u_interpolated(conf_, voxelData->voxels[localMapId], voxelIndex->index[localMapId], point_local, direction, cache, maxW);
 
 		accu += (float)maxW * val;
+		confidence += conf_;
 	}
 	if (accu.w < 0.001f) accu.w = 1.0f;
 	return (accu / accu.w);
@@ -178,8 +225,9 @@ _CPU_AND_GPU_CODE_ inline float readWithConfidenceFromSDF_float_interpolated(THR
 }
 
 template<class TVoxel, class TMultiIndex>
-_CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(const CONSTPTR(ITMMultiVoxel<TVoxel>) *voxelData,
-                                                              const CONSTPTR(TMultiIndex) *voxelIndex, const THREADPTR(Vector3f) &point, const TSDFDirection direction)
+_CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(const ITMMultiVoxel<TVoxel> *voxelData,
+                                                              const TMultiIndex *voxelIndex, const Vector3f &point,
+                                                              const TSDFDirection direction, const float tau=0.0)
 {
 //	typedef typename TMultiIndex::IndexType TIndex;
 

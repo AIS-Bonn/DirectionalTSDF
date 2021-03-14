@@ -26,7 +26,7 @@ void insertHashEntries_device(
 	if (not hashEntry.IsValid())
 		return;
 
-	BlockIndex idx(hashEntry.pos, hashEntry.direction);
+	BlockIndex idx(hashEntry.pos, hashEntry.direction == TSDFDirection_type(TSDFDirection::NONE) ? 0 : hashEntry.direction);
 	auto it = summingVoxelMap.find(idx);
 	if (it == summingVoxelMap.end())
 	{

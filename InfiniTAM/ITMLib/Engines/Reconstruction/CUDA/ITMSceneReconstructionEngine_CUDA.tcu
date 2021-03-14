@@ -165,7 +165,7 @@ __global__ void integrateIntoScene_device(ITMVoxel *localVBA, const ITMHashEntry
 
 	if (currentHashEntry.ptr < 0) return;
 
-	globalPos = currentHashEntry.pos.toInt() * SDF_BLOCK_SIZE;
+	globalPos = blockToVoxelPos(currentHashEntry.pos.toInt());
 
 	ITMVoxel *localVoxelBlock = &(localVBA[currentHashEntry.ptr * SDF_BLOCK_SIZE3]);
 
@@ -178,12 +178,9 @@ __global__ void integrateIntoScene_device(ITMVoxel *localVBA, const ITMHashEntry
 	if (stopMaxW) if (localVoxelBlock[locId].w_depth == sceneParams.maxW) return;
 	//if (approximateIntegration) if (localVoxelBlock[locId].w_depth != 0) return;
 
-	pt_model.x = (float)(globalPos.x + x) * _voxelSize;
-	pt_model.y = (float)(globalPos.y + y) * _voxelSize;
-	pt_model.z = (float)(globalPos.z + z) * _voxelSize;
-	pt_model.w = 1.0f;
+	pt_model = Vector4f(voxelIdxToWorldPos(globalPos + Vector3i(x, y, z), _voxelSize), 1.0f);
 
-	std::conditional<ITMVoxel::hasColorInformation, ComputeUpdatedVoxelInfo<true, ITMVoxel>, ComputeUpdatedVoxelInfo<false, ITMVoxel>>::type::compute(
+		std::conditional<ITMVoxel::hasColorInformation, ComputeUpdatedVoxelInfo<true, ITMVoxel>, ComputeUpdatedVoxelInfo<false, ITMVoxel>>::type::compute(
 			localVoxelBlock[locId], TSDFDirection(currentHashEntry.direction),
 		pt_model, M_d, projParams_d, M_rgb, projParams_rgb, fusionParams, sceneParams, depth, depthNormals, confidence,
 		depthImgSize, rgb, rgbImgSize);

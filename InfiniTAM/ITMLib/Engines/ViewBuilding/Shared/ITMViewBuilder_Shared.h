@@ -33,30 +33,14 @@ _CPU_AND_GPU_CODE_ inline void convertDepthAffineToFloat(DEVICEPTR(float) *d_out
 	d_out[locId] = ((depth_in <= 0)||(depth_in > 32000)) ? -1.0f : (float)depth_in * depthCalibParams.x + depthCalibParams.y;
 }
 
-#define MEAN_SIGMA_L 1.2232f
-_CPU_AND_GPU_CODE_ inline void filterDepth(DEVICEPTR(float) *imageData_out, const CONSTPTR(float) *imageData_in, int x, int y, Vector2i imgDims)
+_CPU_AND_GPU_CODE_ inline void filterDepth(DEVICEPTR(float)* imageData_out, const CONSTPTR(float)* imageData_in,
+                                           const float sigma_d, const float sigma_r, int x, int y, Vector2i imgDims)
 {
-	float z, tmpz, dz, final_depth = 0.0f, w, w_sum = 0.0f;
+	if (x >= imgDims.x or y >= imgDims.y)
+		return;
 
-	z = imageData_in[x + y * imgDims.x];
-	if (z < 0.0f) { imageData_out[x + y * imgDims.x] = -1.0f; return; }
-
-	float sigma_z = 1.0f / (0.0012f + 0.0019f*(z - 0.4f)*(z - 0.4f) + 0.0001f / sqrt(z) * 0.25f);
-
-	for (int i = -2, count = 0; i <= 2; i++) for (int j = -2; j <= 2; j++, count++)
-	{
-		tmpz = imageData_in[(x + j) + (y + i) * imgDims.x];
-		if (tmpz < 0.0f) continue;
-		dz = (tmpz - z); dz *= dz;
-		w = exp(-0.5f * ((abs(i) + abs(j))*MEAN_SIGMA_L*MEAN_SIGMA_L + dz * sigma_z * sigma_z));
-		w_sum += w;
-		final_depth += w*tmpz;
-	}
-
-	final_depth /= w_sum;
-	imageData_out[x + y*imgDims.x] = final_depth;
+	imageData_out[y * imgDims.x + x] = computeDepthBilateralFiltered(imageData_in, sigma_d, sigma_r, 5, x, y, imgDims);
 }
-
 
 /**
  * Bilateral filtering for normals
@@ -167,43 +151,6 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndWeight(const CONSTPTR(float) *dep
 	float theta_diff = theta / (PI*0.5f - theta);
 
 	sigmaZ_out[idx] = (0.0012f + 0.0019f * (z - 0.4f) * (z - 0.4f) + 0.0001f / sqrt(z) * theta_diff * theta_diff);
-
-
-//	Vector3f diff_x(0.0f, 0.0f, 0.0f), diff_y(0.0f, 0.0f, 0.0f);
-//
-//	Vector3f xp1_y = reprojectImagePoint(x + 1, y, depth_in[(x + 1) + y * imgDims.x], invProjParams_d);
-//	Vector3f xm1_y = reprojectImagePoint(x - 1, y, depth_in[(x - 1) + y * imgDims.x], invProjParams_d);
-//	Vector3f x_yp1 = reprojectImagePoint(x, y + 1, depth_in[x + (y + 1) * imgDims.x], invProjParams_d);
-//	Vector3f x_ym1 = reprojectImagePoint(x, y - 1, depth_in[x + (y - 1) * imgDims.x], invProjParams_d);
-//
-//	float threshold = z * 0.1f;
-//	if (xp1_y.z <= 0 or x_yp1.z <= 0 or xm1_y.z <= 0 or x_ym1.z <= 0 or abs(xp1_y.z - z) > threshold or abs(xm1_y.z - z) > threshold)
-//	{
-//		normal_out[idx].w = -1.0f;
-//		sigmaZ_out[idx] = -1;
-//		return;
-//	}
-//
-//	// gradients x and y
-//	diff_x = xp1_y - xm1_y, diff_y = x_yp1 - x_ym1;
-//
-//	outNormal = cross(diff_y, diff_x);
-//
-//	if (outNormal.x == 0.0f && outNormal.y == 0 && outNormal.z == 0)
-//	{
-//		normal_out[idx].w = -1.0f;
-//		sigmaZ_out[idx] = -1;
-//		return;
-//	}
-//	outNormal = outNormal.normalised();
-//
-//	normal_out[idx] = Vector4f(outNormal, 1.0f);
-//
-//	// now compute weight
-//	float theta = acos(outNormal.z);
-//	float theta_diff = theta / (PI*0.5f - theta);
-//
-//	sigmaZ_out[idx] = (0.0012f + 0.0019f * (z - 0.4f) * (z - 0.4f) + 0.0001f / sqrt(z) * theta_diff * theta_diff);
 }
 
 } // namespace ITMLib

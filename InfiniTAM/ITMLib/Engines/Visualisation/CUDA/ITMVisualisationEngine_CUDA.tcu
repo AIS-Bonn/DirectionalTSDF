@@ -99,10 +99,12 @@ combineDirectionalTSDFViewPoint(ITMVoxel* renderVoxelData, ITMHashEntry* renderH
 	Vector3f colorCombined(0, 0, 0);
 	float sdfCombined = 0;
 	float weightCombined = 0;
+	float colorWeightCombined = 0;
 
 	Vector3f colorCombinedNoGradient(0, 0, 0);
 	float sdfCombinedNoGradient = 0;
 	float weightCombinedNoGradient = 0;
+	float colorWeightCombinedNoGradient = 0;
 
 	Vector3f colorFreeSpace(0, 0, 0);
 	float freeSpaceWeight = 0;
@@ -120,23 +122,32 @@ combineDirectionalTSDFViewPoint(ITMVoxel* renderVoxelData, ITMHashEntry* renderH
 		if (not vmIndex)
 			continue;
 
-//		Vector3f color = TSDFDirectionColor[directionIdx];
-		Vector3f color = readFromSDF_color4u_interpolated(voxelData, hashTable, voxelPos, TSDFDirection(directionIdx), cache[directionIdx]).toVector3();
-		Vector3f gradient = computeSingleNormalFromSDF(voxelData, hashTable, voxelPos, TSDFDirection(directionIdx));
+		Vector3f color;
+		float color_w = 1;
+		if (RENDER_DIRECTION_COLORS == 1)
+			color = TSDFDirectionColor[directionIdx];
+		else
+			color = readFromSDF_color4u_uninterpolated(color_w, voxelData, hashTable, voxelPos, TSDFDirection(directionIdx), cache[directionIdx], maxW).toVector3();
+		Vector3f gradient = computeSingleNormalFromSDF(voxelData, hashTable, voxelPos, TSDFDirection(directionIdx), voxelSize / mu);
 
 		float weight =
-			DirectionWeight(DirectionAngle(gradient, TSDFDirection(directionIdx))) * ORUtils::dot(gradient, -rayDirection) // FIXME: direction weight too strict? but helps with perpendicular walls -> hole [or not]
-			//				+ (DirectionAngle(gradient, TSDFDirection(directionIdx)) < M_PI_2) * ORUtils::dot(gradient, -rayDirection)
+			DirectionWeight(DirectionAngle(gradient, TSDFDirection(directionIdx)))
+			* ORUtils::dot(gradient, -rayDirection)
 			* confidence;
+		weight = MAX(weight, 0);
 
-//		if (voxelPosIdx.x == 22 and voxelPosIdx.y == -21 and voxelPosIdx.z == 10)
-//			printf("[%i] (%f, %f) [%f, %f, %f] (%.12f, %.12f, %.12f) -> %.12f\n", directionIdx, sdf, confidence,
+//		if (voxelPosIdx.x == -71 and voxelPosIdx.y == -24 and voxelPosIdx.z == 258)
+//			printf("[%i] (%f, %f, [%f, %f, %f], %f) [%f, %f, %f] (%.12f, %.12f, %.12f) -> %.12f\n", directionIdx, sdf, confidence,
+//				color.x, color.y, color.z, color_w,
 //				gradient.x, gradient.y, gradient.z,
 //			  DirectionAngle(gradient, TSDFDirection(directionIdx)),
 //				DirectionWeight(DirectionAngle(gradient, TSDFDirection(directionIdx))),
 //				ORUtils::dot(gradient, -rayDirection), weight);
 
-		if (confidence > 0 and sdf > 0)
+		if (confidence > 0 and sdf > 0
+		and ORUtils::length(gradient) > 0
+		and false
+		)
 		{ // free space
 
 			// Don't carve, if this is the "backside" of a face
@@ -156,26 +167,37 @@ combineDirectionalTSDFViewPoint(ITMVoxel* renderVoxelData, ITMHashEntry* renderH
 
 			if (carve)
 			{
-				weight = DirectionAngle(-rayDirection, TSDFDirection(directionIdx)) * 1e-6 // minimum weight to ensure fewer data-less voxels
-								 + confidence;
-				weight = MAX(weight, 0);
+//				float weightFS = weight;
+				float weightFS = confidence
+//				                 * ORUtils::dot(-rayDirection, TSDFDirectionVector[directionIdx])
 
-				freeSpaceSDF += weight * sdf;
-				freeSpaceWeight += weight;
-				colorFreeSpace += weight * color;
-				gradientFreeSpace += weight * gradient;
+				                 * MAX(0, ORUtils::dot(gradient, TSDFDirectionVector[directionIdx]))
+//				                 * DirectionWeight(DirectionAngle(gradient, TSDFDirection(directionIdx)))
+				                 ;
+
+				weightFS = MAX(weightFS, 0);
+
+				freeSpaceSDF += weightFS * sdf;
+				freeSpaceWeight += weightFS;
+				colorFreeSpace += weightFS * color;
+				gradientFreeSpace += weightFS * gradient;
 			}
 		}
-		weight = MAX(weight, 0);
 
-		float weightNoGradient = MAX(0, DirectionAngle(-rayDirection, TSDFDirection(directionIdx)) * confidence);
+		float weightNoGradient = MAX(0,
+		                             confidence
+		                             * ORUtils::dot(-rayDirection, TSDFDirectionVector[directionIdx])
+//		                             * DirectionWeight(DirectionAngle(-rayDirection, TSDFDirection(directionIdx)))
+			);
 		weightCombinedNoGradient += weightNoGradient;
 		sdfCombinedNoGradient += weightNoGradient * sdf;
-		colorCombinedNoGradient += weightNoGradient * color;
+		colorWeightCombinedNoGradient += weightNoGradient * color_w;
+		colorCombinedNoGradient += weightNoGradient * color_w * color;
 
 		sdfCombined += weight * sdf;
 		weightCombined += weight;
-		colorCombined += weight * color;
+		colorWeightCombined += weight * color_w;
+		colorCombined += weight * color_w * color;
 		gradientCombined += weight * gradient;
 	}
 
@@ -185,13 +207,10 @@ combineDirectionalTSDFViewPoint(ITMVoxel* renderVoxelData, ITMHashEntry* renderH
 	if (weightCombined > 0)
 	{
 		sdfCombined /= weightCombined;
-		colorCombined /= weightCombined;
-		if (hasGradient)
-			gradientCombined = gradientCombined.normalised();
+		if (hasGradient) gradientCombined = gradientCombined.normalised();
 	} else if (weightCombinedNoGradient > 0)
 	{
 		sdfCombined = sdfCombinedNoGradient / weightCombinedNoGradient;
-		colorCombined = colorCombinedNoGradient / weightCombinedNoGradient;
 		weightCombined = weightCombinedNoGradient;
 		gradientCombined = Vector3f(0, 0, 0);
 	} else
@@ -200,6 +219,20 @@ combineDirectionalTSDFViewPoint(ITMVoxel* renderVoxelData, ITMHashEntry* renderH
 		weightCombined = 0;
 		gradientCombined = Vector3f(0, 0, 0);
 	}
+
+	if (colorWeightCombined > 0)
+	{
+		colorCombined /= colorWeightCombined;
+	}
+	else if (colorWeightCombinedNoGradient > 0)
+	{
+		colorCombined = colorCombinedNoGradient / colorWeightCombinedNoGradient;
+		colorWeightCombined = colorWeightCombinedNoGradient;
+	} else {
+		colorCombined = Vector3f(0, 0, 0);
+		colorWeightCombined = 0;
+	}
+
 	if (freeSpaceWeight > 0)
 	{
 		freeSpaceSDF /= freeSpaceWeight;
@@ -208,28 +241,11 @@ combineDirectionalTSDFViewPoint(ITMVoxel* renderVoxelData, ITMHashEntry* renderH
 			gradientFreeSpace = gradientFreeSpace.normalised();
 	}
 
-//	if (voxelPosIdx.x == 44 and voxelPosIdx.y == 60 and voxelPosIdx.z == 244)
-//	{
-//		printf("%i (%.10f, %.10f)(%.10f, %.10f)  [%f, %f, %f]X[%f, %f, %f] = %f [FS: %i]\t", freeSpaceWeight > 0, freeSpaceSDF, freeSpaceWeight, sdfCombined, weightCombined,
-//		       gradientFreeSpace.x, gradientFreeSpace.y, gradientFreeSpace.z,
-//		       gradientCombined.x, gradientCombined.y, gradientCombined.z,
-//		       dot(gradientFreeSpace, gradientCombined),
-//						(freeSpaceWeight > 0
-//								and ((
-//											 hasGradient and hasFreeSpaceGradient
-//											 and dot(gradientFreeSpace, gradientCombined) < 0.5 // if same surface, use normal combination instead of free space (prevent dents in surface)
-//											 and dot(gradientFreeSpace, gradientCombined) > -0.5 // if opposite surface, don't carve
-//
-//										 ) or (not hasGradient and not hasFreeSpaceGradient))
-//							)
-//		);
-//	}
-
 	if (freeSpaceWeight > 0
 	    and ((hasGradient and hasFreeSpaceGradient
 	          and dot(gradientFreeSpace, gradientCombined) <
-	              0.5 // if same surface, use normal combination instead of free space (prevent dents in surface)
-	          and dot(gradientFreeSpace, gradientCombined) > -0.5 // if opposite surface, don't carve
+	              0.707 // if same surface, use normal combination instead of free space (prevent dents in surface)
+	          and dot(gradientFreeSpace, gradientCombined) > -0.707 // if opposite surface, don't carve
 	         ) or (not hasGradient and not hasFreeSpaceGradient)))
 	{
 		voxelBlock[linearIdx].sdf = ITMVoxel::floatToValue(freeSpaceSDF);
@@ -241,8 +257,27 @@ combineDirectionalTSDFViewPoint(ITMVoxel* renderVoxelData, ITMHashEntry* renderH
 		voxelBlock[linearIdx].sdf = ITMVoxel::floatToValue(sdfCombined);
 		voxelBlock[linearIdx].w_depth = ITMVoxel::floatToWeight(weightCombined, maxW);
 		voxelBlock[linearIdx].clr = TO_UCHAR3(colorCombined * 255.0f);
-		voxelBlock[linearIdx].w_color = ITMVoxel::floatToWeight(weightCombined, maxW);
+		voxelBlock[linearIdx].w_color = ITMVoxel::floatToWeight(colorWeightCombined, maxW);
 	}
+
+//	if (voxelPosIdx.x == -71 and voxelPosIdx.y == -24 and voxelPosIdx.z == 258)
+//	{
+//		printf("FS(%.10f, %.10f) Def(%.10f, %.10f)  [%f, %f, %f]X[%f, %f, %f] = %f [FS: %i] -> (%f, %f, [%i, %i, %i], %f)\n", freeSpaceSDF, freeSpaceWeight, sdfCombined, weightCombined,
+//		       gradientFreeSpace.x, gradientFreeSpace.y, gradientFreeSpace.z,
+//		       gradientCombined.x, gradientCombined.y, gradientCombined.z,
+//		       dot(gradientFreeSpace, gradientCombined),
+//		       (freeSpaceWeight > 0
+//		        and ((
+//			             hasGradient and hasFreeSpaceGradient
+//			             and dot(gradientFreeSpace, gradientCombined) < 0.5 // if same surface, use normal combination instead of free space (prevent dents in surface)
+//			             and dot(gradientFreeSpace, gradientCombined) > -0.5 // if opposite surface, don't carve
+//
+//		             ) or (not hasGradient and not hasFreeSpaceGradient))
+//		       ),
+//		       voxelBlock[linearIdx].sdf, voxelBlock[linearIdx].w_depth,
+//		       voxelBlock[linearIdx].clr.x,voxelBlock[linearIdx].clr.y, voxelBlock[linearIdx].clr.z,  voxelBlock[linearIdx].w_color
+//		);
+//	}
 }
 
 void ITMVisualisationEngine_CUDA::ComputeRenderingTSDF(const Scene* scene, const ORUtils::SE3Pose* pose,

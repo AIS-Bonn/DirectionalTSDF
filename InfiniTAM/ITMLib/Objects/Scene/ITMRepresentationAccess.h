@@ -270,91 +270,167 @@ _CPU_AND_GPU_CODE_ inline float readFromSDF_float_interpolated(const CONSTPTR(TV
 }
 
 template<class TVoxel, class TIndex, class TCache>
-_CPU_AND_GPU_CODE_ inline Vector4f readFromSDF_color4u_interpolated(const CONSTPTR(TVoxel) *voxelData,
-	const CONSTPTR(TIndex) *voxelIndex, const THREADPTR(Vector3f) & point, const TSDFDirection direction, THREADPTR(TCache) & cache)
+_CPU_AND_GPU_CODE_ inline Vector4f readFromSDF_color4u_uninterpolated(float& confidence, const CONSTPTR(TVoxel) *voxelData,
+																																			const CONSTPTR(TIndex) *voxelIndex, const THREADPTR(Vector3f) & point, const TSDFDirection direction, THREADPTR(TCache) & cache,
+																																			const int maxW)
 {
-	TVoxel resn; Vector3f ret(0.0f); Vector4f ret4; int vmIndex;
+	TVoxel voxel;
+	Vector3f color(0.0f);
 	Vector3f coeff; Vector3i pos; TO_INT_FLOOR3(pos, coeff, point);
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 0), direction, vmIndex, cache);
-	ret += (1.0f - coeff.x) * (1.0f - coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
+	confidence = 0;
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 0), direction, vmIndex, cache);
-	ret += (coeff.x) * (1.0f - coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
+	int vmIndex;
+	voxel = readVoxel(voxelData, voxelIndex, pos, direction, vmIndex, cache);
+	confidence = TVoxel::weightToFloat(voxel.w_color, maxW);
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 0), direction, vmIndex, cache);
-	ret += (1.0f - coeff.x) * (coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
+	return Vector4f(voxel.clr.toFloat() / 255.0f, 255.0f);
+}
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 0), direction, vmIndex, cache);
-	ret += (coeff.x) * (coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
+template<class TVoxel, class TIndex, class TCache>
+_CPU_AND_GPU_CODE_ inline Vector4f readFromSDF_color4u_interpolated(float& confidence, const CONSTPTR(TVoxel) *voxelData,
+	const CONSTPTR(TIndex) *voxelIndex, const THREADPTR(Vector3f) & point, const TSDFDirection direction, THREADPTR(TCache) & cache,
+	const int maxW)
+{
+	TVoxel voxel;
+	Vector3f color(0.0f); float w_color = 0;
+	Vector3f coeff; Vector3i pos; TO_INT_FLOOR3(pos, coeff, point);
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 1), direction, vmIndex, cache);
-	ret += (1.0f - coeff.x) * (1.0f - coeff.y) * coeff.z * resn.clr.toFloat();
+	confidence = 0;
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 1), direction, vmIndex, cache);
-	ret += (coeff.x) * (1.0f - coeff.y) * coeff.z * resn.clr.toFloat();
+	int vmIndex;
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 0), direction, vmIndex, cache);
+	color += (1.0f - coeff.x) * (1.0f - coeff.y) * (1.0f - coeff.z) * voxel.clr.toFloat();
+	w_color += (1.0f - coeff.x) * (1.0f - coeff.y) * (1.0f - coeff.z) * voxel.w_color;
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 1), direction, vmIndex, cache);
-	ret += (1.0f - coeff.x) * (coeff.y) * coeff.z * resn.clr.toFloat();
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 0), direction, vmIndex, cache);
+	color += (coeff.x) * (1.0f - coeff.y) * (1.0f - coeff.z) * voxel.clr.toFloat();
+	w_color += (coeff.x) * (1.0f - coeff.y) * (1.0f - coeff.z) * voxel.w_color;
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 1), direction, vmIndex, cache);
-	ret += (coeff.x) * (coeff.y) * coeff.z * resn.clr.toFloat();
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 0), direction, vmIndex, cache);
+	color += (1.0f - coeff.x) * (coeff.y) * (1.0f - coeff.z) * voxel.clr.toFloat();
+	w_color += (1.0f - coeff.x) * (coeff.y) * (1.0f - coeff.z) * voxel.w_color;
 
-	ret4.x = ret.x; ret4.y = ret.y; ret4.z = ret.z; ret4.w = 255.0f;
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 0), direction, vmIndex, cache);
+	color += (coeff.x) * (coeff.y) * (1.0f - coeff.z) * voxel.clr.toFloat();
+	w_color += (coeff.x) * (coeff.y) * (1.0f - coeff.z) * voxel.w_color;
 
-	return ret4 / 255.0f;
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 1), direction, vmIndex, cache);
+	color += (1.0f - coeff.x) * (1.0f - coeff.y) * coeff.z * voxel.clr.toFloat();
+	w_color += (1.0f - coeff.x) * (1.0f - coeff.y) * coeff.z * voxel.w_color;
+
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 1), direction, vmIndex, cache);
+	color += (coeff.x) * (1.0f - coeff.y) * coeff.z * voxel.clr.toFloat();
+	w_color += (coeff.x) * (1.0f - coeff.y) * coeff.z * voxel.w_color;
+
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 1), direction, vmIndex, cache);
+	color += (1.0f - coeff.x) * (coeff.y) * coeff.z * voxel.clr.toFloat();
+	w_color += (1.0f - coeff.x) * (coeff.y) * coeff.z * voxel.w_color;
+
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 1), direction, vmIndex, cache);
+	color += (coeff.x) * (coeff.y) * coeff.z * voxel.clr.toFloat();
+	w_color += (coeff.x) * (coeff.y) * coeff.z * voxel.w_color;
+
+	confidence = TVoxel::weightToFloat(w_color, maxW);
+
+	return Vector4f(color / 255.0f, 255.0f);
 }
 
 template<class TVoxel, class TIndex, class TCache>
 _CPU_AND_GPU_CODE_ inline Vector4f readFromSDF_color4u_interpolated(const CONSTPTR(TVoxel) *voxelData,
-	const CONSTPTR(TIndex) *voxelIndex, const THREADPTR(Vector3f) & point, const TSDFDirection direction,
-	THREADPTR(TCache) & cache, int & maxW)
+                                                                    const CONSTPTR(TIndex) *voxelIndex, const THREADPTR(Vector3f) & point, const TSDFDirection direction, THREADPTR(TCache) & cache)
 {
-	TVoxel resn; Vector3f ret(0.0f); Vector4f ret4; int vmIndex;
+	TVoxel voxel;
+	Vector3f color(0.0f); float w_color = 0;
 	Vector3f coeff; Vector3i pos; TO_INT_FLOOR3(pos, coeff, point);
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 0), direction, vmIndex, cache);
-	maxW = resn.w_depth;
-	ret += (1.0f - coeff.x) * (1.0f - coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
+	int vmIndex;
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 0), direction, vmIndex, cache);
+	color += (1.0f - coeff.x) * (1.0f - coeff.y) * (1.0f - coeff.z) * voxel.clr.toFloat();
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 0), direction, vmIndex, cache);
-	if (resn.w_depth > maxW) maxW = resn.w_depth;
-	ret += (coeff.x) * (1.0f - coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 0), direction, vmIndex, cache);
+	color += (coeff.x) * (1.0f - coeff.y) * (1.0f - coeff.z) * voxel.clr.toFloat();
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 0), direction, vmIndex, cache);
-	if (resn.w_depth > maxW) maxW = resn.w_depth;
-	ret += (1.0f - coeff.x) * (coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 0), direction, vmIndex, cache);
+	color += (1.0f - coeff.x) * (coeff.y) * (1.0f - coeff.z) * voxel.clr.toFloat();
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 0), direction, vmIndex, cache);
-	if (resn.w_depth > maxW) maxW = resn.w_depth;
-	ret += (coeff.x) * (coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 0), direction, vmIndex, cache);
+	color += (coeff.x) * (coeff.y) * (1.0f - coeff.z) * voxel.clr.toFloat();
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 1), direction, vmIndex, cache);
-	if (resn.w_depth > maxW) maxW = resn.w_depth;
-	ret += (1.0f - coeff.x) * (1.0f - coeff.y) * coeff.z * resn.clr.toFloat();
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 1), direction, vmIndex, cache);
+	color += (1.0f - coeff.x) * (1.0f - coeff.y) * coeff.z * voxel.clr.toFloat();
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 1), direction, vmIndex, cache);
-	if (resn.w_depth > maxW) maxW = resn.w_depth;
-	ret += (coeff.x) * (1.0f - coeff.y) * coeff.z * resn.clr.toFloat();
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 1), direction, vmIndex, cache);
+	color += (coeff.x) * (1.0f - coeff.y) * coeff.z * voxel.clr.toFloat();
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 1), direction, vmIndex, cache);
-	if (resn.w_depth > maxW) maxW = resn.w_depth;
-	ret += (1.0f - coeff.x) * (coeff.y) * coeff.z * resn.clr.toFloat();
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 1), direction, vmIndex, cache);
+	color += (1.0f - coeff.x) * (coeff.y) * coeff.z * voxel.clr.toFloat();
 
-	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 1), direction, vmIndex, cache);
-	if (resn.w_depth > maxW) maxW = resn.w_depth;
-	ret += (coeff.x) * (coeff.y) * coeff.z * resn.clr.toFloat();
+	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 1), direction, vmIndex, cache);
+	color += (coeff.x) * (coeff.y) * coeff.z * voxel.clr.toFloat();
 
-	ret4.x = ret.x; ret4.y = ret.y; ret4.z = ret.z; ret4.w = 255.0f;
-
-	return ret4 / 255.0f;
+	return Vector4f(color / 255.0f, 255.0f);
 }
 
-#define ReadVoxelSDFDiscardZero(dst, pos) voxel = readVoxel(voxelData, voxelIndex, pos, direction, vmIndex); if (voxel.w_depth == 0) return Vector3f(0, 0, 0); dst = voxel.sdf;
+//template<class TVoxel, class TIndex, class TCache>
+//_CPU_AND_GPU_CODE_ inline Vector4f readFromSDF_color4u_interpolated(const CONSTPTR(TVoxel) *voxelData,
+//	const CONSTPTR(TIndex) *voxelIndex, const THREADPTR(Vector3f) & point, const TSDFDirection direction,
+//	THREADPTR(TCache) & cache, int & maxW)
+//{
+//	TVoxel resn; Vector3f ret(0.0f); Vector4f ret4; int vmIndex;
+//	Vector3f coeff; Vector3i pos; TO_INT_FLOOR3(pos, coeff, point);
+//
+//	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 0), direction, vmIndex, cache);
+//	maxW = resn.w_depth;
+//	ret += (1.0f - coeff.x) * (1.0f - coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
+//
+//	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 0), direction, vmIndex, cache);
+//	if (resn.w_depth > maxW) maxW = resn.w_depth;
+//	ret += (coeff.x) * (1.0f - coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
+//
+//	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 0), direction, vmIndex, cache);
+//	if (resn.w_depth > maxW) maxW = resn.w_depth;
+//	ret += (1.0f - coeff.x) * (coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
+//
+//	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 0), direction, vmIndex, cache);
+//	if (resn.w_depth > maxW) maxW = resn.w_depth;
+//	ret += (coeff.x) * (coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
+//
+//	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 1), direction, vmIndex, cache);
+//	if (resn.w_depth > maxW) maxW = resn.w_depth;
+//	ret += (1.0f - coeff.x) * (1.0f - coeff.y) * coeff.z * resn.clr.toFloat();
+//
+//	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 1), direction, vmIndex, cache);
+//	if (resn.w_depth > maxW) maxW = resn.w_depth;
+//	ret += (coeff.x) * (1.0f - coeff.y) * coeff.z * resn.clr.toFloat();
+//
+//	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 1), direction, vmIndex, cache);
+//	if (resn.w_depth > maxW) maxW = resn.w_depth;
+//	ret += (1.0f - coeff.x) * (coeff.y) * coeff.z * resn.clr.toFloat();
+//
+//	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 1), direction, vmIndex, cache);
+//	if (resn.w_depth > maxW) maxW = resn.w_depth;
+//	ret += (coeff.x) * (coeff.y) * coeff.z * resn.clr.toFloat();
+//
+//	ret4.x = ret.x; ret4.y = ret.y; ret4.z = ret.z; ret4.w = 255.0f;
+//
+//	return ret4 / 255.0f;
+//}
 
+#define ReadVoxelSDFDiscardZero(dst, pos) voxel = readVoxel(voxelData, voxelIndex, pos, direction, vmIndex); if (voxel.w_depth == 0) return Vector3f(0, 0, 0); dst = voxel.sdf;
+/**
+ * Computes raw (unnormalized) gradient from neighboring voxels
+ * @tparam TVoxel
+ * @tparam TIndex
+ * @param voxelData
+ * @param voxelIndex
+ * @param point
+ * @param direction
+ * @return
+ */
 template<class TVoxel, class TIndex>
-_CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(const CONSTPTR(TVoxel) *voxelData,
-	const CONSTPTR(TIndex) *voxelIndex, const THREADPTR(Vector3f) &point, const TSDFDirection direction)
+_CPU_AND_GPU_CODE_ inline Vector3f computeGradientFromSDF(const TVoxel* voxelData, const TIndex* voxelIndex,
+                                                          const Vector3f& point, const TSDFDirection direction)
 {
 	int vmIndex;
 
@@ -466,11 +542,39 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(const CONSTPTR(TVo
 		tmp.w *  coeff.x *  coeff.y;
 
 	ret.z = TVoxel::valueToFloat(p1 * ncoeff.z + p2 * coeff.z - v1);
+	return ret;
+}
 
-	if (ret == Vector3f(0, 0, 0))
-		return ret;
+/**
+ * @tparam filter
+ * @tparam TVoxel
+ * @tparam TIndex
+ * @param voxelData
+ * @param voxelIndex
+ * @param point
+ * @param direction
+ * @param tau = voxelSize / truncationDistance (normalized value per 1 voxel). If 0 don't filter
+ * @return
+ */
+template<class TVoxel, class TIndex>
+_CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(const TVoxel *voxelData,
+                                                              const TIndex *voxelIndex, const Vector3f &point,
+                                                              const TSDFDirection direction, const float tau=0.0)
+{
+	Vector3f gradient = computeGradientFromSDF(voxelData, voxelIndex, point, direction);
 
-	return ret.normalised();
+	if (gradient == Vector3f(0, 0, 0))
+		return gradient;
+
+	if (tau > 0)
+	{
+		// Check each direction maximum 2 * truncationDistance / voxelSize + margin
+		if (abs(gradient.x) > 2.4 * tau or abs(gradient.y) > 2.4 * tau or abs(gradient.z) > 2.4 * tau) return Vector3f(0, 0, 0);
+		// Check, if gradient too unreliable (very close values in neighboring voxels). minimum expected length: (2 * tau)^2
+		if (ORUtils::dot(gradient, gradient) < 2 * (tau * tau)) return Vector3f(0, 0, 0);
+	}
+
+	return gradient.normalised();
 }
 
 template<bool hasColor, class TVoxel, class TIndex> struct VoxelColorReader;

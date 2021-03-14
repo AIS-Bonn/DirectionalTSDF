@@ -27,7 +27,7 @@ inline float gaussR(float factor, float dist)
 	return exp(-(dist * dist) * factor);
 }
 
-/** Performs bilateral filtering for a single pixel
+/** Performs bilateral filtering for a single normal pixel
  *
  * tuning guide:
  * sigma_d: larger values -> higher weight for pixels further away
@@ -78,6 +78,56 @@ computeNormalBilateralFiltered(const Vector4f* normals, const float sigma_d, con
 	}
 
 	return result;
+}
+
+/** Performs bilateral filtering for a depth pixel
+ *
+ * tuning guide:
+ * sigma_d: larger values -> higher weight for pixels further away (more bluring)
+ * sigma_r: smaller values -> lower weight for values, that vary from center depth (more edge-awareness)
+ *
+ * @param sigma_d parameter for spatial filter
+ * @param sigma_r parameter for gradient filter (weighting difference in distance)
+ * @param radius pixel radius around (x,y)
+ */
+_CPU_AND_GPU_CODE_ inline float
+computeDepthBilateralFiltered(const float* depth, const float sigma_d, const float sigma_r, const int radius,
+                            const int x, const int y, const Vector2i& imgSize)
+{
+	const float center = depth[y * imgSize.x + x];
+	if (center < 0)
+		return center;
+
+	float sum = 0;
+	float sum_weight = 0.0f;
+
+	float sigma_d_factor = 1 / (2.0f * sigma_d * sigma_d);
+//	float sigma_r_factor = 1 / (2.0f * sigma_r * sigma_r);
+	float sigma_r_factor = 1 / (2.0f * sigma_r * sigma_r * center * center); // depth-dependent gradient filter (further away->higher noise->higher sigma_r)
+
+	for (int i = x - radius; i <= x + radius; i++)
+	{
+		for (int j = y - radius; j <= y + radius; j++)
+		{
+			if (i < 0 or j < 0 or i >= imgSize.x or j >= imgSize.y)
+				continue;
+
+			const float value = depth[j * imgSize.x + i];
+
+			if (value < 0)
+				continue;
+
+			const float weight = gaussD(sigma_d_factor, i - x, j - y) * gaussR(sigma_r_factor, fabs(value - center));
+
+			sum += weight * value;
+			sum_weight += weight;
+		}
+	}
+
+	if (sum_weight >= 0.0f)
+		return sum / sum_weight;
+
+	return -1;
 }
 
 } // ITMLib

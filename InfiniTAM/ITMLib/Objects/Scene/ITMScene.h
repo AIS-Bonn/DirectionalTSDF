@@ -46,6 +46,7 @@ namespace ITMLib
 			: sceneParams(_sceneParams), index(_memoryType),
 			  localVBA(_memoryType, index.getNumAllocatedVoxelBlocks(), index.getVoxelBlockSize())
 		{
+			index.Reset();
 			if (_useSwapping) globalCache = new ITMGlobalCache<TVoxel>();
 			else globalCache = NULL;
 		}

@@ -79,17 +79,12 @@ void ITMViewBuilder_CUDA::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImag
 	}
 	timeStats.copyImages += timer.Tock();
 
+	timer.Tick();
+	this->DepthFiltering(this->floatImage, view->depth);
+	timeStats.bilateralFilter = timer.Tock();
 	if (useBilateralFilter)
-	{
-		timer.Tick();
-		//5 steps of bilateral filtering
-		this->DepthFiltering(this->floatImage, view->depth);
-		this->DepthFiltering(view->depth, this->floatImage);
-		this->DepthFiltering(this->floatImage, view->depth);
-		this->DepthFiltering(view->depth, this->floatImage);
-		this->DepthFiltering(this->floatImage, view->depth);
+	{ // user filtered depth image
 		view->depth->SetFrom(this->floatImage, MemoryBlock<float>::CUDA_TO_CUDA);
-		timeStats.bilateralFilter = timer.Tock();
 	}
 
 	if (modelSensorNoise)
@@ -97,7 +92,7 @@ void ITMViewBuilder_CUDA::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImag
 		timer.Tick();
 #define FILTER_NORMALS
 #ifdef FILTER_NORMALS
-		this->ComputeNormalAndWeights(this->normals, view->depthUncertainty, view->depth,
+		this->ComputeNormalAndWeights(this->normals, view->depthUncertainty, this->floatImage, // use pre-filtered depth image
 		                              view->calib.intrinsics_d.projectionParamsSimple.all);
 		this->NormalFiltering(view->depthNormal, this->normals);
 #else
@@ -241,7 +236,7 @@ __global__ void filterDepth_device(float *imageData_out, const float *imageData_
 
 	if (x < 2 || x > imgDims.x - 2 || y < 2 || y > imgDims.y - 2) return;
 
-	filterDepth(imageData_out, imageData_in, x, y, imgDims);
+	filterDepth(imageData_out, imageData_in, 5.0, 0.025, x, y, imgDims);
 }
 
 __global__ void filterNormals_device(Vector4f *normals_out, const Vector4f *normals_in, Vector2i imgDims)

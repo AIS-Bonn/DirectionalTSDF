@@ -41,17 +41,22 @@ inline float weightNormal(const Vector3f& normalCamera, const Vector3f& viewRay)
 }
 
 _CPU_AND_GPU_CODE_
-inline float depthWeight(float depth, const Vector3f& normalCamera, const Vector3f& viewRay,
-                         float directionWeight, const ITMSceneParams& sceneParams)
+inline float weightVisibility(float distance, const ITMSceneParams& sceneParams)
 {
-	return weightDepth(depth, sceneParams) * weightNormal(normalCamera, viewRay) * directionWeight;
-}
+	// Unity
+//	if (distance >= -1)
+//		return 1;
+//	return 0;
 
-_CPU_AND_GPU_CODE_
-inline float colorWeight(float depth, const Vector3f& normalCamera, const Vector3f& viewRay,
-                         float directionWeight, const ITMSceneParams& sceneParams)
-{
-	return depthWeight(depth, normalCamera, viewRay, directionWeight, sceneParams);
+	// KinectFusion
+//	if (distance > 0)
+//		return 1;
+//	return MAX(0, (1 + distance) / sceneParams.mu);
+
+	// CM3D CopyMe3D: Scanning and Printing Persons in 3D
+	if (distance > 0)
+		return 1;
+	return MAX(0.1, exp(-(distance * distance) / (sceneParams.mu * sceneParams.mu)))	;
 }
 
 _CPU_AND_GPU_CODE_
@@ -67,6 +72,13 @@ inline float DirectionWeight(float angle)
 	width /= M_PI_2;
 	angle /= M_PI_2;
 	return 1 - MIN((MAX(angle, 1 - width) - (1 - width)) / (2 * width - 1), 1);
+}
+
+_CPU_AND_GPU_CODE_
+inline float combinedWeight(float depth, float distance, const Vector3f& normalCamera, const Vector3f& viewRay,
+                            const ITMSceneParams& sceneParams)
+{
+	return weightVisibility(distance, sceneParams) * weightDepth(depth, sceneParams) * weightNormal(normalCamera, viewRay);
 }
 
 } // namespace ITMLib
