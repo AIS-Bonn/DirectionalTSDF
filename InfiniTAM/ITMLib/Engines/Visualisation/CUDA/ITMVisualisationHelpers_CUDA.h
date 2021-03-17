@@ -7,9 +7,10 @@
 
 #include "../Shared/ITMVisualisationEngine_Shared.h"
 #include "../../../Utils/ITMCUDAUtils.h"
+#include "RenderingTSDF_CUDA.cuh"
 
 #include <stdgpu/unordered_set_fwd>
-#include <stdgpu/unordered_map_fwd>
+#include <stdgpu/unordered_map.cuh>
 
 namespace ITMLib
 {
@@ -40,6 +41,354 @@ namespace ITMLib
 	__global__ void findVisibleBlocks_device(stdgpu::unordered_set<Vector3s> visibleBlocks, const ITMHashEntry* hashTable,
 	                                         int noTotalEntries, Matrix4f M, Vector4f projParams, Vector2i imgSize,
 	                                         float voxelSize);
+
+__global__ void findVisibleBlocks2_device(RenderingTSDF tsdf, const ITMHashEntry* hashTable,
+                                         int noTotalEntries, Matrix4f M, Vector4f projParams, Vector2i imgSize,
+                                         float voxelSize);
+
+__device__ inline bool castRayDefaultRenderingTSDF(Vector4f& pt_out,
+                                              float& distance_out,
+                                              int x, int y, RenderingTSDF tsdf,
+                                              Matrix4f invM, Vector4f invProjParams,
+                                              const ITMSceneParams& sceneParams,
+                                              const CONSTPTR(Vector2f)& minMaxImg,
+                                              float maxDistance = -1)
+{
+	Vector4f pt_camera_f;
+	Vector3f pt_block_s, pt_block_e, rayDirection, pt_result;
+	float sdfValue = 1.0f, confidence = 0;
+	float totalLength, stepLength, totalLengthMax, stepScale;
+
+	pt_out = Vector4f(0, 0, 0, 0);
+
+	stepScale = sceneParams.mu * sceneParams.oneOverVoxelSize;
+
+	pt_camera_f = Vector4f(reprojectImagePoint(x, y, minMaxImg.x, invProjParams), 1.0f);
+	totalLength = length(TO_VECTOR3(pt_camera_f)) * sceneParams.oneOverVoxelSize;
+	pt_block_s = TO_VECTOR3(invM * pt_camera_f) * sceneParams.oneOverVoxelSize;
+
+	pt_camera_f = Vector4f(reprojectImagePoint(x, y,
+	                                           maxDistance > 0 ? maxDistance : minMaxImg.y,
+	                                           invProjParams), 1.0f);
+	totalLengthMax = length(TO_VECTOR3(pt_camera_f)) * sceneParams.oneOverVoxelSize;
+	pt_block_e = TO_VECTOR3(invM * pt_camera_f) * sceneParams.oneOverVoxelSize;
+
+	rayDirection = (pt_block_e - pt_block_s).normalised();
+
+	pt_result = pt_block_s;
+
+//	bool secondTry = false;
+//	foo:
+	bool found;
+	float lastSDFValue = sdfValue;
+	while (totalLength < totalLengthMax)
+	{
+		sdfValue = readFromSDF_float_uninterpolated(found, tsdf, pt_result);
+
+		if (!found)
+		{
+			stepLength = SDF_BLOCK_SIZE;
+		} else
+		{
+			if ((sdfValue <= 0.1f) && (sdfValue >= -0.5f))
+			{
+				sdfValue = readFromSDF_float_interpolated(found, tsdf, pt_result);
+			}
+			if (lastSDFValue > 0 and sdfValue <= 0)// and lastSDFValue - sdfValue < 1.5)
+			{
+				break;
+			}
+			stepLength = MAX(sdfValue * stepScale, 1.0f);
+		}
+
+		lastSDFValue = sdfValue;
+		pt_result += stepLength * rayDirection;
+		totalLength += stepLength;
+	}
+
+	if (sdfValue > 0.0f)
+		return false;
+
+// Perform 2 additional steps to get more accurate zero crossing
+	for (int i = 0; i < 2 or (i < 5 and fabs(sdfValue) > 1e-6); i++)
+	{
+		lastSDFValue = sdfValue;
+		stepLength = sdfValue * stepScale;
+		pt_result += stepLength * rayDirection;
+		totalLength += stepLength;
+
+		sdfValue = readWithConfidenceFromSDF_float_interpolated(found, confidence, tsdf, pt_result, sceneParams.maxW);
+
+// Compensate sign hopping with little to no reduction in magnitude (steep angles)
+		float reductionFactor = (fabs(sdfValue) - fabs(lastSDFValue)) / fabs(lastSDFValue);
+// rF < 0: magnitude reduction, rF > 0: magnitude increase
+		if (SIGN(sdfValue) != SIGN(lastSDFValue) and reductionFactor > -0.75)
+		{
+			stepScale *= 0.5;
+		}
+	}
+
+	if (fabs(sdfValue) > 0.1)
+	{
+//		totalLength += 2;
+//		pt_result += 2 * rayDirection;
+//		if (not secondTry)
+//		{
+//			secondTry = true;
+//			goto foo;
+//		}
+		return false;
+	}
+
+	distance_out = totalLength / sceneParams.oneOverVoxelSize;
+// multiply by transition: negative transition <=> negative confidence!
+	pt_out = Vector4f(pt_result, confidence);
+
+	return true;
+}
+
+
+template<class TVoxel, class TIndex>
+__device__ inline bool castRayDefaultCombinedTSDF(DEVICEPTR(Vector4f)& pt_out,
+                                              float& distance_out,
+                                              int x, int y, const CONSTPTR(TVoxel)* voxelData,
+                                              const CONSTPTR(typename TIndex::IndexData)* voxelIndex,
+                                              stdgpu::unordered_map<Vector3s, Vector6f*> combinedTSDF,
+                                              Matrix4f invM, Vector4f invProjParams,
+                                              const ITMSceneParams& sceneParams,
+                                              const CONSTPTR(Vector2f)& minMaxImg,
+                                              const TSDFDirection direction = TSDFDirection::NONE,
+                                              float maxDistance = -1)
+{
+	Vector4f pt_camera_f;
+	Vector3f pt_block_s, pt_block_e, rayDirection, pt_result;
+	int vmIndex = 0;
+	float sdfValue = 1.0f, confidence = 0;
+	float totalLength, stepLength, totalLengthMax, stepScale;
+
+	pt_out = Vector4f(0, 0, 0, 0);
+
+	stepScale = sceneParams.mu * sceneParams.oneOverVoxelSize;
+
+	pt_camera_f = Vector4f(reprojectImagePoint(x, y, minMaxImg.x, invProjParams), 1.0f);
+	totalLength = length(TO_VECTOR3(pt_camera_f)) * sceneParams.oneOverVoxelSize;
+	pt_block_s = TO_VECTOR3(invM * pt_camera_f) * sceneParams.oneOverVoxelSize;
+
+	pt_camera_f = Vector4f(reprojectImagePoint(x, y,
+	                                           maxDistance > 0 ? maxDistance : minMaxImg.y,
+	                                           invProjParams), 1.0f);
+	totalLengthMax = length(TO_VECTOR3(pt_camera_f)) * sceneParams.oneOverVoxelSize;
+	pt_block_e = TO_VECTOR3(invM * pt_camera_f) * sceneParams.oneOverVoxelSize;
+
+	rayDirection = (pt_block_e - pt_block_s).normalised();
+
+	pt_result = pt_block_s;
+
+	typename TIndex::IndexCache cache;
+
+
+//	bool secondTry = false;
+//	foo:
+	float lastSDFValue = sdfValue;
+	while (totalLength < totalLengthMax)
+	{
+		Vector3i voxelIdx((int)ROUND(pt_result.x), (int)ROUND(pt_result.y), (int)ROUND(pt_result.z));
+		Vector3i blockIdx;
+		unsigned short offset;
+		voxelToBlockPosAndOffset(voxelIdx, blockIdx, offset);
+		auto it = combinedTSDF.find(blockIdx.toShort());
+
+		vmIndex = false;
+		if (it != combinedTSDF.end())
+		{
+			const Vector6f& weigths = it->second[offset];
+			float weightSum = 0;
+			float sdfSum = 0;
+			for (int directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
+			{
+				if (weigths.v[directionIdx] <= 0)
+					continue;
+
+				int found;
+				float sdf = readFromSDF_float_uninterpolated(voxelData, voxelIndex, pt_result, TSDFDirection(directionIdx), found, cache);
+
+				if (found)
+				{
+					weightSum += weigths.v[directionIdx];
+					sdfSum += weigths.v[directionIdx] * sdf;
+				}
+			}
+			if (weightSum > 0)
+			{
+				sdfValue = sdfSum / weightSum;
+				vmIndex = true;
+			}
+		}
+//		sdfValue = readFromSDF_float_uninterpolated(voxelData, voxelIndex, pt_result, direction, vmIndex, cache);
+
+		if (!vmIndex)
+		{
+			stepLength = SDF_BLOCK_SIZE;
+		} else
+		{
+			if ((sdfValue <= 0.1f) && (sdfValue >= -0.5f))
+			{
+				vmIndex = false;
+				if (it != combinedTSDF.end())
+				{
+					const Vector6f& weigths = it->second[offset];
+					float weightSum = 0;
+					float sdfSum = 0;
+					for (int directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
+					{
+						if (weigths.v[directionIdx] <= 0)
+							continue;
+
+						int found;
+						float sdf = readFromSDF_float_interpolated(voxelData, voxelIndex, pt_result, TSDFDirection(directionIdx), found, cache);
+
+						if (found)
+						{
+							weightSum += weigths.v[directionIdx];
+							sdfSum += weigths.v[directionIdx] * sdf;
+						}
+					}
+					if (weightSum > 0)
+					{
+						sdfValue = sdfSum / weightSum;
+						vmIndex = true;
+					}
+				}
+//				sdfValue = readFromSDF_float_interpolated(voxelData, voxelIndex, pt_result, direction, vmIndex, cache);
+			}
+			if (lastSDFValue > 0 and sdfValue <= 0)// and lastSDFValue - sdfValue < 1.5)
+			{
+				break;
+			}
+			stepLength = MAX(sdfValue * stepScale, 1.0f);
+		}
+
+		lastSDFValue = sdfValue;
+		pt_result += stepLength * rayDirection;
+		totalLength += stepLength;
+	}
+
+	if (sdfValue > 0.0f)
+		return false;
+
+// Perform 2 additional steps to get more accurate zero crossing
+	for (int i = 0; i < 2 or (i < 5 and fabs(sdfValue) > 1e-6); i++)
+	{
+		lastSDFValue = sdfValue;
+		stepLength = sdfValue * stepScale;
+		pt_result += stepLength * rayDirection;
+		totalLength += stepLength;
+
+//		sdfValue = readWithConfidenceFromSDF_float_interpolated(confidence, voxelData, voxelIndex,
+//		                                                        pt_result, direction, sceneParams.maxW,
+//		                                                        vmIndex, cache);
+		Vector3i voxelIdx((int)ROUND(pt_result.x), (int)ROUND(pt_result.y), (int)ROUND(pt_result.z));
+		Vector3i blockIdx;
+		unsigned short offset;
+		voxelToBlockPosAndOffset(voxelIdx, blockIdx, offset);
+		auto it = combinedTSDF.find(blockIdx.toShort());
+
+		vmIndex = false;
+		if (it != combinedTSDF.end())
+		{
+			const Vector6f& weigths = it->second[offset];
+			float weightSum = 0;
+			float sdfSum = 0;
+			float confidenceSum = 0;
+			for (int directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
+			{
+				if (weigths.v[directionIdx] <= 0)
+					continue;
+
+				int found;
+				float conf;
+				float sdf = readWithConfidenceFromSDF_float_interpolated(conf, voxelData, voxelIndex,
+		                                                        pt_result, TSDFDirection(directionIdx), sceneParams.maxW,
+		                                                        found, cache);
+
+				if (found)
+				{
+					weightSum += weigths.v[directionIdx];
+					sdfSum += weigths.v[directionIdx] * sdf;
+					confidenceSum += weigths.v[directionIdx] * conf;
+				}
+			}
+			if (weightSum > 0)
+			{
+				sdfValue = sdfSum / weightSum;
+				confidence = confidenceSum / weightSum;
+				vmIndex = true;
+			}
+		}
+
+// Compensate sign hopping with little to no reduction in magnitude (steep angles)
+		float reductionFactor = (fabs(sdfValue) - fabs(lastSDFValue)) / fabs(lastSDFValue);
+// rF < 0: magnitude reduction, rF > 0: magnitude increase
+		if (SIGN(sdfValue) != SIGN(lastSDFValue) and reductionFactor > -0.75)
+		{
+			stepScale *= 0.5;
+		}
+	}
+
+	if (fabs(sdfValue) > 0.1)
+	{
+//		totalLength += 2;
+//		pt_result += 2 * rayDirection;
+//		if (not secondTry)
+//		{
+//			secondTry = true;
+//			goto foo;
+//		}
+		return false;
+	}
+
+	distance_out = totalLength / sceneParams.oneOverVoxelSize;
+// multiply by transition: negative transition <=> negative confidence!
+	pt_out = Vector4f(pt_result, confidence);
+
+	return true;
+}
+
+
+template<class TVoxel, class TIndex>
+__global__ void genericRaycastCombinedTSDF_device(Vector4f *out_ptsRay, Vector6f *raycastDirectionalContribution, HashEntryVisibilityType *entriesVisibleType, const TVoxel *voxelData,
+                                                  const typename TIndex::IndexData *voxelIndex,
+                                                  stdgpu::unordered_map<Vector3s, Vector6f*> combinedTSDF,
+                                                  Vector2i imgSize, Matrix4f invM, Vector4f invProjParams,
+                                                  const ITMSceneParams sceneParams, const Vector2f *minmaximg, bool directionalTSDF)
+{
+	int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
+
+	if (x >= imgSize.x || y >= imgSize.y) return;
+
+	int locId = x + y * imgSize.x;
+	int locId2 = (int)floor((float)x / minmaximg_subsample) + (int)floor((float)y / minmaximg_subsample) * imgSize.x;
+
+	float distance;
+	castRayDefaultCombinedTSDF<TVoxel, TIndex>(out_ptsRay[locId], distance, x, y, voxelData, voxelIndex,
+																						combinedTSDF, invM, invProjParams, sceneParams, minmaximg[locId2]);
+}
+
+template<class TVoxel, class TIndex>
+__global__ void genericRaycastRenderingTSDF_device(Vector4f *out_ptsRay, const RenderingTSDF tsdf,
+																									 Vector2i imgSize, Matrix4f invM, Vector4f invProjParams,
+																									 const ITMSceneParams sceneParams, const Vector2f* minmaximg)
+{
+	int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
+
+	if (x >= imgSize.x || y >= imgSize.y) return;
+
+	int locId = x + y * imgSize.x;
+	int locId2 = (int)floor((float)x / minmaximg_subsample) + (int)floor((float)y / minmaximg_subsample) * imgSize.x;
+
+	float distance;
+	castRayDefaultRenderingTSDF(out_ptsRay[locId], distance, x, y, tsdf, invM, invProjParams, sceneParams, minmaximg[locId2]);
+}
 
 template<class TVoxel, class TIndex>
 	__global__ void genericRaycast_device(Vector4f *out_ptsRay, Vector6f *raycastDirectionalContribution, HashEntryVisibilityType *entriesVisibleType, const TVoxel *voxelData,

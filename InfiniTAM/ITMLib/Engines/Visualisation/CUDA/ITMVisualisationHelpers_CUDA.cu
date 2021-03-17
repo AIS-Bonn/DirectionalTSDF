@@ -201,4 +201,28 @@ __global__ void findVisibleBlocks_device(stdgpu::unordered_set<Vector3s> visible
 	}
 }
 
+__global__ void findVisibleBlocks2_device(RenderingTSDF tsdf,
+																					const ITMHashEntry* hashTable, int noTotalEntries, Matrix4f M,
+																					Vector4f projParams, Vector2i imgSize, float voxelSize)
+{
+	int targetIdx = threadIdx.x + blockIdx.x * blockDim.x;
+	if (targetIdx > noTotalEntries - 1) return;
+
+	const ITMHashEntry &hashEntry = hashTable[targetIdx];
+
+	if (hashEntry.ptr < 0)
+		return;
+
+	bool isVisible, isVisibleEnlarged;
+	checkBlockVisibility<false>(isVisible, isVisibleEnlarged, hashEntry.pos, M, projParams, voxelSize, imgSize);
+	if (not isVisible)
+		return;
+
+	if (not tsdf.contains(hashEntry.pos))
+	{
+		tsdf.emplace(hashEntry.pos, nullptr);
+	}
+}
+
+
 } // namespace ITMLib
