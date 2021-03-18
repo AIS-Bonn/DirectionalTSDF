@@ -543,26 +543,27 @@ void ITMVisualisationEngine_CUDA::ComputeRenderingTSDF(const Scene* scene, const
 
 	ITMTimer timer;
 	timer.Tick();
-	stdgpu::index_t n = 100000;
-	stdgpu::unordered_set<Vector3s> visibleBlocks = stdgpu::unordered_set<Vector3s>::createDeviceObject(n);
+//	stdgpu::index_t n = 100000;
+//	stdgpu::unordered_set<Vector3s> visibleBlocks = stdgpu::unordered_set<Vector3s>::createDeviceObject(n);
 
+//	findVisibleBlocks_device << < gridSizeAL, cudaBlockSizeAL >> > (visibleBlocks, hashTable, noTotalEntries,
+//		M, projParams, imgSize, voxelSize);
+//	ORcudaKernelCheck;
+
+	renderingTSDF_device->clear();
 	dim3 cudaBlockSizeAL(256, 1);
 	dim3 gridSizeAL((int) ceil((float) noTotalEntries / (float) cudaBlockSizeAL.x));
-	findVisibleBlocks_device << < gridSizeAL, cudaBlockSizeAL >> > (visibleBlocks, hashTable, noTotalEntries,
-		M, projParams, imgSize, voxelSize);
-	ORcudaKernelCheck;
-
-	if (renderingVoxels_device)
-		destroyDeviceArray<ITMVoxel>(renderingVoxels_device);
-	renderingVoxels_device = createDeviceArray<ITMVoxel>(visibleBlocks.size() * SDF_BLOCK_SIZE3);
-	renderingTSDF_device->clear();
 	findVisibleBlocks2_device << < gridSizeAL, cudaBlockSizeAL >> > (*renderingTSDF_device, hashTable, noTotalEntries,
 		M, projParams, imgSize, voxelSize);
 	ORcudaKernelCheck;
 
-	stdgpu::index_t N = visibleBlocks.size();
+	stdgpu::index_t N = renderingTSDF_device->size();
 	if (N == 0)
 		return;
+
+	if (renderingVoxels_device)
+		destroyDeviceArray<ITMVoxel>(renderingVoxels_device);
+	renderingVoxels_device = createDeviceArray<ITMVoxel>(N * SDF_BLOCK_SIZE3);
 
 	Vector3s* visibleBlocksList = createDeviceArray<Vector3s>(N);
 	thrust::transform(renderingTSDF_device->device_range().begin(), renderingTSDF_device->device_range().end(), stdgpu::device_begin(visibleBlocksList), identityKey<Vector3s, ITMVoxel*>());
@@ -582,7 +583,6 @@ void ITMVisualisationEngine_CUDA::ComputeRenderingTSDF(const Scene* scene, const
 
 	renderNoVisibleEntries = N;
 
-	stdgpu::unordered_set<Vector3s>::destroyDeviceObject(visibleBlocks);
 	destroyDeviceArray<Vector3s>(visibleBlocksList);
 }
 
@@ -707,7 +707,7 @@ void ITMVisualisationEngine_CUDA::CreateExpectedDepths(const Scene* scene, const
 		// fill minmaxData
 		dim3 blockSize(16, 16);
 		dim3 gridSize((unsigned int) ceil((float) noTotalBlocks / 4.0f), 4);
-		fillBlocks_device << < gridSize, blockSize >> > (noTotalBlocks, renderingBlockList_device, imgSize, minmaxData);
+		computeMinMaxData_device << < gridSize, blockSize >> > (noTotalBlocks, renderingBlockList_device, imgSize, minmaxData);
 		ORcudaKernelCheck;
 	}
 }
@@ -896,10 +896,10 @@ void ITMVisualisationEngine_CUDA::RenderImage(const Scene* scene,
 			break;
 		case IITMVisualisationEngine::RENDER_COLOUR_FROM_SDFNORMAL:
 			renderColourFromNormals_device<ITMVoxel, ITMVoxelIndex> << < gridSize, cudaBlockSize >> >
-			                                                                       (outRendering, pointsRay,
-				                                                                       directionalContribution,
-				                                                                       voxelData, voxelIndex,
-				                                                                       imgSize, lightSource);
+			(outRendering, pointsRay,
+				directionalContribution,
+				voxelData, voxelIndex,
+				imgSize, lightSource);
 			ORcudaKernelCheck;
 			break;
 		case IITMVisualisationEngine::RENDER_COLOUR_FROM_IMAGENORMAL:
@@ -951,11 +951,23 @@ void ITMVisualisationEngine_CUDA::RenderImage(const Scene* scene,
 			break;
 		case IITMVisualisationEngine::RENDER_SHADED_GREYSCALE:
 		default:
-			renderGrey_device<ITMVoxel, ITMVoxelIndex> << < gridSize, cudaBlockSize >> > (outRendering, pointsRay,
-				directionalContribution,
-				voxelData, voxelIndex,
-				imgSize, lightSource);
-			ORcudaKernelCheck;
+			if (CombineTSDFForRendering())
+			{
+				ORcudaKernelCheck;
+				renderGrey_device<ITMVoxel, ITMVoxelIndex> << < gridSize, cudaBlockSize >> > (
+					outRendering, pointsRay,
+					*renderingTSDF_device,
+					imgSize, lightSource);
+				ORcudaKernelCheck;
+			}
+			else
+			{
+				renderGrey_device<ITMVoxel, ITMVoxelIndex> << < gridSize, cudaBlockSize >> > (outRendering, pointsRay,
+					directionalContribution,
+					voxelData, voxelIndex,
+					imgSize, lightSource);
+				ORcudaKernelCheck;
+			}
 			break;
 	}
 }

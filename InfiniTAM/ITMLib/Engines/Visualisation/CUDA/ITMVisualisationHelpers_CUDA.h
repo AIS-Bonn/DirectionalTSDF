@@ -29,8 +29,8 @@ namespace ITMLib
 		const Matrix4f pose_M, const Vector4f intrinsics, const Vector2i imgSize, float voxelSize, RenderingBlock *renderingBlocks,
 		uint *noTotalBlocks);
 
-	__global__ void fillBlocks_device(uint noTotalBlocks, const RenderingBlock *renderingBlocks,
-		Vector2i imgSize, Vector2f *minmaxData);
+	__global__ void computeMinMaxData_device(uint noTotalBlocks, const RenderingBlock *renderingBlocks,
+	                                         Vector2i imgSize, Vector2f *minmaxData);
 
 	__global__ void findMissingPoints_device(int *fwdProjMissingPoints, uint *noMissingPoints, const Vector2f *minmaximg,
 		Vector4f *forwardProjection, float *currentDepth, Vector2i imgSize);
@@ -504,7 +504,53 @@ __global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, Vecto
 		processPixelConfidence_ImageNormals<true, flipNormals>(outRendering, ptsRay, normalsRay, imgSize, x, y, sceneParams, lightSource);
 	}
 
-	template<class TVoxel, class TIndex>
+template<class TVoxel, class TIndex>
+__device__ inline void computeNormalAndAngle(THREADPTR(bool)& foundPoint, const THREADPTR(Vector3f)& point,
+                                                     const RenderingTSDF tsdf,
+                                                     const THREADPTR(Vector3f)& lightSource,
+                                                     THREADPTR(Vector3f)& outNormal, THREADPTR(float)& angle)
+{
+	if (!foundPoint) return;
+
+	outNormal = computeSingleNormalFromSDF(tsdf, point).normalised();
+
+	Vector3f lightDirection = (lightSource - point).normalised();
+	angle = dot(outNormal, lightDirection);
+	if (!(angle > 0.0)) foundPoint = false;
+}
+
+template<class TVoxel, class TIndex>
+__device__ inline void processPixelGrey_SDFNormals(DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point,
+                                                           bool foundPoint, const RenderingTSDF tsdf,
+                                                           Vector3f lightSource)
+{
+	Vector3f outNormal;
+	float angle;
+
+	computeNormalAndAngle<TVoxel, TIndex>(foundPoint, point, tsdf, lightSource, outNormal, angle);
+
+	if (foundPoint) drawPixelGrey(outRendering, angle);
+	else outRendering = Vector4u((uchar) 0);
+}
+
+template<class TVoxel, class TIndex>
+__global__ void renderGrey_device(Vector4u *outRendering, const Vector4f *ptsRay,
+                                  const RenderingTSDF tsdf, Vector2i imgSize, Vector3f lightSource)
+{
+	int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
+
+	if (x >= imgSize.x || y >= imgSize.y) return;
+
+	int locId = x + y * imgSize.x;
+
+	Vector4f ptRay = ptsRay[locId];
+
+	processPixelGrey_SDFNormals<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
+																							ptRay.w > 0, tsdf, lightSource);
+}
+
+
+template<class TVoxel, class TIndex>
 	__global__ void renderGrey_device(Vector4u *outRendering, const Vector4f *ptsRay,
 		const Vector6f *directionalContribution, const TVoxel *voxelData,
 		const typename TIndex::IndexData *voxelIndex, Vector2i imgSize, Vector3f lightSource)
@@ -526,7 +572,7 @@ __global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, Vecto
 			                                            nullptr, ptRay.w > 0, voxelData, voxelIndex, lightSource);
 	}
 
-	template<class TVoxel, class TIndex>
+template<class TVoxel, class TIndex>
 	__global__ void renderColourFromNormals_device(Vector4u *outRendering, const Vector4f *ptsRay,
 	                                               const Vector6f *directionalContribution, const TVoxel *voxelData,
 	                                               const typename TIndex::IndexData *voxelIndex, Vector2i imgSize, Vector3f lightSource)

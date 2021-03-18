@@ -158,4 +158,160 @@ readWithConfidenceFromSDF_float_interpolated(bool found, float& confidence, cons
 	return ITMVoxel::valueToFloat((1.0f - coeff.z) * res1 + coeff.z * res2);
 }
 
+#define ReadVoxelSDFDiscardZero(dst, pos) voxel = readVoxel(found, tsdf, pos); if (voxel.w_depth == 0) return Vector3f(0, 0, 0); dst = voxel.sdf;
+/**
+ * Computes raw (unnormalized) gradient from neighboring voxels
+ * @tparam TVoxel
+ * @tparam TIndex
+ * @param voxelData
+ * @param voxelIndex
+ * @param point
+ * @param direction
+ * @return
+ */
+__device__ inline Vector3f computeGradientFromSDF(const RenderingTSDF tsdf, const Vector3f& point)
+{
+	bool found;
+
+	ITMVoxel voxel;
+
+	Vector3f ret(0, 0, 0);
+	Vector3f coeff; Vector3i pos; TO_INT_FLOOR3(pos, coeff, point);
+	Vector3f ncoeff(1.0f - coeff.x, 1.0f - coeff.y, 1.0f - coeff.z);
+
+	// all 8 values are going to be reused several times
+	Vector4f front, back;
+	ReadVoxelSDFDiscardZero(front.x, pos + Vector3i(0, 0, 0));
+	ReadVoxelSDFDiscardZero(front.y, pos + Vector3i(1, 0, 0));
+	ReadVoxelSDFDiscardZero(front.z, pos + Vector3i(0, 1, 0));
+	ReadVoxelSDFDiscardZero(front.w, pos + Vector3i(1, 1, 0));
+	ReadVoxelSDFDiscardZero(back.x, pos + Vector3i(0, 0, 1));
+	ReadVoxelSDFDiscardZero(back.y, pos + Vector3i(1, 0, 1));
+	ReadVoxelSDFDiscardZero(back.z, pos + Vector3i(0, 1, 1));
+	ReadVoxelSDFDiscardZero(back.w, pos + Vector3i(1, 1, 1));
+
+	Vector4f tmp;
+	float p1, p2, v1;
+	// gradient x
+	p1 = front.x * ncoeff.y * ncoeff.z +
+	     front.z *  coeff.y * ncoeff.z +
+	     back.x  * ncoeff.y *  coeff.z +
+	     back.z  *  coeff.y *  coeff.z;
+	ReadVoxelSDFDiscardZero(tmp.x, pos + Vector3i(-1, 0, 0));
+	ReadVoxelSDFDiscardZero(tmp.y, pos + Vector3i(-1, 1, 0));
+	ReadVoxelSDFDiscardZero(tmp.z, pos + Vector3i(-1, 0, 1));
+	ReadVoxelSDFDiscardZero(tmp.w, pos + Vector3i(-1, 1, 1));
+	p2 = tmp.x * ncoeff.y * ncoeff.z +
+	     tmp.y *  coeff.y * ncoeff.z +
+	     tmp.z * ncoeff.y *  coeff.z +
+	     tmp.w *  coeff.y *  coeff.z;
+	v1 = p1 * coeff.x + p2 * ncoeff.x;
+
+	p1 = front.y * ncoeff.y * ncoeff.z +
+	     front.w *  coeff.y * ncoeff.z +
+	     back.y  * ncoeff.y *  coeff.z +
+	     back.w  *  coeff.y *  coeff.z;
+	ReadVoxelSDFDiscardZero(tmp.x, pos + Vector3i(2, 0, 0));
+	ReadVoxelSDFDiscardZero(tmp.y, pos + Vector3i(2, 1, 0));
+	ReadVoxelSDFDiscardZero(tmp.z, pos + Vector3i(2, 0, 1));
+	ReadVoxelSDFDiscardZero(tmp.w, pos + Vector3i(2, 1, 1));
+	p2 = tmp.x * ncoeff.y * ncoeff.z +
+	     tmp.y *  coeff.y * ncoeff.z +
+	     tmp.z * ncoeff.y *  coeff.z +
+	     tmp.w *  coeff.y *  coeff.z;
+
+	ret.x = ITMVoxel::valueToFloat(p1 * ncoeff.x + p2 * coeff.x - v1);
+
+	// gradient y
+	p1 = front.x * ncoeff.x * ncoeff.z +
+	     front.y *  coeff.x * ncoeff.z +
+	     back.x  * ncoeff.x *  coeff.z +
+	     back.y  *  coeff.x *  coeff.z;
+	ReadVoxelSDFDiscardZero(tmp.x, pos + Vector3i(0, -1, 0));
+	ReadVoxelSDFDiscardZero(tmp.y, pos + Vector3i(1, -1, 0));
+	ReadVoxelSDFDiscardZero(tmp.z, pos + Vector3i(0, -1, 1));
+	ReadVoxelSDFDiscardZero(tmp.w, pos + Vector3i(1, -1, 1));
+	p2 = tmp.x * ncoeff.x * ncoeff.z +
+	     tmp.y *  coeff.x * ncoeff.z +
+	     tmp.z * ncoeff.x *  coeff.z +
+	     tmp.w *  coeff.x *  coeff.z;
+	v1 = p1 * coeff.y + p2 * ncoeff.y;
+
+	p1 = front.z * ncoeff.x * ncoeff.z +
+	     front.w *  coeff.x * ncoeff.z +
+	     back.z  * ncoeff.x *  coeff.z +
+	     back.w  *  coeff.x *  coeff.z;
+	ReadVoxelSDFDiscardZero(tmp.x, pos + Vector3i(0, 2, 0));
+	ReadVoxelSDFDiscardZero(tmp.y, pos + Vector3i(1, 2, 0));
+	ReadVoxelSDFDiscardZero(tmp.z, pos + Vector3i(0, 2, 1));
+	ReadVoxelSDFDiscardZero(tmp.w, pos + Vector3i(1, 2, 1));
+	p2 = tmp.x * ncoeff.x * ncoeff.z +
+	     tmp.y *  coeff.x * ncoeff.z +
+	     tmp.z * ncoeff.x *  coeff.z +
+	     tmp.w *  coeff.x *  coeff.z;
+
+	ret.y = ITMVoxel::valueToFloat(p1 * ncoeff.y + p2 * coeff.y - v1);
+
+	// gradient z
+	p1 = front.x * ncoeff.x * ncoeff.y +
+	     front.y *  coeff.x * ncoeff.y +
+	     front.z * ncoeff.x *  coeff.y +
+	     front.w *  coeff.x *  coeff.y;
+	ReadVoxelSDFDiscardZero(tmp.x, pos + Vector3i(0, 0, -1));
+	ReadVoxelSDFDiscardZero(tmp.y, pos + Vector3i(1, 0, -1));
+	ReadVoxelSDFDiscardZero(tmp.z, pos + Vector3i(0, 1, -1));
+	ReadVoxelSDFDiscardZero(tmp.w, pos + Vector3i(1, 1, -1));
+	p2 = tmp.x * ncoeff.x * ncoeff.y +
+	     tmp.y *  coeff.x * ncoeff.y +
+	     tmp.z * ncoeff.x *  coeff.y +
+	     tmp.w *  coeff.x *  coeff.y;
+	v1 = p1 * coeff.z + p2 * ncoeff.z;
+
+	p1 = back.x * ncoeff.x * ncoeff.y +
+	     back.y *  coeff.x * ncoeff.y +
+	     back.z * ncoeff.x *  coeff.y +
+	     back.w *  coeff.x *  coeff.y;
+	ReadVoxelSDFDiscardZero(tmp.x, pos + Vector3i(0, 0, 2));
+	ReadVoxelSDFDiscardZero(tmp.y, pos + Vector3i(1, 0, 2));
+	ReadVoxelSDFDiscardZero(tmp.z, pos + Vector3i(0, 1, 2));
+	ReadVoxelSDFDiscardZero(tmp.w, pos + Vector3i(1, 1, 2));
+	p2 = tmp.x * ncoeff.x * ncoeff.y +
+	     tmp.y *  coeff.x * ncoeff.y +
+	     tmp.z * ncoeff.x *  coeff.y +
+	     tmp.w *  coeff.x *  coeff.y;
+
+	ret.z = ITMVoxel::valueToFloat(p1 * ncoeff.z + p2 * coeff.z - v1);
+	return ret;
+}
+
+/**
+ * @tparam filter
+ * @tparam TVoxel
+ * @tparam TIndex
+ * @param voxelData
+ * @param voxelIndex
+ * @param point
+ * @param direction
+ * @param tau = voxelSize / truncationDistance (normalized value per 1 voxel). If 0 don't filter
+ * @return
+ */
+__device__ inline Vector3f computeSingleNormalFromSDF(const RenderingTSDF tsdf, const Vector3f &point,
+                                                              const float tau=0.0)
+{
+	Vector3f gradient = computeGradientFromSDF(tsdf, point);
+
+	if (gradient == Vector3f(0, 0, 0))
+		return gradient;
+
+	if (tau > 0)
+	{
+		// Check each direction maximum 2 * truncationDistance / voxelSize + margin
+		if (abs(gradient.x) > 2.4 * tau or abs(gradient.y) > 2.4 * tau or abs(gradient.z) > 2.4 * tau) return Vector3f(0, 0, 0);
+		// Check, if gradient too unreliable (very close values in neighboring voxels). minimum expected length: (2 * tau)^2
+		if (ORUtils::dot(gradient, gradient) < 2 * (tau * tau)) return Vector3f(0, 0, 0);
+	}
+
+	return gradient.normalised();
+}
+
 }
