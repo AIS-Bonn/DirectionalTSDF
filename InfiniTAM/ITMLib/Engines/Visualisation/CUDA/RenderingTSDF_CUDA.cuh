@@ -314,4 +314,38 @@ __device__ inline Vector3f computeSingleNormalFromSDF(const RenderingTSDF tsdf, 
 	return gradient.normalised();
 }
 
+__device__ inline Vector4f readFromSDF_color4u_interpolated(const RenderingTSDF tsdf, const Vector3f & point)
+{
+	ITMVoxel voxel;
+	Vector3f color(0.0f); float w_color = 0;
+	Vector3f coeff; Vector3i pos; TO_INT_FLOOR3(pos, coeff, point);
+
+	bool found;
+	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 0, 0));
+	color += (1.0f - coeff.x) * (1.0f - coeff.y) * (1.0f - coeff.z) * voxel.clr.toFloat();
+
+	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 0, 0));
+	color += (coeff.x) * (1.0f - coeff.y) * (1.0f - coeff.z) * voxel.clr.toFloat();
+
+	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 1, 0));
+	color += (1.0f - coeff.x) * (coeff.y) * (1.0f - coeff.z) * voxel.clr.toFloat();
+
+	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 1, 0));
+	color += (coeff.x) * (coeff.y) * (1.0f - coeff.z) * voxel.clr.toFloat();
+
+	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 0, 1));
+	color += (1.0f - coeff.x) * (1.0f - coeff.y) * coeff.z * voxel.clr.toFloat();
+
+	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 0, 1));
+	color += (coeff.x) * (1.0f - coeff.y) * coeff.z * voxel.clr.toFloat();
+
+	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 1, 1));
+	color += (1.0f - coeff.x) * (coeff.y) * coeff.z * voxel.clr.toFloat();
+
+	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 1, 1));
+	color += (coeff.x) * (coeff.y) * coeff.z * voxel.clr.toFloat();
+
+	return Vector4f(color / 255.0f, 255.0f);
+}
+
 }

@@ -38,11 +38,7 @@ namespace ITMLib
 	__global__ void forwardProject_device(Vector4f *forwardProjection, const Vector4f *pointsRay, Vector2i imgSize, Matrix4f M,
 		Vector4f projParams, float voxelSize);
 
-	__global__ void findVisibleBlocks_device(stdgpu::unordered_set<Vector3s> visibleBlocks, const ITMHashEntry* hashTable,
-	                                         int noTotalEntries, Matrix4f M, Vector4f projParams, Vector2i imgSize,
-	                                         float voxelSize);
-
-__global__ void findVisibleBlocks2_device(RenderingTSDF tsdf, const ITMHashEntry* hashTable,
+__global__ void findVisibleBlocks_device(RenderingTSDF tsdf, const ITMHashEntry* hashTable,
                                          int noTotalEntries, Matrix4f M, Vector4f projParams, Vector2i imgSize,
                                          float voxelSize);
 
@@ -676,6 +672,43 @@ template<class TVoxel, class TIndex>
 			}
 		}
 	}
+
+template<class TVoxel, class TIndex>
+__device__ inline void processPixelColour(
+	DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point, bool foundPoint, const RenderingTSDF tsdf, const Vector3f lightSource)
+{
+	float angle;
+	Vector3f outNormal;
+//	computeNormalAndAngle<TVoxel, TIndex>(foundPoint, point, directionalContribution, voxelData, voxelIndex,
+//	                                      lightSource, outNormal, angle);
+	angle =1;
+
+	if (foundPoint)
+	{
+		Vector4f clr = readFromSDF_color4u_interpolated(tsdf, point);
+		outRendering.x = (uchar) (clr.x * 255.0f);
+		outRendering.y = (uchar) (clr.y * 255.0f);
+		outRendering.z = (uchar) (clr.z * 255.0f);
+		outRendering.w = 255;
+
+	} else outRendering = Vector4u((uchar) 0);
+}
+
+template<class TVoxel, class TIndex>
+__global__ void renderColour_device(Vector4u *outRendering, const Vector4f *ptsRay,
+                                    const RenderingTSDF tsdf, Vector2i imgSize, const Vector3f lightSource)
+{
+	int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
+
+	if (x >= imgSize.x || y >= imgSize.y) return;
+
+	int locId = x + y * imgSize.x;
+
+	Vector4f ptRay = ptsRay[locId];
+
+	processPixelColour<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(), ptRay.w > 0,
+																		 tsdf, lightSource);
+}
 
 	template<class TVoxel, class TIndex>
 	__global__ void renderColour_device(Vector4u *outRendering, const Vector4f *ptsRay, const Vector6f *directionalContribution,

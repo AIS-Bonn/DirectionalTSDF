@@ -180,30 +180,9 @@ __global__ void forwardProject_device(Vector4f *forwardProjection, const Vector4
 	if (locId_new >= 0) forwardProjection[locId_new] = pixel;
 }
 
-__global__ void findVisibleBlocks_device(stdgpu::unordered_set<Vector3s> visibleBlocks, const ITMHashEntry* hashTable,
-                                         int noTotalEntries, Matrix4f M, Vector4f projParams, Vector2i imgSize,
-                                         float voxelSize)
-{
-	int targetIdx = threadIdx.x + blockIdx.x * blockDim.x;
-	if (targetIdx > noTotalEntries - 1) return;
-
-	const ITMHashEntry &hashEntry = hashTable[targetIdx];
-
-	if (hashEntry.ptr >= 0 and not visibleBlocks.contains(hashEntry.pos))
-	{
-		bool isVisible, isVisibleEnlarged;
-		checkBlockVisibility<false>(isVisible, isVisibleEnlarged, hashEntry.pos, M, projParams, voxelSize, imgSize);
-
-		if (isVisible)
-		{
-			visibleBlocks.insert(hashEntry.pos);
-		}
-	}
-}
-
-__global__ void findVisibleBlocks2_device(RenderingTSDF tsdf,
-																					const ITMHashEntry* hashTable, int noTotalEntries, Matrix4f M,
-																					Vector4f projParams, Vector2i imgSize, float voxelSize)
+__global__ void findVisibleBlocks_device(RenderingTSDF tsdf,
+                                         const ITMHashEntry* hashTable, int noTotalEntries, Matrix4f M,
+                                         Vector4f projParams, Vector2i imgSize, float voxelSize)
 {
 	int targetIdx = threadIdx.x + blockIdx.x * blockDim.x;
 	if (targetIdx > noTotalEntries - 1) return;

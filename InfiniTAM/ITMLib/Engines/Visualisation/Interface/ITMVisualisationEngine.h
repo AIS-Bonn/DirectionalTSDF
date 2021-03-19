@@ -73,7 +73,7 @@ class ITMVisualisationEngine : public IITMVisualisationEngine
 public:
 	explicit ITMVisualisationEngine(std::shared_ptr<const ITMLibSettings> settings)
 		: settings(std::move(settings)),
-		renderIndex(nullptr), renderVBA(nullptr), renderVisibleEntryIDs(nullptr), renderNoVisibleEntries(0)
+		renderIndex(nullptr), renderVBA(nullptr)
 	{}
 
 	virtual ~ITMVisualisationEngine() = default;
@@ -152,10 +152,9 @@ public:
 protected:
 	std::shared_ptr<const ITMLibSettings> settings;
 
+	// FIXME: Deprecated, remove
 	ITMVoxelBlockHash* renderIndex;
 	ITMLocalVBA<ITMVoxel>* renderVBA;
-	ORUtils::MemoryBlock<int> *renderVisibleEntryIDs;
-	int renderNoVisibleEntries;
 
 	int frameCounter = 0;
 	int lastTSDFCombineFrameCounter = 0;
