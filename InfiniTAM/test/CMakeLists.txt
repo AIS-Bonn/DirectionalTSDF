@@ -8,3 +8,12 @@ set(TEST_SOURCES
   )
 add_executable(unit_tests ${TEST_SOURCES})
 target_link_libraries(unit_tests Catch ITMLib)
+
+include(${PROJECT_SOURCE_DIR}/cmake/UseCUDA.cmake)
+include(${PROJECT_SOURCE_DIR}/cmake/UsePNG.cmake)
+
+set(targetname stdgpu_benchmark)
+cuda_add_executable(${targetname} stdgpu_benchmark.cu)
+target_link_libraries(${targetname} ITMLib stdgpu::stdgpu )
+target_link_libraries(${targetname} InputSource ITMLib MiniSlamGraphLib ORUtils FernRelocLib stdc++fs)
+include(${PROJECT_SOURCE_DIR}/cmake/LinkPNG.cmake)
