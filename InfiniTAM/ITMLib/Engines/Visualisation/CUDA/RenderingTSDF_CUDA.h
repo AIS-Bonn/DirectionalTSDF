@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <ITMLibDefines.h>
+#include <ITMLib/ITMLibDefines.h>
 #include <stdgpu/unordered_map_fwd>
 #include <ORUtils/Vector.h>
 
