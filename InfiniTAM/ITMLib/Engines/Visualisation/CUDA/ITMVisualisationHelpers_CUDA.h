@@ -44,7 +44,7 @@ __global__ void findVisibleBlocks_device(RenderingTSDF tsdf, const ITMHashEntry*
 
 __device__ inline bool castRayDefaultRenderingTSDF(Vector4f& pt_out,
                                               float& distance_out,
-                                              int x, int y, RenderingTSDF tsdf,
+                                              int x, int y, const RenderingTSDF& tsdf,
                                               Matrix4f invM, Vector4f invProjParams,
                                               const ITMSceneParams& sceneParams,
                                               const CONSTPTR(Vector2f)& minMaxImg,
@@ -502,7 +502,7 @@ __global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, Vecto
 
 template<class TVoxel, class TIndex>
 __device__ inline void computeNormalAndAngle(THREADPTR(bool)& foundPoint, const THREADPTR(Vector3f)& point,
-                                                     const RenderingTSDF tsdf,
+                                                     const RenderingTSDF& tsdf,
                                                      const THREADPTR(Vector3f)& lightSource,
                                                      THREADPTR(Vector3f)& outNormal, THREADPTR(float)& angle)
 {
@@ -517,7 +517,7 @@ __device__ inline void computeNormalAndAngle(THREADPTR(bool)& foundPoint, const 
 
 template<class TVoxel, class TIndex>
 __device__ inline void processPixelGrey_SDFNormals(DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point,
-                                                           bool foundPoint, const RenderingTSDF tsdf,
+                                                           bool foundPoint, const RenderingTSDF& tsdf,
                                                            Vector3f lightSource)
 {
 	Vector3f outNormal;
@@ -675,7 +675,7 @@ template<class TVoxel, class TIndex>
 
 template<class TVoxel, class TIndex>
 __device__ inline void processPixelColour(
-	DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point, bool foundPoint, const RenderingTSDF tsdf, const Vector3f lightSource)
+	DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point, bool foundPoint, const RenderingTSDF& tsdf, const Vector3f lightSource)
 {
 	float angle;
 	Vector3f outNormal;

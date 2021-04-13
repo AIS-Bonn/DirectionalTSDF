@@ -383,6 +383,9 @@ Objects/Scene/ITMSummingVoxel.h
   Engines/Reconstruction/Shared/ITMSummingVoxelMap.h
 Objects/Scene/ITMVoxelBlockHash.h
 Objects/Scene/ITMVoxelTypes.h
+Objects/Scene/TSDF.h
+Objects/Scene/TSDF_CPU.h
+Objects/Scene/TSDF_CUDA.h
 )
 
 ##

@@ -64,34 +64,34 @@ __device__ inline float readFromSDF_float_interpolated(bool& found, const Render
 	ITMVoxel voxel;
 
 	found = false;
-	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 0, 0), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 0, 0), nullptr);
 	v1 = voxel.sdf;
 	DISCARD_ZERO_WEIGHT
-	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 0, 0), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 0, 0), nullptr);
 	v2 = voxel.sdf;
 	DISCARD_ZERO_WEIGHT
 	res1 = (1.0f - coeff.x) * v1 + coeff.x * v2;
 
-	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 1, 0), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 1, 0), nullptr);
 	v1 = voxel.sdf;
 	DISCARD_ZERO_WEIGHT
-	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 1, 0), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 1, 0), nullptr);
 	v2 = voxel.sdf;
 	DISCARD_ZERO_WEIGHT
 	res1 = (1.0f - coeff.y) * res1 + coeff.y * ((1.0f - coeff.x) * v1 + coeff.x * v2);
 
-	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 0, 1), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 0, 1), nullptr);
 	v1 = voxel.sdf;
 	DISCARD_ZERO_WEIGHT
-	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 0, 1), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 0, 1), nullptr);
 	v2 = voxel.sdf;
 	DISCARD_ZERO_WEIGHT
 	res2 = (1.0f - coeff.x) * v1 + coeff.x * v2;
 
-	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 1, 1), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 1, 1), nullptr);
 	v1 = voxel.sdf;
 	DISCARD_ZERO_WEIGHT
-	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 1, 1), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 1, 1), nullptr);
 	v2 = voxel.sdf;
 	DISCARD_ZERO_WEIGHT
 	res2 = (1.0f - coeff.y) * res2 + coeff.y * ((1.0f - coeff.x) * v1 + coeff.x * v2);
@@ -128,44 +128,44 @@ readWithConfidenceFromSDF_float_interpolated(bool found, float& confidence, cons
 
 	found = false;
 	confidence = 0;
-	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 0, 0), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 0, 0), nullptr);
 	v1 = voxel.sdf;
 	v1_c = voxel.w_depth;
 	DISCARD_ZERO_WEIGHT
-	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 0, 0), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 0, 0), nullptr);
 	v2 = voxel.sdf;
 	v2_c = voxel.w_depth;
 	DISCARD_ZERO_WEIGHT
 	res1 = (1.0f - coeff.x) * v1 + coeff.x * v2;
 	res1_c = (1.0f - coeff.x) * v1_c + coeff.x * v2_c;
 
-	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 1, 0), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 1, 0), nullptr);
 	v1 = voxel.sdf;
 	v1_c = voxel.w_depth;
 	DISCARD_ZERO_WEIGHT
-	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 1, 0), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 1, 0), nullptr);
 	v2 = voxel.sdf;
 	v2_c = voxel.w_depth;
 	DISCARD_ZERO_WEIGHT
 	res1 = (1.0f - coeff.y) * res1 + coeff.y * ((1.0f - coeff.x) * v1 + coeff.x * v2);
 	res1_c = (1.0f - coeff.y) * res1_c + coeff.y * ((1.0f - coeff.x) * v1_c + coeff.x * v2_c);
 
-	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 0, 1), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 0, 1), nullptr);
 	v1 = voxel.sdf;
 	v1_c = voxel.w_depth;
 	DISCARD_ZERO_WEIGHT
-	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 0, 1), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 0, 1), nullptr);
 	v2 = voxel.sdf;
 	v2_c = voxel.w_depth;
 	DISCARD_ZERO_WEIGHT
 	res2 = (1.0f - coeff.x) * v1 + coeff.x * v2;
 	res2_c = (1.0f - coeff.x) * v1_c + coeff.x * v2_c;
 
-	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 1, 1), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 1, 1), nullptr);
 	v1 = voxel.sdf;
 	v1_c = voxel.w_depth;
 	DISCARD_ZERO_WEIGHT
-	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 1, 1), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 1, 1), nullptr);
 	v2 = voxel.sdf;
 	v2_c = voxel.w_depth;
 	DISCARD_ZERO_WEIGHT
@@ -179,7 +179,7 @@ readWithConfidenceFromSDF_float_interpolated(bool found, float& confidence, cons
 	return ITMVoxel::valueToFloat((1.0f - coeff.z) * res1 + coeff.z * res2);
 }
 
-#define ReadVoxelSDFDiscardZero(dst, pos) voxel = readVoxel(found, tsdf, pos, &cache); if (voxel.w_depth == 0) return Vector3f(0, 0, 0); dst = voxel.sdf;
+#define ReadVoxelSDFDiscardZero(dst, pos) voxel = readVoxel(found, tsdf, pos, nullptr); if (voxel.w_depth == 0) return Vector3f(0, 0, 0); dst = voxel.sdf;
 /**
  * Computes raw (unnormalized) gradient from neighboring voxels
  * @tparam TVoxel
@@ -344,28 +344,28 @@ __device__ inline Vector4f readFromSDF_color4u_interpolated(const RenderingTSDF&
 	Vector3f coeff; Vector3i pos; TO_INT_FLOOR3(pos, coeff, point);
 
 	bool found;
-	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 0, 0), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 0, 0), nullptr);
 	color += (1.0f - coeff.x) * (1.0f - coeff.y) * (1.0f - coeff.z) * voxel.clr.toFloat();
 
-	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 0, 0), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 0, 0), nullptr);
 	color += (coeff.x) * (1.0f - coeff.y) * (1.0f - coeff.z) * voxel.clr.toFloat();
 
-	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 1, 0), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 1, 0), nullptr);
 	color += (1.0f - coeff.x) * (coeff.y) * (1.0f - coeff.z) * voxel.clr.toFloat();
 
-	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 1, 0), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 1, 0), nullptr);
 	color += (coeff.x) * (coeff.y) * (1.0f - coeff.z) * voxel.clr.toFloat();
 
-	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 0, 1), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 0, 1), nullptr);
 	color += (1.0f - coeff.x) * (1.0f - coeff.y) * coeff.z * voxel.clr.toFloat();
 
-	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 0, 1), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 0, 1), nullptr);
 	color += (coeff.x) * (1.0f - coeff.y) * coeff.z * voxel.clr.toFloat();
 
-	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 1, 1), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(0, 1, 1), nullptr);
 	color += (1.0f - coeff.x) * (coeff.y) * coeff.z * voxel.clr.toFloat();
 
-	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 1, 1), &cache);
+	voxel = readVoxel(found, tsdf, pos + Vector3i(1, 1, 1), nullptr);
 	color += (coeff.x) * (coeff.y) * coeff.z * voxel.clr.toFloat();
 
 	return Vector4f(color / 255.0f, 255.0f);

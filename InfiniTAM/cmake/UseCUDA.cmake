@@ -21,6 +21,8 @@ IF(WITH_CUDA)
   # Enable fast math.
   SET(CUDA_NVCC_FLAGS --use_fast_math ; ${CUDA_NVCC_FLAGS})
 
+#  SET(CUDA_NVCC_FLAGS -O0 -Xptxas -O0; ${CUDA_NVCC_FLAGS})
+
   # Enable debugging
 #  SET(CUDA_NVCC_FLAGS --device-debug; ${CUDA_NVCC_FLAGS})
 

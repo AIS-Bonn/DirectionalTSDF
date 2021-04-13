@@ -5,9 +5,11 @@ target_include_directories(Catch INTERFACE ${CATCH_INCLUDE_DIR})
 set(TEST_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/test_block_traversal.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/test_tsdf.cu
   )
-add_executable(unit_tests ${TEST_SOURCES})
-target_link_libraries(unit_tests Catch ITMLib)
+#add_executable(unit_tests ${TEST_SOURCES})
+cuda_add_executable(unit_tests ${TEST_SOURCES})
+target_link_libraries(unit_tests Catch InputSource ITMLib MiniSlamGraphLib ORUtils FernRelocLib stdc++fs)
 
 include(${PROJECT_SOURCE_DIR}/cmake/UseCUDA.cmake)
 include(${PROJECT_SOURCE_DIR}/cmake/UsePNG.cmake)
