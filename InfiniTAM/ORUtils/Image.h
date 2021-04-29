@@ -60,7 +60,7 @@ namespace ORUtils
 			this->noDims = noDims;
 		}
 
-		/** Resize an image, losing all old image data.
+		/** resize an image, losing all old image data.
 		Essentially any previously allocated data is
 		released, new memory is allocated.
 		*/

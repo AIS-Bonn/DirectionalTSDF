@@ -28,7 +28,7 @@ struct ITMHashEntry
 	*/
 	int ptr;
 
-	/** Corresponding TSDF direction. */
+	/** Corresponding TSDFBase direction. */
 	uint8_t direction;
 
 	_CPU_AND_GPU_CODE_ bool IsValid() const {

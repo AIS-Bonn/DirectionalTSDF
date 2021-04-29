@@ -124,7 +124,7 @@ namespace ORUtils
 #endif
 		}
 
-		/** Resize a memory block, losing all old data.
+		/** resize a memory block, losing all old data.
 		Essentially any previously allocated data is
 		released, new memory is allocated.
 		*/

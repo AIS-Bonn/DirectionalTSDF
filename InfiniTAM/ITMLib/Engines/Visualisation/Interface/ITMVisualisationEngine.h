@@ -160,7 +160,7 @@ protected:
 	int lastTSDFCombineFrameCounter = 0;
 	ORUtils::SE3Pose lastTSDFCombinePose;
 
-	/** True, if directional TSDF is combined to default TSDF for rendering
+	/** True, if directional TSDFBase is combined to default TSDFBase for rendering
 	 * @return
 	 */
 	bool CombineTSDFForRendering() const

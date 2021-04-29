@@ -307,9 +307,7 @@ Engines/Visualisation/CUDA/ITMVisualisationEngine_CUDA.tcu
 SET(ITMLIB_ENGINES_VISUALISATION_CUDA_HEADERS
 Engines/Visualisation/CUDA/ITMMultiVisualisationEngine_CUDA.h
 Engines/Visualisation/CUDA/ITMSurfelVisualisationEngine_CUDA.h
-Engines/Visualisation/CUDA/RenderingTSDF_CUDA.h
-Engines/Visualisation/CUDA/RenderingTSDF_CUDA.cuh
-Engines/Visualisation/CUDA/ITMVisualisationHelpers_CUDA.h
+  Engines/Visualisation/CUDA/ITMVisualisationHelpers_CUDA.h
 Engines/Visualisation/CUDA/ITMVisualisationEngine_CUDA.h
 )
 
@@ -377,10 +375,11 @@ Objects/Scene/ITMLocalVBA.h
 Objects/Scene/ITMMultiSceneAccess.h
 Objects/Scene/ITMRepresentationAccess.h
 Objects/Scene/ITMScene.h
+Objects/Scene/ITMScene.cu
 Objects/Scene/ITMSurfelScene.h
 Objects/Scene/ITMSurfelTypes.h
 Objects/Scene/ITMSummingVoxel.h
-  Engines/Reconstruction/Shared/ITMSummingVoxelMap.h
+Engines/Reconstruction/Shared/ITMSummingVoxelMap.h
 Objects/Scene/ITMVoxelBlockHash.h
 Objects/Scene/ITMVoxelTypes.h
 Objects/Scene/TSDF.h
@@ -630,6 +629,11 @@ SOURCE_GROUP(Utils FILES ${ITMLIB_UTILS_SOURCES} ${ITMLIB_UTILS_HEADERS})
 # Specify the target and where to put it #
 ##########################################
 
-INCLUDE(${PROJECT_SOURCE_DIR}/cmake/SetCUDALibTarget.cmake)
+INCLUDE(${PROJECT_SOURCE_DIR}/cmake/Flags.cmake)
+IF(WITH_CUDA)
+  CUDA_ADD_LIBRARY(${targetname} STATIC ${sources} ${headers} ${templates})
+ELSE()
+  ADD_LIBRARY(${targetname} STATIC ${sources} ${headers} ${templates})
+ENDIF()
 ADD_DEPENDENCIES(${targetname} yaml-cpp-project)
 TARGET_LINK_LIBRARIES(${targetname} yaml-cpp stdgpu::stdgpu)

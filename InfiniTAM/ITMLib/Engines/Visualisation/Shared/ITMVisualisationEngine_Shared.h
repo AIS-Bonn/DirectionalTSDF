@@ -423,6 +423,115 @@ _CPU_AND_GPU_CODE_ inline void drawPixelColourDefault(DEVICEPTR(Vector4u)& dest,
 	dest.w = 255;
 }
 
+template<typename TIndex, template<typename, typename...> class Map, typename... Args>
+_CPU_AND_GPU_CODE_ inline bool castRayDefaultTSDF(Vector4f& pt_out,
+                                                  float& distance_out,
+                                                  int x, int y, const Map<TIndex, ITMVoxel*, Args...>& tsdf,
+                                                  Matrix4f invM, Vector4f invProjParams,
+                                                  const ITMSceneParams& sceneParams,
+                                                  const CONSTPTR(Vector2f)& minMaxImg,
+                                                  const TSDFDirection direction = TSDFDirection::NONE,
+                                                  float maxDistance = -1)
+{
+	Vector4f pt_camera_f;
+	Vector3f pt_block_s, pt_block_e, rayDirection, pt_result;
+	float sdfValue = 1.0f, confidence = 0;
+	float totalLength, stepLength, totalLengthMax, stepScale;
+
+	pt_out = Vector4f(0, 0, 0, 0);
+
+	stepScale = sceneParams.mu * sceneParams.oneOverVoxelSize;
+
+	pt_camera_f = Vector4f(reprojectImagePoint(x, y, minMaxImg.x, invProjParams), 1.0f);
+	totalLength = length(TO_VECTOR3(pt_camera_f)) * sceneParams.oneOverVoxelSize;
+	pt_block_s = TO_VECTOR3(invM * pt_camera_f) * sceneParams.oneOverVoxelSize;
+
+	pt_camera_f = Vector4f(reprojectImagePoint(x, y,
+	                                           maxDistance > 0 ? maxDistance : minMaxImg.y,
+	                                           invProjParams), 1.0f);
+	totalLengthMax = length(TO_VECTOR3(pt_camera_f)) * sceneParams.oneOverVoxelSize;
+	pt_block_e = TO_VECTOR3(invM * pt_camera_f) * sceneParams.oneOverVoxelSize;
+
+	rayDirection = (pt_block_e - pt_block_s).normalised();
+
+	pt_result = pt_block_s;
+
+//	bool secondTry = false;
+//	foo:
+	bool found;
+	float lastSDFValue = sdfValue;
+	while (totalLength < totalLengthMax)
+	{
+		sdfValue = readFromSDF_float_uninterpolated(found, tsdf, pt_result, direction);
+
+		ITMVoxel res = readVoxel(found, tsdf, Vector3i((int) ROUND(pt_result.x), (int) ROUND(pt_result.y), (int) ROUND(pt_result.z)),
+		                         direction);
+		TIndex index;
+		unsigned short linearIdx;
+		voxelIdxToIndexAndOffset(index, linearIdx, Vector3i((int) ROUND(pt_result.x), (int) ROUND(pt_result.y), (int) ROUND(pt_result.z)), direction);
+
+		if (!found)
+		{
+			stepLength = SDF_BLOCK_SIZE;
+		} else
+		{
+			if ((sdfValue <= 0.1f) && (sdfValue >= -0.5f))
+			{
+				sdfValue = readFromSDF_float_interpolated(found, tsdf, pt_result, direction);
+			}
+			if (lastSDFValue > 0 and sdfValue <= 0)// and lastSDFValue - sdfValue < 1.5)
+			{
+				break;
+			}
+			stepLength = MAX(sdfValue * stepScale, 1.0f);
+		}
+
+		lastSDFValue = sdfValue;
+		pt_result += stepLength * rayDirection;
+		totalLength += stepLength;
+	}
+
+	if (sdfValue > 0.0f)
+		return false;
+
+// Perform 2 additional steps to get more accurate zero crossing
+	for (int i = 0; i < 2 or (i < 5 and fabs(sdfValue) > 1e-6); i++)
+	{
+		lastSDFValue = sdfValue;
+		stepLength = sdfValue * stepScale;
+		pt_result += stepLength * rayDirection;
+		totalLength += stepLength;
+
+		sdfValue = readWithConfidenceFromSDF_float_interpolated(found, confidence, tsdf, pt_result, sceneParams.maxW, direction);
+
+// Compensate sign hopping with little to no reduction in magnitude (steep angles)
+		float reductionFactor = (fabs(sdfValue) - fabs(lastSDFValue)) / fabs(lastSDFValue);
+// rF < 0: magnitude reduction, rF > 0: magnitude increase
+		if (SIGN(sdfValue) != SIGN(lastSDFValue) and reductionFactor > -0.75)
+		{
+			stepScale *= 0.5;
+		}
+	}
+
+	if (fabs(sdfValue) > 0.1)
+	{
+//		totalLength += 2;
+//		pt_result += 2 * rayDirection;
+//		if (not secondTry)
+//		{
+//			secondTry = true;
+//			goto foo;
+//		}
+		return false;
+	}
+
+	distance_out = totalLength / sceneParams.oneOverVoxelSize;
+// multiply by transition: negative transition <=> negative confidence!
+	pt_out = Vector4f(pt_result, confidence);
+
+	return true;
+}
+//
 template<class TVoxel, class TIndex>
 _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
                                               float& distance_out,
@@ -992,25 +1101,17 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional(DEVICEPTR(Vector4f)& pt_out, V
 	return true;
 }
 
-template<class TVoxel, class TIndex>
+template<class TIndex, class TVoxel, template<typename, typename...> class Map, typename... Args>
 _CPU_AND_GPU_CODE_ inline bool castRay(DEVICEPTR(Vector4f)& pt_out, Vector6f* directionalContribution,
-                                       DEVICEPTR(HashEntryVisibilityType)* entriesVisibleType,
-                                       int x, int y, const CONSTPTR(TVoxel)* voxelData,
-                                       const CONSTPTR(typename TIndex::IndexData)* voxelIndex,
+                                       int x, int y, const Map<TIndex, TVoxel*, Args...>& tsdf,
                                        Matrix4f invM, Vector4f invProjParams,
                                        const ITMSceneParams& sceneParams,
                                        const Vector2f& minMaxImg,
                                        bool directionalTSDF)
 {
 	float distance;
-	if (directionalTSDF and DIRECTIONAL_RENDERING_MODE != 1)
-//		return castRayDirectional<TVoxel, TIndex>(pt_out, directionalContribution, entriesVisibleType, x, y, voxelData,
-//		                                           voxelIndex, invM, invProjParams, sceneParams, minMaxImg);
-		return castRayDirectional2<TVoxel, TIndex>(pt_out, directionalContribution, entriesVisibleType, x, y, voxelData,
-																							voxelIndex, invM, invProjParams, sceneParams, minMaxImg);
-	else
-		return castRayDefault<TVoxel, TIndex>(pt_out, distance, entriesVisibleType, x, y, voxelData, voxelIndex, invM,
-		                                      invProjParams, sceneParams, minMaxImg);
+	return castRayDefaultTSDF(pt_out, distance, x, y, tsdf, invM,
+																				invProjParams, sceneParams, minMaxImg);
 }
 
 template<class TVoxel, class TIndex>

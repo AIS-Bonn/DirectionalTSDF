@@ -5,6 +5,9 @@
 #include <ITMLib/Objects/Scene/TSDF_CUDA.h>
 #include <ITMLib/ITMLibDefines.h>
 
+#include <unordered_set>
+#include <stdgpu/unordered_set.cuh>
+
 using namespace ITMLib;
 
 template<typename TVoxel, typename TIndex>
@@ -21,19 +24,43 @@ void readVoxel(stdgpu::unordered_map<TIndex, TVoxel*> tsdf)
 	readWithConfidenceFromSDF_float_interpolated(found, confidence, tsdf, Vector3f(0.5, 9, 1.5), 1);
 }
 
-TEST_CASE("GPU readVoxel", "TSDF")
+TEST_CASE("GPU readVoxel", "TSDFBase")
 {
 	printf("===== GPU =======\n");
-	TSDF_CUDA<ITMVoxel, IndexShort> tsdf(1000);
+	TSDF_CUDA<IndexShort, ITMVoxel> tsdf(1000);
 
 	readVoxel<<<1, 1>>>(tsdf.getMap());
 	ORcudaKernelCheck
 }
 
-TEST_CASE("CPU readVoxel", "TSDF")
+
+template<template<typename...> class Set, typename... Args>
+_CPU_AND_GPU_CODE_
+void inline function(Set<ITMIndexDirectional, Args...> set)
+{
+//	set.insert(ITMIndexDirectional(threadIdx.x));
+}
+
+__global__
+void setTest(stdgpu::unordered_set<ITMIndexDirectional> s)
+{
+	function(s);
+}
+
+TEST_CASE("stdgpu", "TSDFBase")
+{
+	stdgpu::unordered_set<ITMIndexDirectional> s = stdgpu::unordered_set<ITMIndexDirectional>::createDeviceObject(10000);
+	setTest<<<50, 10>>>(s);
+	REQUIRE(s.size() == 10);
+
+//	std::unordered_set<int> s2;
+//	function(s2);
+}
+
+TEST_CASE("CPU readVoxel", "TSDFBase")
 {
 	printf("===== CPU =======\n");
-	TSDF_CPU<ITMVoxel, IndexShort> tsdf(1000);
+	TSDF_CPU<IndexShort, ITMVoxel> tsdf(1000);
 
 	bool found;
 	float sdf, confidence;

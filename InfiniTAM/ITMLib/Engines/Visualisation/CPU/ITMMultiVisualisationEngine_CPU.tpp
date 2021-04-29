@@ -133,11 +133,11 @@ void ITMMultiVisualisationEngine_CPU::RenderImage(const ORUtils::SE3Pose* pose,
 			int locId2 =
 				(int) floor((float) x / minmaximg_subsample) + (int) floor((float) y / minmaximg_subsample) * imgSize.x;
 
-			castRay<ITMMultiVoxel<ITMVoxel>, ITMMultiIndex<ITMVoxelIndex>>(pointsRay[locId], &directionalContribution[locId],
-			                                                               NULL, x, y, &renderState->voxelData_host,
-			                                                               &renderState->indexData_host, invM, invProjParams,
-			                                                               renderState->sceneParams, minmaximg[locId2],
-			                                                               useDirectioal);
+//			castRay<ITMMultiVoxel<ITMVoxel>, ITMMultiIndex<ITMVoxelIndex>>(pointsRay[locId], &directionalContribution[locId],
+//			                                                               NULL, x, y, &renderState->voxelData_host,
+//			                                                               &renderState->indexData_host, invM, invProjParams,
+//			                                                               renderState->sceneParams, minmaximg[locId2],
+//			                                                               useDirectioal);
 		}
 
 		Vector4f* normals = renderState->raycastNormals->GetData(MEMORYDEVICE_CPU);

@@ -74,6 +74,10 @@ typedef class ORUtils::Vector6<float> Vector6f;
 #define IS_EQUAL3(a,b) (((a).x == (b).x) && ((a).y == (b).y) && ((a).z == (b).z))
 #endif
 
+#ifndef MAX_SHORT
+#define MAX_SHORT 32767
+#endif
+
 #ifndef MAX_INT
 #define MAX_INT 2147483647
 #endif

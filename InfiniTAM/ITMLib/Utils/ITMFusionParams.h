@@ -42,7 +42,7 @@ inline TSDFMode TSDFModeFromString(const std::string &mode)
 	else if (iequals(mode, "directional"))
 		return TSDFMODE_DIRECTIONAL;
 
-	printf(R"(ERROR: Unknown TSDF mode "%s". Using "default" instead)", mode.c_str());
+	printf(R"(ERROR: Unknown TSDFBase mode "%s". Using "default" instead)", mode.c_str());
 	return TSDFMODE_DEFAULT;
 }
 

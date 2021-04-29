@@ -3,7 +3,7 @@
 #pragma once
 
 #include <memory>
-#include "RenderingTSDF_CUDA.h"
+#include <ITMLib/Objects/Scene/TSDF.h>
 #include "../Interface/ITMVisualisationEngine.h"
 #include <stdgpu/unordered_map_fwd>
 
@@ -62,8 +62,7 @@ protected:
 	                    const Vector4f& projParams, const ITMRenderState* renderState, bool updateVisibleList) const;
 
 private:
-	RenderingTSDF* renderingTSDF_device;
-	ITMVoxel* renderingVoxels_device;
+	TSDF<ITMVoxel>* renderingTSDF;
 	stdgpu::unordered_map<Vector3s, Vector6f*>* combinedTSDF_device;
 	Vector6f* combinedTSDFWeights_device;
 

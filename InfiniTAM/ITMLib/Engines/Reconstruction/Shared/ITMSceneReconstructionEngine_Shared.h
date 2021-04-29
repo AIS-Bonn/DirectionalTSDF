@@ -548,8 +548,8 @@ template<typename SummingVoxelMap>
 _CPU_AND_GPU_CODE_
 SummingVoxel* getSummingVoxel(SummingVoxelMap& summingVoxelMap, const Vector3s& voxelIdx, TSDFDirection_type directionIdx = 0)
 {
-	static_assert(std::is_same<typename SummingVoxelMap::key_type, BlockIndex>::value,
-	              "template parameter SummingVoxelMap requires key type BlockIndex");
+	static_assert(std::is_same<typename SummingVoxelMap::key_type, IndexType>::value,
+	              "template parameter SummingVoxelMap requires key type IndexType");
 	static_assert(std::is_same<typename SummingVoxelMap::mapped_type, SummingVoxel*>::value,
 	              "template parameter SummingVoxelMap requires value type SummingVoxel*");
 
@@ -562,7 +562,7 @@ SummingVoxel* getSummingVoxel(SummingVoxelMap& summingVoxelMap, const Vector3s& 
 	unsigned short offset;
 	voxelToBlockPosAndOffset(voxelIdx.toInt(), blockPos, offset);
 
-	auto it = summingVoxelMap.find(BlockIndex(blockPos.toShort(), directionIdx));
+	auto it = summingVoxelMap.find(IndexType(blockPos.toShort(), directionIdx));
 	if (it == summingVoxelMap.end())
 		return nullptr;
 	else
@@ -581,8 +581,8 @@ inline void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vect
                               ITMVoxel* voxelArray
 )
 {
-	static_assert(std::is_same<typename SummingVoxelMap::key_type, BlockIndex>::value,
-	              "template parameter SummingVoxelMap requires key type BlockIndex");
+	static_assert(std::is_same<typename SummingVoxelMap::key_type, IndexType>::value,
+	              "template parameter SummingVoxelMap requires key type IndexType");
 	static_assert(std::is_same<typename SummingVoxelMap::mapped_type, SummingVoxel*>::value,
 	              "template parameter SummingVoxelMap requires value type SummingVoxel*");
 
@@ -691,8 +691,8 @@ inline void rayCastUpdate(int x, int y, Vector2i imgSize_d, Vector2i imgSize_rgb
                           const ITMSceneParams& sceneParams,
                           SummingVoxelMap summingVoxelMap)
 {
-	static_assert(std::is_same<typename SummingVoxelMap::key_type, BlockIndex>::value,
-	              "template parameter SummingVoxelMap requires key type BlockIndex");
+	static_assert(std::is_same<typename SummingVoxelMap::key_type, IndexType>::value,
+	              "template parameter SummingVoxelMap requires key type IndexType");
 	static_assert(std::is_same<typename SummingVoxelMap::mapped_type, SummingVoxel*>::value,
 	              "template parameter SummingVoxelMap requires value type SummingVoxel*");
 
@@ -926,6 +926,96 @@ buildSpaceCarvingVisibleType(HashEntryVisibilityType* entriesVisibleType,
 		{
 			SetBlockVisibleType(hashTable, blockCoords, blockDirections, entriesVisibleType, blockPos);
 		}
+	}
+}
+
+/**
+ * Ray cast depth image to find visible blocks for allocation, insert into set
+ *
+ * @param visibleBlocks set to insert visible blocks into
+ * @param x
+ * @param y
+ * @param blockCoords
+ * @param depth
+ * @param invM_d
+ * @param projParams_d
+ * @param mu
+ * @param imgSize
+ * @param voxelSize
+ * @param hashTable
+ * @param viewFrustum_min
+ * @param viewFrustum_max
+ * @tparam Set
+ */
+template<template<typename...> class Set, typename... Args>
+_CPU_AND_GPU_CODE_ inline void
+findAllocationBlocks(Set<ITMIndexDirectional, Args...>& visibleBlocks,
+                     int x, int y, const float* depth, const Vector4f* depthNormal,
+                     const Matrix4f& invM_d, Vector4f projParams_d, float mu, Vector2i imgSize, float voxelSize,
+                     float viewFrustum_min, float viewFrustum_max, const ITMFusionParams& fusionParams)
+{
+	float depth_measure = depth[x + y * imgSize.x];
+	Vector4f normal_camera = depthNormal[x + y * imgSize.x];
+	if ((depth_measure - mu) < viewFrustum_min or (depth_measure + mu) > viewFrustum_max or normal_camera.w != 1)
+		return;
+
+	Vector3f normalWorld = normalCameraToWorld(normal_camera, invM_d);
+
+	Vector4f pt_camera = Vector4f(reprojectImagePoint(x, y, depth_measure, projParams_d), 1);
+
+	Vector3f pt_world = (invM_d * pt_camera).toVector3();
+
+	Vector3f rayDirectionBefore, rayDirectionBehind;
+	if (fusionParams.fusionMode == FusionMode::FUSIONMODE_VOXEL_PROJECTION
+	    or fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING_VIEW_DIR)
+	{
+		Vector4f camera_ray_world = invM_d * Vector4f(pt_camera.toVector3().normalised(), 0);
+		rayDirectionBefore = -camera_ray_world.toVector3();
+		rayDirectionBehind = camera_ray_world.toVector3();
+	} else
+	{
+
+		rayDirectionBehind = -normalWorld;
+
+		if (fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING_VIEW_DIR_AND_NORMAL)
+			rayDirectionBefore = -(invM_d * Vector4f(pt_camera.toVector3().normalised(), 0)).toVector3();
+		else
+			rayDirectionBefore = normalWorld;
+	}
+
+	BlockTraversal blockTraversalBefore(pt_world, rayDirectionBefore, mu, voxelSize);
+	BlockTraversal blockTraversalBehind(pt_world, rayDirectionBehind, mu, voxelSize);
+	if (blockTraversalBehind.HasNextBlock()) blockTraversalBehind.GetNextBlock(); // Skip first voxel to prevent duplicate fusion
+
+	float angles[N_DIRECTIONS];
+	ComputeDirectionAngle(normalWorld, angles);
+
+	Vector3s lastBlockIdx(MAX_SHORT, MAX_SHORT, MAX_SHORT);
+	while (blockTraversalBefore.HasNextBlock() or blockTraversalBehind.HasNextBlock())
+	{
+		Vector3i voxelPos;
+		if (blockTraversalBefore.HasNextBlock())
+			voxelPos = blockTraversalBefore.GetNextBlock();
+		else
+			voxelPos = blockTraversalBehind.GetNextBlock();
+
+		Vector3s blockIdx = voxelToBlockPos(voxelPos).toShort();
+		if (blockIdx == lastBlockIdx)
+			continue;
+
+		if (fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL)
+		{
+			for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
+			{
+				if (DirectionWeight(angles[directionIdx]) <= 0)
+					continue;
+				visibleBlocks.insert(ITMIndexDirectional(blockIdx, TSDFDirection(directionIdx)));
+			}
+		} else
+		{
+			visibleBlocks.insert(ITMIndexDirectional(blockIdx, TSDFDirection::NONE));
+		}
+		lastBlockIdx = blockIdx;
 	}
 }
 

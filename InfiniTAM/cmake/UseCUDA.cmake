@@ -23,7 +23,7 @@ IF(WITH_CUDA)
 
 #  SET(CUDA_NVCC_FLAGS -O0 -Xptxas -O0; ${CUDA_NVCC_FLAGS})
 
-  # Enable debugging
+# Enable debugging
 #  SET(CUDA_NVCC_FLAGS --device-debug; ${CUDA_NVCC_FLAGS})
 
   # If on Windows, make it possible to enable GPU debug information.

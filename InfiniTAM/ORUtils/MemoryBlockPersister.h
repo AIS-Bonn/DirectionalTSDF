@@ -32,7 +32,7 @@ namespace ORUtils
 		{
 			Vector2<int> imageSize = ReadImageSize(filename);
 
-			// Resize the image if needed.
+			// resize the image if needed.
 			image.ChangeDims(imageSize);
 
 			if (memoryDeviceType == MEMORYDEVICE_CUDA)
@@ -81,7 +81,7 @@ namespace ORUtils
 		{
 			size_t blockSize = ReadBlockSize(filename);
 
-			// Resize the block if needed.
+			// resize the block if needed.
 			block.Resize(blockSize);
 
 			if (memoryDeviceType == MEMORYDEVICE_CUDA)

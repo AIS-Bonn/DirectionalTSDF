@@ -4,6 +4,8 @@
 
 #include "ITMLocalVBA.h"
 #include "ITMGlobalCache.h"
+#include "TSDF.h"
+#include "TSDF_CPU.h"
 #include "../../Utils/ITMSceneParams.h"
 
 namespace ITMLib
@@ -24,6 +26,8 @@ namespace ITMLib
 		/** Hash table to reference the 8x8x8 blocks */
 		ITMVoxelBlockHash index;
 
+		TSDF<TVoxel>* tsdf;
+
 		/** Current local content of the 8x8x8 voxel blocks -- stored host or device */
 		ITMLocalVBA<TVoxel> localVBA;
 
@@ -39,17 +43,10 @@ namespace ITMLib
 		void LoadFromDirectory(const std::string &outputDirectory)
 		{
 			localVBA.LoadFromDirectory(outputDirectory);
-			index.LoadFromDirectory(outputDirectory);			
+			index.LoadFromDirectory(outputDirectory);
 		}
 
-		ITMScene(const ITMSceneParams* _sceneParams, bool _useSwapping, MemoryDeviceType _memoryType)
-			: sceneParams(_sceneParams), index(_memoryType),
-			  localVBA(_memoryType, index.getNumAllocatedVoxelBlocks(), index.getVoxelBlockSize())
-		{
-			index.Reset();
-			if (_useSwapping) globalCache = new ITMGlobalCache<TVoxel>();
-			else globalCache = NULL;
-		}
+		ITMScene(const ITMSceneParams* _sceneParams, bool _useSwapping, MemoryDeviceType _memoryType);
 
 		~ITMScene(void)
 		{

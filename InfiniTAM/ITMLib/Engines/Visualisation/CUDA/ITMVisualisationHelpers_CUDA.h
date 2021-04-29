@@ -7,7 +7,7 @@
 
 #include "../Shared/ITMVisualisationEngine_Shared.h"
 #include "../../../Utils/ITMCUDAUtils.h"
-#include "RenderingTSDF_CUDA.cuh"
+#include <ITMLib/Objects/Scene/TSDF_CUDA.h>
 
 #include <stdgpu/unordered_set_fwd>
 #include <stdgpu/unordered_map.cuh>
@@ -21,11 +21,12 @@ namespace ITMLib
 
 	__global__ void countVisibleBlocks_device(const int *visibleEntryIDs, int noVisibleEntries, const ITMHashEntry *hashTable, uint *noBlocks, int minBlockId, int maxBlockId);
 
-	__global__ void projectAndSplitBlocks_device(const ITMHashEntry *hashEntries, const int *visibleEntryIDs, int noVisibleEntries,
-		const Matrix4f pose_M, const Vector4f intrinsics, const Vector2i imgSize, float voxelSize, RenderingBlock *renderingBlocks,
-		uint *noTotalBlocks);
+	__global__ void
+	projectAndSplitBlocks_device(RenderingBlock* renderingBlocks, uint* noTotalBlocks, const ITMIndex* visibleBlocks,
+															 int noVisibleEntries, const Matrix4f pose_M, const Vector4f intrinsics,
+															 const Vector2i imgSize, float voxelSize);
 
-	__global__ void checkProjectAndSplitBlocks_device(const ITMHashEntry *hashEntries, int noHashEntries,
+__global__ void checkProjectAndSplitBlocks_device(const ITMHashEntry *hashEntries, int noHashEntries,
 		const Matrix4f pose_M, const Vector4f intrinsics, const Vector2i imgSize, float voxelSize, RenderingBlock *renderingBlocks,
 		uint *noTotalBlocks);
 
@@ -38,110 +39,10 @@ namespace ITMLib
 	__global__ void forwardProject_device(Vector4f *forwardProjection, const Vector4f *pointsRay, Vector2i imgSize, Matrix4f M,
 		Vector4f projParams, float voxelSize);
 
-__global__ void findVisibleBlocks_device(RenderingTSDF tsdf, const ITMHashEntry* hashTable,
-                                         int noTotalEntries, Matrix4f M, Vector4f projParams, Vector2i imgSize,
-                                         float voxelSize);
-
-__device__ inline bool castRayDefaultRenderingTSDF(Vector4f& pt_out,
-                                              float& distance_out,
-                                              int x, int y, const RenderingTSDF& tsdf,
-                                              Matrix4f invM, Vector4f invProjParams,
-                                              const ITMSceneParams& sceneParams,
-                                              const CONSTPTR(Vector2f)& minMaxImg,
-                                              float maxDistance = -1)
-{
-	Vector4f pt_camera_f;
-	Vector3f pt_block_s, pt_block_e, rayDirection, pt_result;
-	float sdfValue = 1.0f, confidence = 0;
-	float totalLength, stepLength, totalLengthMax, stepScale;
-
-	pt_out = Vector4f(0, 0, 0, 0);
-
-	stepScale = sceneParams.mu * sceneParams.oneOverVoxelSize;
-
-	pt_camera_f = Vector4f(reprojectImagePoint(x, y, minMaxImg.x, invProjParams), 1.0f);
-	totalLength = length(TO_VECTOR3(pt_camera_f)) * sceneParams.oneOverVoxelSize;
-	pt_block_s = TO_VECTOR3(invM * pt_camera_f) * sceneParams.oneOverVoxelSize;
-
-	pt_camera_f = Vector4f(reprojectImagePoint(x, y,
-	                                           maxDistance > 0 ? maxDistance : minMaxImg.y,
-	                                           invProjParams), 1.0f);
-	totalLengthMax = length(TO_VECTOR3(pt_camera_f)) * sceneParams.oneOverVoxelSize;
-	pt_block_e = TO_VECTOR3(invM * pt_camera_f) * sceneParams.oneOverVoxelSize;
-
-	rayDirection = (pt_block_e - pt_block_s).normalised();
-
-	pt_result = pt_block_s;
-
-//	bool secondTry = false;
-//	foo:
-	bool found;
-	float lastSDFValue = sdfValue;
-	while (totalLength < totalLengthMax)
-	{
-		sdfValue = readFromSDF_float_uninterpolated(found, tsdf, pt_result);
-
-		if (!found)
-		{
-			stepLength = SDF_BLOCK_SIZE;
-		} else
-		{
-			if ((sdfValue <= 0.1f) && (sdfValue >= -0.5f))
-			{
-				sdfValue = readFromSDF_float_interpolated(found, tsdf, pt_result);
-			}
-			if (lastSDFValue > 0 and sdfValue <= 0)// and lastSDFValue - sdfValue < 1.5)
-			{
-				break;
-			}
-			stepLength = MAX(sdfValue * stepScale, 1.0f);
-		}
-
-		lastSDFValue = sdfValue;
-		pt_result += stepLength * rayDirection;
-		totalLength += stepLength;
-	}
-
-	if (sdfValue > 0.0f)
-		return false;
-
-// Perform 2 additional steps to get more accurate zero crossing
-	for (int i = 0; i < 2 or (i < 5 and fabs(sdfValue) > 1e-6); i++)
-	{
-		lastSDFValue = sdfValue;
-		stepLength = sdfValue * stepScale;
-		pt_result += stepLength * rayDirection;
-		totalLength += stepLength;
-
-		sdfValue = readWithConfidenceFromSDF_float_interpolated(found, confidence, tsdf, pt_result, sceneParams.maxW);
-
-// Compensate sign hopping with little to no reduction in magnitude (steep angles)
-		float reductionFactor = (fabs(sdfValue) - fabs(lastSDFValue)) / fabs(lastSDFValue);
-// rF < 0: magnitude reduction, rF > 0: magnitude increase
-		if (SIGN(sdfValue) != SIGN(lastSDFValue) and reductionFactor > -0.75)
-		{
-			stepScale *= 0.5;
-		}
-	}
-
-	if (fabs(sdfValue) > 0.1)
-	{
-//		totalLength += 2;
-//		pt_result += 2 * rayDirection;
-//		if (not secondTry)
-//		{
-//			secondTry = true;
-//			goto foo;
-//		}
-		return false;
-	}
-
-	distance_out = totalLength / sceneParams.oneOverVoxelSize;
-// multiply by transition: negative transition <=> negative confidence!
-	pt_out = Vector4f(pt_result, confidence);
-
-	return true;
-}
+//template<class TVoxel, class TIndex, template<typename, typename...> class Map, typename... Args>
+//__global__ void findVisibleBlocks_device(Map<TVoxel, TIndex, Args...> tsdf, const ITMHashEntry* hashTable,
+//                                         int noTotalEntries, Matrix4f M, Vector4f projParams, Vector2i imgSize,
+//                                         float voxelSize);
 
 
 template<class TVoxel, class TIndex>
@@ -370,58 +271,23 @@ __global__ void genericRaycastCombinedTSDF_device(Vector4f *out_ptsRay, Vector6f
 																						combinedTSDF, invM, invProjParams, sceneParams, minmaximg[locId2]);
 }
 
-template<class TVoxel, class TIndex>
-__global__ void genericRaycastRenderingTSDF_device(Vector4f *out_ptsRay, const RenderingTSDF tsdf,
-																									 Vector2i imgSize, Matrix4f invM, Vector4f invProjParams,
-																									 const ITMSceneParams sceneParams, const Vector2f* minmaximg)
-{
-	int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
-
-	if (x >= imgSize.x || y >= imgSize.y) return;
-
-	int locId = x + y * imgSize.x;
-	int locId2 = (int)floor((float)x / minmaximg_subsample) + (int)floor((float)y / minmaximg_subsample) * imgSize.x;
-
-	float distance;
-	castRayDefaultRenderingTSDF(out_ptsRay[locId], distance, x, y, tsdf, invM, invProjParams, sceneParams, minmaximg[locId2]);
-}
-
-template<class TVoxel, class TIndex>
-	__global__ void genericRaycast_device(Vector4f *out_ptsRay, Vector6f *raycastDirectionalContribution, HashEntryVisibilityType *entriesVisibleType, const TVoxel *voxelData,
-		const typename TIndex::IndexData *voxelIndex, Vector2i imgSize, Matrix4f invM, Vector4f invProjParams,
-		const ITMSceneParams sceneParams, const Vector2f *minmaximg, bool directionalTSDF)
-	{
-		int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
-
-		if (x >= imgSize.x || y >= imgSize.y) return;
-
-		int locId = x + y * imgSize.x;
-		int locId2 = (int)floor((float)x / minmaximg_subsample) + (int)floor((float)y / minmaximg_subsample) * imgSize.x;
-
-		castRay<TVoxel, TIndex>(out_ptsRay[locId], &raycastDirectionalContribution[locId], entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams,
-			sceneParams, minmaximg[locId2], directionalTSDF);
-	}
-
-template<class TVoxel, class TIndex>
+template<class TIndex, class TVoxel>
 __global__ void genericRaycast_device(Vector4f* out_ptsRay, Vector6f* raycastDirectionalContribution,
-                                      HashEntryVisibilityType* entriesVisibleType, const TVoxel* voxelData,
-                                      const typename TIndex::IndexData* voxelIndex, Vector2i imgSize,
+                                      const stdgpu::unordered_map<TIndex, TVoxel*> tsdf, Vector2i imgSize,
                                       Matrix4f invM, Vector4f invProjParams,
-                                      const ITMSceneParams sceneParams, const Vector2f* minmaximg,
-                                      TSDFDirection direction)
+                                      const ITMSceneParams sceneParams, const Vector2f* minmaximg, TSDFDirection direction=TSDFDirection::NONE)
 {
 	int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
 
 	if (x >= imgSize.x || y >= imgSize.y) return;
 
 	int locId = x + y * imgSize.x;
-	int locId2 = (int)floor((float)x / minmaximg_subsample) + (int)floor((float)y / minmaximg_subsample) * imgSize.x;
+	int locId2 = (int) floor((float) x / minmaximg_subsample) + (int) floor((float) y / minmaximg_subsample) * imgSize.x;
 
 	float distance;
-	castRayDefault<TVoxel, TIndex>(out_ptsRay[locId], distance, entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams,
-																					sceneParams, minmaximg[locId2], direction);
+	castRayDefaultTSDF(out_ptsRay[locId], distance, x, y,
+	                   tsdf, invM, invProjParams, sceneParams, minmaximg[locId2], direction);
 }
-
 
 template<class TVoxel, class TIndex>
 __global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, Vector4f* out_normals, const InputPointClouds in_ptsRay,
@@ -454,7 +320,7 @@ __global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, Vecto
 		int y = locId / imgSize.x, x = locId - y*imgSize.x;
 		int locId2 = (int)floor((float)x / minmaximg_subsample) + (int)floor((float)y / minmaximg_subsample) * imgSize.x;
 
-		castRay<TVoxel, TIndex>(forwardProjection[locId], &raycastDirectionalContribution[locId], entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams, sceneParams, minmaximg[locId2], directionalTSDF);
+//		castRay<TVoxel, TIndex>(forwardProjection[locId], &raycastDirectionalContribution[locId], entriesVisibleType, x, y, voxelData, voxelIndex, invM, invProjParams, sceneParams, minmaximg[locId2], directionalTSDF);
 	}
 
 	template<bool flipNormals>
@@ -500,9 +366,9 @@ __global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, Vecto
 		processPixelConfidence_ImageNormals<true, flipNormals>(outRendering, ptsRay, normalsRay, imgSize, x, y, sceneParams, lightSource);
 	}
 
-template<class TVoxel, class TIndex>
+template<class TIndex, class TVoxel, template<typename, typename...> class Map, typename... Args>
 __device__ inline void computeNormalAndAngle(THREADPTR(bool)& foundPoint, const THREADPTR(Vector3f)& point,
-                                                     const RenderingTSDF& tsdf,
+                                                     const Map<TIndex, TVoxel*, Args...>& tsdf,
                                                      const THREADPTR(Vector3f)& lightSource,
                                                      THREADPTR(Vector3f)& outNormal, THREADPTR(float)& angle)
 {
@@ -515,23 +381,23 @@ __device__ inline void computeNormalAndAngle(THREADPTR(bool)& foundPoint, const 
 	if (!(angle > 0.0)) foundPoint = false;
 }
 
-template<class TVoxel, class TIndex>
+template<class TIndex, class TVoxel, template<typename, typename...> class Map, typename... Args>
 __device__ inline void processPixelGrey_SDFNormals(DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point,
-                                                           bool foundPoint, const RenderingTSDF& tsdf,
+                                                           bool foundPoint, const Map<TIndex, TVoxel*, Args...>& tsdf,
                                                            Vector3f lightSource)
 {
 	Vector3f outNormal;
 	float angle;
 
-	computeNormalAndAngle<TVoxel, TIndex>(foundPoint, point, tsdf, lightSource, outNormal, angle);
+	computeNormalAndAngle(foundPoint, point, tsdf, lightSource, outNormal, angle);
 
 	if (foundPoint) drawPixelGrey(outRendering, angle);
 	else outRendering = Vector4u((uchar) 0);
 }
 
-template<class TVoxel, class TIndex>
+template<class TIndex, class TVoxel, template<typename, typename...> class Map, typename... Args>
 __global__ void renderGrey_device(Vector4u *outRendering, const Vector4f *ptsRay,
-                                  const RenderingTSDF tsdf, Vector2i imgSize, Vector3f lightSource)
+                                  const Map<TIndex, TVoxel*, Args...> tsdf, Vector2i imgSize, Vector3f lightSource)
 {
 	int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
 
@@ -541,8 +407,7 @@ __global__ void renderGrey_device(Vector4u *outRendering, const Vector4f *ptsRay
 
 	Vector4f ptRay = ptsRay[locId];
 
-	processPixelGrey_SDFNormals<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(),
-																							ptRay.w > 0, tsdf, lightSource);
+	processPixelGrey_SDFNormals(outRendering[locId], ptRay.toVector3(), ptRay.w > 0, tsdf, lightSource);
 }
 
 
@@ -590,7 +455,7 @@ template<class TVoxel, class TIndex>
 			                                              nullptr, ptRay.w > 0, voxelData, voxelIndex, lightSource);
 	}
 
-	template<class TVoxel, class TIndex>
+template<class TVoxel, class TIndex>
 	__global__ void renderColourFromConfidence_device(Vector4u *outRendering, const Vector4f *ptsRay,
 		const Vector6f *directionalContribution, const TVoxel *voxelData,
 		const typename TIndex::IndexData *voxelIndex, Vector2i imgSize,
@@ -673,9 +538,9 @@ template<class TVoxel, class TIndex>
 		}
 	}
 
-template<class TVoxel, class TIndex>
+template<class TIndex, class TVoxel, template<typename, typename...> class Map, typename... Args>
 __device__ inline void processPixelColour(
-	DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point, bool foundPoint, const RenderingTSDF& tsdf, const Vector3f lightSource)
+	DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point, bool foundPoint, const Map<TIndex, TVoxel*, Args...>& tsdf, const Vector3f lightSource)
 {
 	float angle;
 	Vector3f outNormal;
@@ -694,9 +559,9 @@ __device__ inline void processPixelColour(
 	} else outRendering = Vector4u((uchar) 0);
 }
 
-template<class TVoxel, class TIndex>
+template<class TIndex, class TVoxel, template<typename, typename...> class Map, typename... Args>
 __global__ void renderColour_device(Vector4u *outRendering, const Vector4f *ptsRay,
-                                    const RenderingTSDF tsdf, Vector2i imgSize, const Vector3f lightSource)
+                                    const Map<TIndex, TVoxel*, Args...> tsdf, Vector2i imgSize, const Vector3f lightSource)
 {
 	int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
 
@@ -706,8 +571,7 @@ __global__ void renderColour_device(Vector4u *outRendering, const Vector4f *ptsR
 
 	Vector4f ptRay = ptsRay[locId];
 
-	processPixelColour<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(), ptRay.w > 0,
-																		 tsdf, lightSource);
+	processPixelColour(outRendering[locId], ptRay.toVector3(), ptRay.w > 0, tsdf, lightSource);
 }
 
 	template<class TVoxel, class TIndex>

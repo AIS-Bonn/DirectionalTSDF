@@ -6,6 +6,7 @@
 
 #include <stdgpu/unordered_map.cuh>
 #include <ITMLib/Engines/Reconstruction/Shared/ITMSummingVoxelMap.h>
+#include <ITMLib/Utils/ITMCUDAUtils.h>
 #include <ITMLib/Utils/ITMTimer.h>
 
 
@@ -17,7 +18,7 @@ void insertHashEntries_device(
 	const ITMVoxelBlockHash::IndexData* hashTable,
 	const int* visibleEntryIds,
 	SummingVoxel* rayCastSum,
-	stdgpu::unordered_map<BlockIndex, SummingVoxel*> summingVoxelMap
+	stdgpu::unordered_map<IndexType, SummingVoxel*> summingVoxelMap
 )
 {
 	int entryId = blockIdx.x;
@@ -26,7 +27,7 @@ void insertHashEntries_device(
 	if (not hashEntry.IsValid())
 		return;
 
-	BlockIndex idx(hashEntry.pos, hashEntry.direction == TSDFDirection_type(TSDFDirection::NONE) ? 0 : hashEntry.direction);
+	IndexType idx(hashEntry.pos, hashEntry.direction == TSDFDirection_type(TSDFDirection::NONE) ? 0 : hashEntry.direction);
 	auto it = summingVoxelMap.find(idx);
 	if (it == summingVoxelMap.end())
 	{
@@ -53,7 +54,7 @@ public:
 	{
 		ORcudaSafeCall(cudaFree(summingVoxels));
 		if (map.bucket_count() > 0)
-			stdgpu::unordered_map<BlockIndex, SummingVoxel*>::destroyDeviceObject(map);
+			stdgpu::unordered_map<IndexType, SummingVoxel*>::destroyDeviceObject(map);
 	}
 
 	inline void
@@ -83,10 +84,10 @@ private:
 	{
 		ORcudaSafeCall(cudaFree(summingVoxels));
 		if (map.bucket_count() > 0)
-			stdgpu::unordered_map<BlockIndex, SummingVoxel*>::destroyDeviceObject(map);
+			stdgpu::unordered_map<IndexType, SummingVoxel*>::destroyDeviceObject(map);
 
 		ORcudaSafeCall(cudaMalloc(&summingVoxels, newSize * SDF_BLOCK_SIZE3 * sizeof(SummingVoxel)));
-		map = stdgpu::unordered_map<BlockIndex, SummingVoxel*>::createDeviceObject(
+		map = stdgpu::unordered_map<IndexType, SummingVoxel*>::createDeviceObject(
 			newSize * 3.0); // factor 3 to prevent hash collisions
 	}
 };

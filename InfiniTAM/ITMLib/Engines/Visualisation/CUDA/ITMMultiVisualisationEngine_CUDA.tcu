@@ -107,20 +107,20 @@ void ITMMultiVisualisationEngine_CUDA::RenderImage(const ORUtils::SE3Pose* pose,
 		dim3 cudaBlockSize(16, 12);
 		dim3 gridSize((int) ceil((float) imgSize.x / (float) cudaBlockSize.x),
 		              (int) ceil((float) imgSize.y / (float) cudaBlockSize.y));
-		genericRaycast_device<ITMMultiVoxel<ITMVoxel>, ITMMultiIndex<ITMVoxelIndex>> << < gridSize, cudaBlockSize >> > (
-			renderState->raycastResult->GetData(MEMORYDEVICE_CUDA),
-				renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA),
-				nullptr,
-				renderState->voxelData_device,
-				renderState->indexData_device,
-				imgSize,
-				invM,
-				invertProjectionParams(projParams),
-				renderState->sceneParams,
-				renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA),
-				useDirectional
-		);
-		ORcudaKernelCheck;
+//		genericRaycast_device<ITMMultiVoxel<ITMVoxel>, ITMMultiIndex<ITMVoxelIndex>> << < gridSize, cudaBlockSize >> > (
+//			renderState->raycastResult->GetData(MEMORYDEVICE_CUDA),
+//				renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA),
+//				nullptr,
+//				renderState->voxelData_device,
+//				renderState->indexData_device,
+//				imgSize,
+//				invM,
+//				invertProjectionParams(projParams),
+//				renderState->sceneParams,
+//				renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA),
+//				useDirectional
+//		);
+//		ORcudaKernelCheck;
 	}
 
 	Vector3f lightSource = Vector3f(invM.getColumn(3)) / this->settings->sceneParams.voxelSize;

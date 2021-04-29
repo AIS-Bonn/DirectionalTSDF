@@ -10,7 +10,7 @@
 namespace ITMLib
 {
 
-typedef Vector4s BlockIndex;
+typedef Vector4s IndexType;
 
 /**
  * Abstract interface for map for summing voxels.
@@ -25,13 +25,13 @@ public:
 
 	virtual void Init(const ITMVoxelBlockHash::IndexData* hashTable, const int* visibleEntryIds, int noVisibleEntries) = 0;
 
-	inline Map<BlockIndex, SummingVoxel*>& getMap() { return map; }
+	inline Map<IndexType, SummingVoxel*>& getMap() { return map; }
 
 	inline SummingVoxel* getVoxels() { return summingVoxels; }
 
 protected:
 	SummingVoxel* summingVoxels = nullptr;
-	Map<BlockIndex, SummingVoxel*> map;
+	Map<IndexType, SummingVoxel*> map;
 };
 
 } // namespace ITMLib

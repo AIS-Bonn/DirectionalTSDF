@@ -22,4 +22,7 @@ typedef ITMVoxel_f_rgb ITMVoxel;
 */
 typedef ITMLib::ITMVoxelBlockHash ITMVoxelIndex;
 
+typedef ITMLib::IndexDirectionalShort ITMIndexDirectional;
+typedef ITMLib::IndexShort ITMIndex;
+
 typedef ITMLib::ITMScene<ITMVoxel> Scene;

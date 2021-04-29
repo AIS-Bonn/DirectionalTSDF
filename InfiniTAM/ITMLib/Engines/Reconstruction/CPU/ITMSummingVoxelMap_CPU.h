@@ -53,7 +53,7 @@ private:
 			if (not hashEntry.IsValid())
 				return;
 
-			BlockIndex idx(hashEntry.pos, hashEntry.direction);
+			IndexType idx(hashEntry.pos, hashEntry.direction);
 			auto it = map.find(idx);
 			if (it == map.end())
 			{

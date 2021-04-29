@@ -29,7 +29,7 @@ class ITMSceneReconstructionEngine
 public:
 	explicit ITMSceneReconstructionEngine(std::shared_ptr<const ITMLibSettings> settings)
 		: settings(std::move(settings))
-	{}
+	{ }
 
 	/** Clear and reset a scene to set up a new empty
 			one.
@@ -77,6 +77,8 @@ public:
 
 protected:
 	std::shared_ptr<const ITMLibSettings> settings;
+
+	ORUtils::MemoryBlock<ITMIndexDirectional> *allocationBlocksList;
 
 	ITMReconstructionTimeStats timeStats;
 

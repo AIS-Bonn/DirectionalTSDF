@@ -43,4 +43,9 @@ SOURCE_GROUP("" FILES ${sources} ${headers})
 # Specify the target and where to put it #
 ##########################################
 
-INCLUDE(${PROJECT_SOURCE_DIR}/cmake/SetCUDALibTarget.cmake)
+INCLUDE(${PROJECT_SOURCE_DIR}/cmake/Flags.cmake)
+IF(WITH_CUDA)
+  CUDA_ADD_LIBRARY(${targetname} STATIC ${sources} ${headers} ${templates})
+ELSE()
+  ADD_LIBRARY(${targetname} STATIC ${sources} ${headers} ${templates})
+ENDIF()

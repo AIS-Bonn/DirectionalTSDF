@@ -31,6 +31,8 @@ namespace ITMLib
 		*/
 		ORUtils::MemoryBlock<HashEntryVisibilityType> *entriesVisibleType;
 
+		ORUtils::MemoryBlock<ITMIndex> *visibleBlocks;
+
 	public:
 		/** Number of entries in the live list. */
 		int noVisibleEntries;
@@ -40,21 +42,32 @@ namespace ITMLib
 		{
 			this->memoryType = memoryType;
 
+			visibleBlocks = new ORUtils::MemoryBlock<ITMIndex>(100, memoryType);
 			visibleEntryIDs = new ORUtils::MemoryBlock<int>(SDF_LOCAL_BLOCK_NUM, memoryType);
 			entriesVisibleType = new ORUtils::MemoryBlock<HashEntryVisibilityType>(noTotalEntries, memoryType);
 
 			noVisibleEntries = 0;
 		}
+
 		~ITMRenderState_VH()
 		{
+			delete visibleBlocks;
 			delete visibleEntryIDs;
 			delete entriesVisibleType;
 		}
+
+		void Resize(size_t newSize)
+		{
+			noVisibleEntries = newSize;
+			visibleBlocks->Resize(newSize);
+		}
+
 		/** Get the list of "visible entries", that are currently
 		processed by the tracker.
 		*/
 		const int *GetVisibleEntryIDs(void) const { return visibleEntryIDs->GetData(memoryType); }
 		int *GetVisibleEntryIDs(void) { return visibleEntryIDs->GetData(memoryType); }
+		ITMIndex* GetVisibleBlocks(void) { return visibleBlocks->GetData(memoryType); }
 
 		/** Get the list of "visible entries", that are
 		currently processed by integration and tracker.

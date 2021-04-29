@@ -54,7 +54,7 @@ namespace ITMLib
 
 		ITMRenderState(const Vector2i &imgSize, float vf_min, float vf_max, MemoryDeviceType memoryType)
 		{
-			renderingRangeImage = new ORUtils::Image<Vector2f>(imgSize, memoryType);
+			renderingRangeImage = new ORUtils::Image<Vector2f>(imgSize, true, true);
 			raycastResult = new ORUtils::Image<Vector4f>(imgSize, memoryType);
 			raycastNormals = new ORUtils::Image<Vector4f>(imgSize, memoryType);
 			for (size_t directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
