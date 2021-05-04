@@ -64,25 +64,168 @@ ITMRenderState_VH* ITMVisualisationEngine_CUDA::CreateRenderState(const Scene* s
 	);
 }
 
+
+#define ReadVoxelSDFDiscardZero(dst, blk, pos) voxel = &blk[VoxelIndicesToOffset(pos.x, pos.y, pos.z)]; if (voxel->w_depth == 0) return Vector3f(0, 0, 0); dst = voxel->sdf;
+_CPU_AND_GPU_CODE_ inline Vector3f computeGradient(ITMVoxel* block, ITMVoxel** neighbors, const Vector3i& idx, float tau)
+{
+	if (not block)
+		return Vector3f(0, 0, 0);
+
+	if (idx.x == 0 and not neighbors[1])
+		return Vector3f(0, 0, 0);
+	if (idx.x == 7 and not neighbors[0])
+		return Vector3f(0, 0, 0);
+	if (idx.y == 0 and not neighbors[3])
+		return Vector3f(0, 0, 0);
+	if (idx.y == 7 and not neighbors[2])
+		return Vector3f(0, 0, 0);
+	if (idx.z == 0 and not neighbors[5])
+		return Vector3f(0, 0, 0);
+	if (idx.z == 7 and not neighbors[4])
+		return Vector3f(0, 0, 0);
+
+	bool found;
+	ITMVoxel* voxel;
+	Vector3f ret(0, 0, 0);
+	float p1, p2;
+
+	// gradient x
+	if (idx.x == 7)
+	{
+		ReadVoxelSDFDiscardZero(p1, neighbors[static_cast<TSDFDirection_type>(TSDFDirection::X_POS)], Vector3i(0, idx.y, idx.z));
+	}
+	else
+	{
+		ReadVoxelSDFDiscardZero(p1, block, Vector3i(idx.x + 1, idx.y, idx.z));
+	}
+	if (idx.x == 0)
+	{
+		ReadVoxelSDFDiscardZero(p2, neighbors[1], Vector3i(7, idx.y, idx.z));
+	}
+	else
+	{
+		ReadVoxelSDFDiscardZero(p2, block, Vector3i(idx.x - 1, idx.y, idx.z));
+	}
+	ret.x = ITMVoxel::valueToFloat(p1 - p2);
+
+	// gradient y
+	if (idx.y == 7)
+	{
+		ReadVoxelSDFDiscardZero(p1, neighbors[2], Vector3i(idx.x, 0, idx.z));
+	}
+	else
+	{
+		ReadVoxelSDFDiscardZero(p1, block, Vector3i(idx.x, idx.y + 1, idx.z));
+	}
+	if (idx.y == 0)
+	{
+		ReadVoxelSDFDiscardZero(p2, neighbors[3], Vector3i(idx.x, 7, idx.z));
+	}
+	else
+	{
+		ReadVoxelSDFDiscardZero(p2, block, Vector3i(idx.x, idx.y - 1, idx.z));
+	}
+	ret.y = ITMVoxel::valueToFloat(p1 - p2);
+
+	// gradient z
+	if (idx.z == 7)
+	{
+		ReadVoxelSDFDiscardZero(p1, neighbors[4], Vector3i(idx.x, idx.y, 0));
+	}
+	else
+	{
+		ReadVoxelSDFDiscardZero(p1, block, Vector3i(idx.x, idx.y, idx.z + 1));
+	}
+	if (idx.z == 0)
+	{
+		ReadVoxelSDFDiscardZero(p2, neighbors[5], Vector3i(idx.x, idx.y, 7));
+	}
+	else
+	{
+		ReadVoxelSDFDiscardZero(p2, block, Vector3i(idx.x, idx.y, idx.z - 1));
+	}
+	ret.z = ITMVoxel::valueToFloat(p1 - p2);
+
+	if (ret == Vector3f(0, 0, 0))
+		return Vector3f(0, 0, 0);
+
+	if (tau > 0)
+	{
+		// Check each direction maximum 2 * truncationDistance / voxelSize + margin
+		if (abs(ret.x) > 2.4 * tau or abs(ret.y) > 2.4 * tau or abs(ret.z) > 2.4 * tau)
+			return Vector3f(0, 0, 0);
+		// Check, if ret too unreliable (very close values in neighboring voxels). minimum expected length: (2 * tau)^2
+		if (ORUtils::dot(ret, ret) < 2 * (tau * tau)) return Vector3f(0, 0, 0);
+	}
+
+	return ret.normalised();
+}
+
 __global__ void
-combineDirectionalTSDFViewPoint2(//stdgpu::unordered_map<ITMIndex, ITMVoxel*> renderingTSDF,
-                                const stdgpu::unordered_map<ITMIndexDirectional, ITMVoxel*> tsdf,
-                                const Vector3s* visibleBlocks, const stdgpu::index_t numVisibleBlocks,
-                                const Matrix4f invM, const float voxelSize, const float mu, const int maxW)
+combineDirectionalTSDFViewPoint2(stdgpu::unordered_map<ITMIndex, ITMVoxel*> renderingTSDF,
+                                 const stdgpu::unordered_map<ITMIndexDirectional, ITMVoxel*> tsdf,
+                                 const Vector3s* visibleBlocks, const stdgpu::index_t numVisibleBlocks,
+                                 const Matrix4f invM, const float voxelSize, const float mu, const int maxW)
 {
 	stdgpu::index_t i = static_cast<stdgpu::index_t>(blockIdx.x);
-
 	if (i >= numVisibleBlocks) return;
 
-	const Vector3s& blockPos = visibleBlocks[i];
-//	auto it = renderingTSDF.find(blockPos);
-//	if (it == renderingTSDF.end())
-//		return;
-
-//	ITMVoxel* block = it->second;
-
 	int linearIdx = blockIdx.y * blockDim.x + threadIdx.x;
-//	ITMVoxel& voxel = block[linearIdx];
+
+	const Vector3s& blockPos = visibleBlocks[i];
+
+	__shared__ ITMVoxel* renderBlock;
+	__shared__ ITMVoxel* blocks[N_DIRECTIONS];
+	__shared__ ITMVoxel* neighborBlocks[6 * N_DIRECTIONS];
+	if (linearIdx == 6)
+	{
+			auto it = renderingTSDF.find(blockPos);
+			renderBlock = nullptr;
+			if (it != renderingTSDF.end())
+				renderBlock = it->second;
+	}
+	if (linearIdx >= 0 and linearIdx < 6)
+	{
+		ITMIndexDirectional index = ITMIndexDirectional(blockPos, TSDFDirection(linearIdx));
+
+		auto it = tsdf.find(index);
+		if (it == tsdf.end())
+		{
+			blocks[linearIdx] = nullptr;
+		} else
+		{
+			blocks[linearIdx] = it->second;
+		}
+	}
+	if (linearIdx >= 7 and linearIdx < 7 + 6 * N_DIRECTIONS)
+	{
+		int offset = linearIdx - 7;
+		int directionIdx = offset / N_DIRECTIONS;
+		int neighborIdx = offset % 6;
+
+		Vector3s shift[6] =
+			{
+				Vector3s(1, 0, 0),
+				Vector3s(-1, 0, 0),
+				Vector3s(0, 1, 0),
+				Vector3s(0, -1, 0),
+				Vector3s(0, 0, 1),
+				Vector3s(0, 0, -1)
+			};
+		ITMIndexDirectional index = ITMIndexDirectional(blockPos + shift[neighborIdx], TSDFDirection(directionIdx));
+		auto it = tsdf.find(index);
+		if (it == tsdf.end())
+			neighborBlocks[directionIdx * 6 + neighborIdx] = nullptr;
+		else
+			neighborBlocks[directionIdx * 6 + neighborIdx] = it->second;
+	}
+
+	__syncthreads();
+
+	if (not renderBlock)
+		return;
+
+	ITMVoxel& voxel = renderBlock[linearIdx];
 	Vector3i voxelPosIdx = blockToVoxelPos(Vector3i(blockPos.x, blockPos.y, blockPos.z))
 	                       + voxelOffsetToCoordinate(linearIdx);
 	Vector3f voxelPos = voxelPosIdx.toFloat();
@@ -104,14 +247,24 @@ combineDirectionalTSDFViewPoint2(//stdgpu::unordered_map<ITMIndex, ITMVoxel*> re
 	float freeSpaceWeight = 0;
 	float freeSpaceSDF = 0;
 
+
 	for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
 	{
-		float confidence = 0;
-		bool found = false;
-		float sdf = readWithConfidenceFromSDF_float_uninterpolated(found, confidence, tsdf, voxelPos,
-		                                                           maxW, TSDFDirection(directionIdx));
-		if (not found)
+		ITMVoxel* block = blocks[directionIdx];
+		if (not block)
 			continue;
+
+		float sdf = block[linearIdx].sdf;
+		float w_depth = block[linearIdx].w_depth;
+
+		voxel.sdf = sdf;
+		voxel.w_depth = w_depth;
+
+		bool found = false;
+//		float sdf = readWithConfidenceFromSDF_float_uninterpolated(found, w_depth, tsdf, voxelPos,
+//		                                                           maxW, TSDFDirection(directionIdx));
+//		if (not found)
+//			continue;
 
 		Vector3f color;
 		float color_w = 1;
@@ -119,64 +272,17 @@ combineDirectionalTSDFViewPoint2(//stdgpu::unordered_map<ITMIndex, ITMVoxel*> re
 			color = TSDFDirectionColor[directionIdx];
 		else
 			color = readFromSDF_color4u_uninterpolated(color_w, tsdf, voxelPos, maxW, TSDFDirection(directionIdx)).toVector3();
-		Vector3f gradient = computeSingleNormalFromSDF(tsdf, voxelPos, TSDFDirection(directionIdx), voxelSize / mu);
+
+		Vector3f gradient = computeGradient(block, neighborBlocks + directionIdx * 6, voxelOffsetToCoordinate(linearIdx), voxelSize / mu);
 
 		float weight =
 			DirectionWeight(DirectionAngle(gradient, TSDFDirection(directionIdx)))
 			* ORUtils::dot(gradient, -rayDirection)
-			* confidence;
+			* w_depth;
 		weight = MAX(weight, 0);
 
-//		if (voxelPosIdx.x == -71 and voxelPosIdx.y == -24 and voxelPosIdx.z == 258)
-//			printf("[%i] (%f, %f, [%f, %f, %f], %f) [%f, %f, %f] (%.12f, %.12f, %.12f) -> %.12f\n", directionIdx, sdf, confidence,
-//				color.x, color.y, color.z, color_w,
-//				gradient.x, gradient.y, gradient.z,
-//			  DirectionAngle(gradient, TSDFDirection(directionIdx)),
-//				DirectionWeight(DirectionAngle(gradient, TSDFDirection(directionIdx))),
-//				ORUtils::dot(gradient, -rayDirection), weight);
-
-		if (confidence > 0 and sdf > 0
-		    and ORUtils::length(gradient) > 0
-		    and false
-			)
-		{ // free space
-
-			// Don't carve, if this is the "backside" of a face
-			BlockTraversal bt(voxelPos * voxelSize, -rayDirection, 2 * mu, voxelSize, true);
-			bool carve = true;
-			while (bt.HasNextBlock())
-			{
-				Vector3i vIdx = bt.GetNextBlock();
-
-				float sdf_ = readFromSDF_float_uninterpolated(found, tsdf, vIdx.toFloat(), TSDFDirection(directionIdx));
-				if (sdf_ < 0)
-				{
-					carve = false;
-					break;
-				}
-			}
-
-			if (carve)
-			{
-//				float weightFS = weight;
-				float weightFS = confidence
-				                 //				                 * ORUtils::dot(-rayDirection, TSDFDirectionVector[directionIdx])
-
-				                 * MAX(0, ORUtils::dot(gradient, TSDFDirectionVector[directionIdx]))
-//				                 * DirectionWeight(DirectionAngle(gradient, TSDFDirection(directionIdx)))
-				;
-
-				weightFS = MAX(weightFS, 0);
-
-				freeSpaceSDF += weightFS * sdf;
-				freeSpaceWeight += weightFS;
-				colorFreeSpace += weightFS * color;
-				gradientFreeSpace += weightFS * gradient;
-			}
-		}
-
 		float weightNoGradient = MAX(0,
-		                             confidence
+		                             w_depth
 		                             * ORUtils::dot(-rayDirection, TSDFDirectionVector[directionIdx])
 //		                             * DirectionWeight(DirectionAngle(-rayDirection, TSDFDirection(directionIdx)))
 		);
@@ -239,37 +345,17 @@ combineDirectionalTSDFViewPoint2(//stdgpu::unordered_map<ITMIndex, ITMVoxel*> re
 	          and dot(gradientFreeSpace, gradientCombined) > -0.707 // if opposite surface, don't carve
 	         ) or (not hasGradient and not hasFreeSpaceGradient)))
 	{
-//		voxel.sdf = ITMVoxel::floatToValue(freeSpaceSDF);
-//		voxel.w_depth = ITMVoxel::floatToWeight(freeSpaceWeight, maxW);
-//		voxel.clr = TO_UCHAR3(colorFreeSpace * 255.0f);
-//		voxel.w_color = ITMVoxel::floatToWeight(freeSpaceWeight, maxW);
+		voxel.sdf = ITMVoxel::floatToValue(freeSpaceSDF);
+		voxel.w_depth = ITMVoxel::floatToWeight(freeSpaceWeight, maxW);
+		voxel.clr = TO_UCHAR3(colorFreeSpace * 255.0f);
+		voxel.w_color = ITMVoxel::floatToWeight(freeSpaceWeight, maxW);
 	} else
 	{
-//		voxel.sdf = ITMVoxel::floatToValue(sdfCombined);
-//		voxel.w_depth = ITMVoxel::floatToWeight(weightCombined, maxW);
-//		voxel.clr = TO_UCHAR3(colorCombined * 255.0f);
-//		voxel.w_color = ITMVoxel::floatToWeight(colorWeightCombined, maxW);
+		voxel.sdf = ITMVoxel::floatToValue(sdfCombined);
+		voxel.w_depth = ITMVoxel::floatToWeight(weightCombined, maxW);
+		voxel.clr = TO_UCHAR3(colorCombined * 255.0f);
+		voxel.w_color = ITMVoxel::floatToWeight(colorWeightCombined, maxW);
 	}
-
-//	if (voxelPosIdx.x == -71 and voxelPosIdx.y == -24 and voxelPosIdx.z == 258)
-//	{
-//		printf("FS(%.10f, %.10f) Def(%.10f, %.10f)  [%f, %f, %f]X[%f, %f, %f] = %f [FS: %i] -> (%f, %f, [%i, %i, %i], %f)\n", freeSpaceSDF, freeSpaceWeight, sdfCombined, weightCombined,
-//		       gradientFreeSpace.x, gradientFreeSpace.y, gradientFreeSpace.z,
-//		       gradientCombined.x, gradientCombined.y, gradientCombined.z,
-//		       dot(gradientFreeSpace, gradientCombined),
-//		       (freeSpaceWeight > 0
-//		        and ((
-//			             hasGradient and hasFreeSpaceGradient
-//			             and dot(gradientFreeSpace, gradientCombined) < 0.5 // if same surface, use normal combination instead of free space (prevent dents in surface)
-//			             and dot(gradientFreeSpace, gradientCombined) > -0.5 // if opposite surface, don't carve
-//
-//		             ) or (not hasGradient and not hasFreeSpaceGradient))
-//		       ),
-//		       voxelBlock[linearIdx].sdf, voxelBlock[linearIdx].w_depth,
-//		       voxelBlock[linearIdx].clr.x,voxelBlock[linearIdx].clr.y, voxelBlock[linearIdx].clr.z,  voxelBlock[linearIdx].w_color
-//		);
-//	}
-
 }
 
 __global__ void
@@ -279,17 +365,16 @@ combineDirectionalTSDFViewPoint(stdgpu::unordered_map<ITMIndex, ITMVoxel*> rende
                                 const Matrix4f invM, const float voxelSize, const float mu, const int maxW)
 {
 	stdgpu::index_t i = static_cast<stdgpu::index_t>(blockIdx.x);
-
 	if (i >= numVisibleBlocks) return;
-
 	const Vector3s& blockPos = visibleBlocks[i];
+	int linearIdx = blockIdx.y * blockDim.x + threadIdx.x;
+
 	auto it = renderingTSDF.find(blockPos);
 	if (it == renderingTSDF.end())
 		return;
 
 	ITMVoxel* block = it->second;
 
-	int linearIdx = blockIdx.y * blockDim.x + threadIdx.x;
 	ITMVoxel& voxel = block[linearIdx];
 	Vector3i voxelPosIdx = blockToVoxelPos(Vector3i(blockPos.x, blockPos.y, blockPos.z))
 	                       + voxelOffsetToCoordinate(linearIdx);
@@ -327,7 +412,7 @@ combineDirectionalTSDFViewPoint(stdgpu::unordered_map<ITMIndex, ITMVoxel*> rende
 			color = TSDFDirectionColor[directionIdx];
 		else
 			color = readFromSDF_color4u_uninterpolated(color_w, tsdf, voxelPos, maxW, TSDFDirection(directionIdx)).toVector3();
-		Vector3f gradient = computeSingleNormalFromSDF(tsdf, voxelPos, TSDFDirection(directionIdx), voxelSize / mu);
+		Vector3f gradient = computeSingleNormalFromSDF(tsdf, voxelPos.toIntFloor(), TSDFDirection(directionIdx), voxelSize / mu);
 
 		float weight =
 			DirectionWeight(DirectionAngle(gradient, TSDFDirection(directionIdx)))
@@ -343,45 +428,43 @@ combineDirectionalTSDFViewPoint(stdgpu::unordered_map<ITMIndex, ITMVoxel*> rende
 //				DirectionWeight(DirectionAngle(gradient, TSDFDirection(directionIdx))),
 //				ORUtils::dot(gradient, -rayDirection), weight);
 
-		if (confidence > 0 and sdf > 0
-		    and ORUtils::length(gradient) > 0
-		    and false
-			)
-		{ // free space
-
-			// Don't carve, if this is the "backside" of a face
-			BlockTraversal bt(voxelPos * voxelSize, -rayDirection, 2 * mu, voxelSize, true);
-			bool carve = true;
-			while (bt.HasNextBlock())
-			{
-				Vector3i vIdx = bt.GetNextBlock();
-
-				float sdf_ = readFromSDF_float_uninterpolated(found, tsdf, vIdx.toFloat(), TSDFDirection(directionIdx));
-				if (sdf_ < 0)
-				{
-					carve = false;
-					break;
-				}
-			}
-
-			if (carve)
-			{
-//				float weightFS = weight;
-				float weightFS = confidence
-				                 //				                 * ORUtils::dot(-rayDirection, TSDFDirectionVector[directionIdx])
-
-				                 * MAX(0, ORUtils::dot(gradient, TSDFDirectionVector[directionIdx]))
-//				                 * DirectionWeight(DirectionAngle(gradient, TSDFDirection(directionIdx)))
-				;
-
-				weightFS = MAX(weightFS, 0);
-
-				freeSpaceSDF += weightFS * sdf;
-				freeSpaceWeight += weightFS;
-				colorFreeSpace += weightFS * color;
-				gradientFreeSpace += weightFS * gradient;
-			}
-		}
+//		if (confidence > 0 and sdf > 0
+//		    and ORUtils::length(gradient) > 0)
+//		{ // free space
+//
+//			// Don't carve, if this is the "backside" of a face
+//			BlockTraversal bt(voxelPos * voxelSize, -rayDirection, 2 * mu, voxelSize, true);
+//			bool carve = true;
+//			while (bt.HasNextBlock())
+//			{
+//				Vector3i vIdx = bt.GetNextBlock();
+//
+//				float sdf_ = readFromSDF_float_uninterpolated(found, tsdf, vIdx.toFloat(), TSDFDirection(directionIdx));
+//				if (sdf_ < 0)
+//				{
+//					carve = false;
+//					break;
+//				}
+//			}
+//
+//			if (carve)
+//			{
+////				float weightFS = weight;
+//				float weightFS = confidence
+//				                 //				                 * ORUtils::dot(-rayDirection, TSDFDirectionVector[directionIdx])
+//
+//				                 * MAX(0, ORUtils::dot(gradient, TSDFDirectionVector[directionIdx]))
+////				                 * DirectionWeight(DirectionAngle(gradient, TSDFDirection(directionIdx)))
+//				;
+//
+//				weightFS = MAX(weightFS, 0);
+//
+//				freeSpaceSDF += weightFS * sdf;
+//				freeSpaceWeight += weightFS;
+//				colorFreeSpace += weightFS * color;
+//				gradientFreeSpace += weightFS * gradient;
+//			}
+//		}
 
 		float weightNoGradient = MAX(0,
 		                             confidence
@@ -489,9 +572,6 @@ void ITMVisualisationEngine_CUDA::ComputeRenderingTSDF(const Scene* scene, const
 	Matrix4f M = pose->GetM();
 	Vector4f projParams = intrinsics->projectionParamsSimple.all;
 
-	ITMTimer t;
-	t.Tick();
-
 	ITMRenderState_VH* renderState_vh = (ITMRenderState_VH*) renderState;
 	size_t N = renderState_vh->noVisibleEntries;
 
@@ -502,18 +582,14 @@ void ITMVisualisationEngine_CUDA::ComputeRenderingTSDF(const Scene* scene, const
 		renderingTSDF->clear();
 	renderingTSDF_device->allocate(renderState_vh->GetVisibleBlocks(), N);
 
-	printf("\np1: %f", t.Tock());
-	t.Tick();
-
 	auto tsdf = dynamic_cast<TSDF_CUDA<ITMIndexDirectional, ITMVoxel>*>(scene->tsdf);
-	dim3 gridSize(N, 8);
-	dim3 blockSize(8 * 8);
-	combineDirectionalTSDFViewPoint << < gridSize, blockSize >> > (
+	dim3 gridSize(N, 1);
+	dim3 blockSize(8 * 8 * 8);
+	combineDirectionalTSDFViewPoint2 << < gridSize, blockSize >> > (
 		renderingTSDF_device->getMap(),
 		tsdf->getMap(), renderState_vh->GetVisibleBlocks(), N,
 		pose->GetInvM(), scene->sceneParams->voxelSize, scene->sceneParams->mu, scene->sceneParams->maxW);
 	ORcudaKernelCheck;
-	printf("\tp2: %f\n", t.Tock());
 }
 
 void ITMVisualisationEngine_CUDA::FindVisibleBlocks(const Scene* scene, const ORUtils::SE3Pose* pose,
@@ -589,13 +665,13 @@ void ITMVisualisationEngine_CUDA::CreateExpectedDepths(const Scene* scene, const
 		    or relativePoseAngle > 0.05 * M_PI_2 // update, if camera rotates
 			)
 		{
-			printf("CombineTSDFForRendering() frames: %i\ttranslation: %f\tangle: %f",
-			       frameCounter - lastTSDFCombineFrameCounter,
-			       ORUtils::length(lastTSDFCombinePose.GetT() - pose->GetT()), relativePoseAngle);
+//			printf("CombineTSDFForRendering() frames: %i\ttranslation: %f\tangle: %f",
+//			       frameCounter - lastTSDFCombineFrameCounter,
+//			       ORUtils::length(lastTSDFCombinePose.GetT() - pose->GetT()), relativePoseAngle);
 			ITMTimer timer;
 			timer.Tick();
 			ComputeRenderingTSDF(scene, pose, intrinsics, renderState);
-			printf("\ttime: %fs\n", timer.Tock());
+//			printf("\ttime: %fs\n", timer.Tock());
 			lastTSDFCombinePose = *pose;
 			lastTSDFCombineFrameCounter = frameCounter;
 		}
@@ -1042,7 +1118,7 @@ void ITMVisualisationEngine_CUDA::CreateICPMaps(const Scene* scene,
 	ITMTimer timer;
 	timer.Tick();
 	GenericRaycast(scene, imgSize, invM, view->calib.intrinsics_d.projectionParamsSimple.all, renderState, true);
-	printf("%f\n", timer.Tock());
+//	printf("Rendering: %f\n", timer.Tock());
 	trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
 
 	Vector4f* pointsMap = trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CUDA);

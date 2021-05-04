@@ -23,6 +23,10 @@ IF(WITH_CUDA)
 
 #  SET(CUDA_NVCC_FLAGS -O0 -Xptxas -O0; ${CUDA_NVCC_FLAGS})
 
+#  SET(CUDA_NVCC_FLAGS -lineinfo; ${CUDA_NVCC_FLAGS})
+
+  SET(CUDA_NVCC_FLAGS --maxrregcount=64; ${CUDA_NVCC_FLAGS})
+
 # Enable debugging
 #  SET(CUDA_NVCC_FLAGS --device-debug; ${CUDA_NVCC_FLAGS})
 

@@ -19,7 +19,7 @@ CLIEngine* CLIEngine::instance;
 
 void CLIEngine::Run()
 {
-	while (true)
+	while (true)// and currentFrameNo < 5)
 	{
 		if (!ProcessFrame()) break;
 	}

@@ -521,12 +521,42 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeGradientFromSDF(
 }
 
 /**
+ * Computes raw (unnormalized) gradient from neighboring voxels Integer version (reduced overhead)
+ */
+template<typename TIndex, typename TVoxel, template<typename, typename...> class Map, typename... Args>
+_CPU_AND_GPU_CODE_ inline Vector3f computeGradientFromSDF(
+	const Map<TIndex, TVoxel*, Args...>& tsdf, const Vector3i& pos, const TSDFDirection direction = TSDFDirection::NONE)
+{
+	bool found;
+	TVoxel voxel;
+	Vector3f ret(0, 0, 0);
+	float p1, p2;
+
+	// gradient x
+	ReadVoxelSDFDiscardZero(p1, pos + Vector3i(1, 0, 0));
+	ReadVoxelSDFDiscardZero(p2, pos + Vector3i(-1, 0, 0));
+	ret.x = TVoxel::valueToFloat(p1 - p2);
+
+	// gradient y
+	ReadVoxelSDFDiscardZero(p1, pos + Vector3i(0, 1, 0));
+	ReadVoxelSDFDiscardZero(p2, pos + Vector3i(0, -1, 0));
+	ret.y = TVoxel::valueToFloat(p1 - p2);
+
+	// gradient z
+	ReadVoxelSDFDiscardZero(p1, pos + Vector3i(0, 0, 1));
+	ReadVoxelSDFDiscardZero(p2, pos + Vector3i(0, 0, -1));
+	ret.z = TVoxel::valueToFloat(p1 - p2);
+
+	return ret;
+}
+
+/**
  * @param tau = voxelSize / truncationDistance (normalized value per 1 voxel). If 0 don't filter
  * @return
  */
-template<typename TIndex, typename TVoxel, template<typename, typename...> class Map, typename... Args>
+template<typename T, typename TIndex, typename TVoxel, template<typename, typename...> class Map, typename... Args>
 _CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(
-	const Map<TIndex, TVoxel*, Args...> tsdf, const Vector3f& point,
+	const Map<TIndex, TVoxel*, Args...> tsdf, const ORUtils::Vector3<T>& point,
 	const TSDFDirection direction = TSDFDirection::NONE, const float tau = 0.0)
 {
 	Vector3f gradient = computeGradientFromSDF(tsdf, point, direction);
@@ -545,7 +575,6 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(
 
 	return gradient.normalised();
 }
-
 
 template<typename TIndex, typename TVoxel, template<typename, typename...> class Map, typename... Args>
 _CPU_AND_GPU_CODE_ inline Vector4f readFromSDF_color4u_interpolated(const Map<TIndex, TVoxel*, Args...> tsdf, const Vector3f& point)

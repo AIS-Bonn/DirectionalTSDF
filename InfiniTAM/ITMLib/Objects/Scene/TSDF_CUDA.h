@@ -107,6 +107,7 @@ public:
 		dim3 blockSize(256, 1);
 		dim3 gridSize((int) ceil((float) N / (float) blockSize.x));
 		allocateBlocks_device<<<blockSize, gridSize>>>(this->getMap(), noAllocatedBlocks, this->voxels, blocks, N);
+		ORcudaKernelCheck;
 		destroyDeviceArray(noAllocatedBlocks);
 	}
 
