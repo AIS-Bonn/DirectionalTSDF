@@ -84,14 +84,6 @@ public:
 	virtual typename IndexToRenderState<ITMVoxelIndex>::type*
 	CreateRenderState(const Scene* scene, const Vector2i& imgSize) const = 0;
 
-	/** Given a scene, pose and intrinsics, compute the
-	visible subset of the scene and store it in an
-	appropriate visualisation state object, created
-	previously using allocateInternalState().
-	*/
-	virtual void FindVisibleBlocks(const Scene* scene, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
-	                               ITMRenderState* renderState) const = 0;
-
 	virtual void ComputeRenderingTSDF(const Scene* scene, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
 	                                  ITMRenderState* renderState) = 0;
 
@@ -101,7 +93,7 @@ public:
 	virtual int CountVisibleBlocks(const Scene* scene, const ITMRenderState* renderState, int minBlockId = 0,
 	                               int maxBlockId = SDF_LOCAL_BLOCK_NUM) const = 0;
 
-	/** Given scene, pose and intrinsics, create an estimate
+	/** Given scene, pose and projParams, create an estimate
 	of the minimum and maximum depths at each pixel of
 	an image.
 	*/

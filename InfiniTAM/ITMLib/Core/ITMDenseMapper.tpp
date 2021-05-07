@@ -34,6 +34,8 @@ void ITMDenseMapper::ProcessFrame(const ITMView *view, const ITMTrackingState *t
 	// allocation
 	sceneRecoEngine->AllocateSceneFromDepth(scene, view, trackingState, renderState, false, resetVisibleList);
 
+	sceneRecoEngine->FindVisibleBlocks(scene, trackingState->pose_d, &view->calib.intrinsics_d, renderState);
+
 	// integration
 	sceneRecoEngine->IntegrateIntoScene(scene, view, trackingState, renderState);
 
@@ -62,9 +64,4 @@ void ITMDenseMapper::ProcessFrame(const ITMView *view, const ITMTrackingState *t
 void ITMDenseMapper::UpdateVisibleList(const ITMView *view, const ITMTrackingState *trackingState, Scene *scene, ITMRenderState *renderState, bool resetVisibleList)
 {
 	sceneRecoEngine->AllocateSceneFromDepth(scene, view, trackingState, renderState, true, resetVisibleList);
-}
-
-const ITMSceneReconstructionEngine* ITMDenseMapper::GetSceneReconstructionEngine() const
-{
-	return sceneRecoEngine;
 }

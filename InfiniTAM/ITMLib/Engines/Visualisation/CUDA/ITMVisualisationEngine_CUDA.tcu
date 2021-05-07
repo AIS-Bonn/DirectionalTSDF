@@ -161,6 +161,17 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeGradient(ITMVoxel* block, ITMVoxel** n
 	return ret.normalised();
 }
 
+/**
+ * A faster version of combineDiretionalTSDFViewPoint that uses shared memory between threads to reduce tsdf lookups
+ * @param renderingTSDF
+ * @param tsdf
+ * @param visibleBlocks
+ * @param numVisibleBlocks
+ * @param invM
+ * @param voxelSize
+ * @param mu
+ * @param maxW
+ */
 __global__ void
 combineDirectionalTSDFViewPoint2(stdgpu::unordered_map<ITMIndex, ITMVoxel*> renderingTSDF,
                                  const stdgpu::unordered_map<ITMIndexDirectional, ITMVoxel*> tsdf,
@@ -575,6 +586,9 @@ void ITMVisualisationEngine_CUDA::ComputeRenderingTSDF(const Scene* scene, const
 	ITMRenderState_VH* renderState_vh = (ITMRenderState_VH*) renderState;
 	size_t N = renderState_vh->noVisibleEntries;
 
+	if (N == 0)
+		return;
+
 	TSDF_CUDA<ITMIndex, ITMVoxel>* renderingTSDF_device = (TSDF_CUDA<ITMIndex, ITMVoxel>*) renderingTSDF;
 	if (N >= renderingTSDF->allocatedBlocksMax)
 		renderingTSDF->resize(2 * N);
@@ -590,39 +604,6 @@ void ITMVisualisationEngine_CUDA::ComputeRenderingTSDF(const Scene* scene, const
 		tsdf->getMap(), renderState_vh->GetVisibleBlocks(), N,
 		pose->GetInvM(), scene->sceneParams->voxelSize, scene->sceneParams->mu, scene->sceneParams->maxW);
 	ORcudaKernelCheck;
-}
-
-void ITMVisualisationEngine_CUDA::FindVisibleBlocks(const Scene* scene, const ORUtils::SE3Pose* pose,
-                                                    const ITMIntrinsics* intrinsics, ITMRenderState* renderState) const
-{
-	const ITMHashEntry* hashTable = scene->index.GetEntries();
-	int noTotalEntries = scene->index.noTotalEntries;
-	float voxelSize = scene->sceneParams->voxelSize;
-	Vector2i imgSize = renderState->renderingRangeImage->noDims;
-
-	Matrix4f M = pose->GetM();
-	Vector4f projParams = intrinsics->projectionParamsSimple.all;
-
-	ITMRenderState_VH* renderState_vh = (ITMRenderState_VH*) renderState;
-
-	ORcudaSafeCall(cudaMemset(noVisibleEntries_device, 0, sizeof(int)));
-
-	dim3 cudaBlockSizeAL(256, 1);
-	dim3 gridSizeAL((int) ceil((float) noTotalEntries / (float) cudaBlockSizeAL.x));
-	buildCompleteVisibleList_device << < gridSizeAL, cudaBlockSizeAL >> >
-	                                                 (hashTable, noTotalEntries,
-		                                                 renderState_vh->GetVisibleEntryIDs(), noVisibleEntries_device, renderState_vh->GetEntriesVisibleType(), M, projParams,
-		                                                 imgSize, voxelSize);
-	ORcudaKernelCheck;
-
-	/*	if (this->scene->useSwapping)
-			{
-			reAllocateSwappedOutVoxelBlocks_device << <gridSizeAL, cudaBlockSizeAL >> >(voxelAllocationList, hashTable, noTotalEntries,
-			noAllocatedVoxelEntries_device, entriesVisibleType);
-			}*/
-
-	ORcudaSafeCall(
-		cudaMemcpy(&renderState_vh->noVisibleEntries, noVisibleEntries_device, sizeof(int), cudaMemcpyDeviceToHost));
 }
 
 int
@@ -659,19 +640,18 @@ void ITMVisualisationEngine_CUDA::CreateExpectedDepths(const Scene* scene, const
 		Vector3f v1 = pose->GetR() * Vector3f(1, 0, 0);
 		Vector3f v2 = lastTSDFCombinePose.GetR() * Vector3f(1, 0, 0);
 		float relativePoseAngle = acos(MAX(MIN(dot(v1, v2), 1), -1));
-		if (frameCounter < 10 // initialization phase, many changes in TSDFBase
+		if (frameCounter < 5 // initialization phase, many changes in TSDFBase
 		    or frameCounter - lastTSDFCombineFrameCounter > 50 // update sometimes, even if camera static
 		    or ORUtils::length(lastTSDFCombinePose.GetT() - pose->GetT()) > 0.05 // update, if camera translates
 		    or relativePoseAngle > 0.05 * M_PI_2 // update, if camera rotates
 			)
 		{
-//			printf("CombineTSDFForRendering() frames: %i\ttranslation: %f\tangle: %f",
-//			       frameCounter - lastTSDFCombineFrameCounter,
-//			       ORUtils::length(lastTSDFCombinePose.GetT() - pose->GetT()), relativePoseAngle);
 			ITMTimer timer;
 			timer.Tick();
 			ComputeRenderingTSDF(scene, pose, intrinsics, renderState);
-//			printf("\ttime: %fs\n", timer.Tock());
+//			printf("CombineTSDFForRendering() frames: %i\ttranslation: %f\tangle: %f\ttime: %fs\n",
+//			       frameCounter - lastTSDFCombineFrameCounter,
+//			       ORUtils::length(lastTSDFCombinePose.GetT() - pose->GetT()), relativePoseAngle, timer.Tock());
 			lastTSDFCombinePose = *pose;
 			lastTSDFCombineFrameCounter = frameCounter;
 		}

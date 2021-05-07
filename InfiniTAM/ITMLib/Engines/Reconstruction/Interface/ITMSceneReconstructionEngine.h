@@ -44,6 +44,14 @@ public:
 	                                    const ITMRenderState* renderState, bool onlyUpdateVisibleList = false,
 	                                    bool resetVisibleList = false) = 0;
 
+	/** Given a scene, pose and projParams, compute the
+	visible subset of the scene and store it in an
+	appropriate visualisation state object, created
+	previously using allocateInternalState().
+	*/
+	virtual void FindVisibleBlocks(const Scene* scene, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
+	                               ITMRenderState* renderState) = 0;
+
 	/** Update the voxel blocks by integrating depth and
 			possibly colour information from the given view.
 	*/

@@ -41,7 +41,7 @@ __global__ void checkProjectAndSplitBlocks_device(const ITMHashEntry *hashEntrie
 
 //template<class TVoxel, class TIndex, template<typename, typename...> class Map, typename... Args>
 //__global__ void findVisibleBlocks_device(Map<TVoxel, TIndex, Args...> tsdf, const ITMHashEntry* hashTable,
-//                                         int noTotalEntries, Matrix4f M, Vector4f projParams, Vector2i imgSize,
+//                                         int noTotalEntries, Matrix4f pose_M, Vector4f projParams, Vector2i imgSize,
 //                                         float voxelSize);
 
 

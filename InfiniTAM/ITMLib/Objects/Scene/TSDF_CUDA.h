@@ -103,6 +103,13 @@ public:
 
 	inline void allocate(const TIndex* blocks, size_t N) override
 	{
+		if (N > 0 and this->size() > this->allocatedBlocksMax)
+		{
+			printf("warning: TSDF size exceeded (%i/%i allocated). stopped allocating.\n", this->size(), this->allocatedBlocksMax);
+			return;
+		}
+		if (N <= 0)
+			return;
 		unsigned long long* noAllocatedBlocks = createDeviceArray<unsigned long long>(1, this->getMap().size());
 		dim3 blockSize(256, 1);
 		dim3 gridSize((int) ceil((float) N / (float) blockSize.x));

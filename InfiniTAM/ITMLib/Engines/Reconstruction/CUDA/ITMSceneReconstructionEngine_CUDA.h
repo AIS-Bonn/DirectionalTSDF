@@ -16,6 +16,8 @@ private:
 	HashEntryAllocType *entriesAllocType_device;
 	Vector4s *blockCoords_device;
 	TSDFDirection *blockDirections_device;
+	size_t noAllocationBlocks;
+	size_t noFusionBlocks;
 
 	SummingVoxelMap_CUDA* summingVoxelMap;
 
@@ -26,6 +28,9 @@ public:
 	                            const ITMTrackingState* trackingState,
 	                            const ITMRenderState* renderState, bool onlyUpdateVisibleList = false,
 	                            bool resetVisibleList = false) override;
+
+	void FindVisibleBlocks(const Scene* scene, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
+	                       ITMRenderState* renderState) override;
 
 	explicit ITMSceneReconstructionEngine_CUDA(const std::shared_ptr<const ITMLibSettings>& settings);
 

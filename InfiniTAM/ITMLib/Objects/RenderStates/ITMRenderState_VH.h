@@ -58,8 +58,11 @@ namespace ITMLib
 
 		void Resize(size_t newSize)
 		{
-			noVisibleEntries = newSize;
-			visibleBlocks->Resize(newSize);
+			if (newSize > visibleBlocks->dataSize)
+			{
+				noVisibleEntries = 0;
+				visibleBlocks->Resize(newSize * 2);
+			}
 		}
 
 		/** Get the list of "visible entries", that are currently

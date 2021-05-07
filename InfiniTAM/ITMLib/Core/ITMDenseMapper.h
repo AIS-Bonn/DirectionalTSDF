@@ -28,7 +28,10 @@ namespace ITMLib
 		/// Update the visible list (this can be called to update the visible list when fusion is turned off)
 		void UpdateVisibleList(const ITMView *view, const ITMTrackingState *trackingState, Scene *scene, ITMRenderState *renderState, bool resetVisibleList = false);
 
-		const ITMSceneReconstructionEngine *GetSceneReconstructionEngine() const;
+		ITMSceneReconstructionEngine *GetSceneReconstructionEngine()
+		{
+			return sceneRecoEngine;
+		}
 
 		/** \brief Constructor
 		    Ommitting a separate image size for the depth images

@@ -27,6 +27,9 @@ protected:
 public:
 	void ResetScene(Scene *scene) override;
 
+	void FindVisibleBlocks(const Scene* scene, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
+	                       ITMRenderState* renderState) override;
+
 	void AllocateSceneFromDepth(Scene *scene, const ITMView *view, const ITMTrackingState *trackingState,
 		const ITMRenderState *renderState, bool onlyUpdateVisibleList = false, bool resetVisibleList = false) override;
 

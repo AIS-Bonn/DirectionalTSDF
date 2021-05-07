@@ -395,7 +395,7 @@ void ITMMultiEngine::GetImage(ITMUChar4Image *out, GetImageType getImageType, OR
 			ITMLocalMap<ITMVoxel> *activeData = mapManager->getLocalMap(freeviewLocalMapIdx);
 			if (renderState_freeview == NULL) renderState_freeview = visualisationEngine->CreateRenderState(activeData->scene, out->noDims);
 
-			visualisationEngine->FindVisibleBlocks(activeData->scene, pose, intrinsics, renderState_freeview);
+			denseMapper->GetSceneReconstructionEngine()->FindVisibleBlocks(activeData->scene, pose, &(view->calib.intrinsics_d), renderState_freeview);
 			visualisationEngine->CreateExpectedDepths(activeData->scene, pose, intrinsics, renderState_freeview);
 			visualisationEngine->RenderImage(activeData->scene, pose, intrinsics, renderState_freeview, renderState_freeview->raycastImage, renderImageType);
 

@@ -93,40 +93,6 @@ ITMRenderState_VH* ITMVisualisationEngine_CPU::CreateRenderState(const Scene* sc
 	);
 }
 
-void ITMVisualisationEngine_CPU::FindVisibleBlocks(const Scene* scene,
-                                                   const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
-                                                   ITMRenderState* renderState) const
-{
-	const ITMHashEntry* hashTable = scene->index.GetEntries();
-	int noTotalEntries = scene->index.noTotalEntries;
-	float voxelSize = scene->sceneParams->voxelSize;
-	Vector2i imgSize = renderState->renderingRangeImage->noDims;
-
-	Matrix4f M = pose->GetM();
-	Vector4f projParams = intrinsics->projectionParamsSimple.all;
-
-	ITMRenderState_VH* renderState_vh = (ITMRenderState_VH*) renderState;
-
-	int noVisibleEntries = 0;
-	int* visibleEntryIDs = renderState_vh->GetVisibleEntryIDs();
-
-	//build visible list
-	for (int targetIdx = 0; targetIdx < noTotalEntries; targetIdx++)
-	{
-		const ITMHashEntry& hashEntry = hashTable[targetIdx];
-
-		if (hashEntry.ptr >= 0)
-		{
-			bool isVisible, isVisibleEnlarged;
-			checkBlockVisibility<false>(isVisible, isVisibleEnlarged, hashEntry.pos, M, projParams, voxelSize, imgSize);
-			visibleEntryIDs[noVisibleEntries] = targetIdx;
-			noVisibleEntries++;
-		}
-	}
-
-	renderState_vh->noVisibleEntries = noVisibleEntries;
-}
-
 int ITMVisualisationEngine_CPU::CountVisibleBlocks(const Scene* scene,
                                                    const ITMRenderState* renderState, int minBlockId,
                                                    int maxBlockId) const

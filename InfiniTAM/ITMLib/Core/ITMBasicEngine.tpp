@@ -421,7 +421,7 @@ void ITMBasicEngine::GetImage(ITMUChar4Image *out, GetImageType getImageType, OR
 		}
 	case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_ICP_ERROR:
 	{
-		visualisationEngine->FindVisibleBlocks(scene, trackingState->pose_d, &(view->calib.intrinsics_d), renderState_live);
+		denseMapper->GetSceneReconstructionEngine()->FindVisibleBlocks(scene, trackingState->pose_d, &(view->calib.intrinsics_d), renderState_live);
 		visualisationEngine->CreateExpectedDepths(scene, trackingState->pose_d, &(view->calib.intrinsics_d), renderState_live);
 		visualisationEngine->CreateICPMaps(scene, view, trackingState, renderState_live);
 		visualisationEngine->RenderTrackingError(renderState_live->raycastImage, trackingState, view);
@@ -442,7 +442,7 @@ void ITMBasicEngine::GetImage(ITMUChar4Image *out, GetImageType getImageType, OR
 			renderState_freeview = ITMRenderStateFactory::CreateRenderState(out->noDims, scene->sceneParams, settings->GetMemoryType());
 		}
 
-		visualisationEngine->FindVisibleBlocks(scene, pose, intrinsics, renderState_freeview);
+		denseMapper->GetSceneReconstructionEngine()->FindVisibleBlocks(scene, pose, &(view->calib.intrinsics_d), renderState_freeview);
 		visualisationEngine->CreateExpectedDepths(scene, pose, intrinsics, renderState_freeview);
 		visualisationEngine->RenderImage(scene, pose, intrinsics, renderState_freeview, renderState_freeview->raycastImage, renderImageType, IITMVisualisationEngine::RENDER_FROM_NEW_RAYCAST);
 

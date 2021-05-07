@@ -25,41 +25,6 @@ __global__ void countVisibleBlocks_device(const int *visibleEntryIDs, int noVisi
 	if ((blockId >= minBlockId) && (blockId <= maxBlockId)) atomicAdd(noBlocks, 1);
 }
 
-__global__ void buildCompleteVisibleList_device(const ITMHashEntry *hashTable, int noTotalEntries,
-	int *visibleEntryIDs, int *noVisibleEntries, HashEntryVisibilityType *entriesVisibleType, Matrix4f M, Vector4f projParams, Vector2i imgSize, float voxelSize)
-{
-	int targetIdx = threadIdx.x + blockIdx.x * blockDim.x;
-	if (targetIdx > noTotalEntries - 1) return;
-
-	__shared__ bool shouldPrefix;
-
-	unsigned char hashVisibleType = 0; //entriesVisibleType[targetIdx];
-	const ITMHashEntry &hashEntry = hashTable[targetIdx];
-
-	shouldPrefix = false;
-	__syncthreads();
-
-	if (hashEntry.ptr >= 0)
-	{
-		shouldPrefix = true;
-
-		bool isVisible, isVisibleEnlarged;
-		checkBlockVisibility<false>(isVisible, isVisibleEnlarged, hashEntry.pos, M, projParams, voxelSize, imgSize);
-
-		hashVisibleType = isVisible;
-	}
-
-	if (hashVisibleType > 0) shouldPrefix = true;
-
-	__syncthreads();
-
-	if (shouldPrefix)
-	{
-		int offset = computePrefixSum_device<int>(hashVisibleType > 0, noVisibleEntries, blockDim.x * blockDim.y, threadIdx.x);
-		if (offset != -1) visibleEntryIDs[offset] = targetIdx;
-	}
-}
-
 __global__ void
 projectAndSplitBlocks_device(RenderingBlock* renderingBlocks, uint* noTotalBlocks, const ITMIndex* visibleBlocks,
                              int noVisibleEntries, const Matrix4f pose_M, const Vector4f intrinsics,
@@ -182,28 +147,5 @@ __global__ void forwardProject_device(Vector4f *forwardProjection, const Vector4
 	int locId_new = forwardProjectPixel(pixel * voxelSize, M, projParams, imgSize);
 	if (locId_new >= 0) forwardProjection[locId_new] = pixel;
 }
-
-//__global__ void findVisibleBlocks_device(RenderingTSDF tsdf,
-//                                         const ITMHashEntry* hashTable, int noTotalEntries, Matrix4f M,
-//                                         Vector4f projParams, Vector2i imgSize, float voxelSize)
-//{
-//	int targetIdx = threadIdx.x + blockIdx.x * blockDim.x;
-//	if (targetIdx > noTotalEntries - 1) return;
-//
-//	const ITMHashEntry &hashEntry = hashTable[targetIdx];
-//
-//	if (hashEntry.ptr < 0)
-//		return;
-//
-//	bool isVisible, isVisibleEnlarged;
-//	checkBlockVisibility<false>(isVisible, isVisibleEnlarged, hashEntry.pos, M, projParams, voxelSize, imgSize);
-//	if (not isVisible)
-//		return;
-//
-//	if (not tsdf.contains(hashEntry.pos))
-//	{
-//		tsdf.emplace(hashEntry.pos, nullptr);
-//	}
-//}
 
 } // namespace ITMLib

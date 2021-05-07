@@ -40,9 +40,6 @@ public:
 
 	ITMRenderState_VH* CreateRenderState(const Scene* scene, const Vector2i& imgSize) const override;
 
-	void FindVisibleBlocks(const Scene* scene, const ORUtils::SE3Pose* pose,
-	                       const ITMIntrinsics* intrinsics, ITMRenderState* renderState) const override;
-
 	void ComputeRenderingTSDF(const Scene* scene, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
 	                          ITMRenderState* renderState) override;
 
