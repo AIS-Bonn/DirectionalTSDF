@@ -8,7 +8,6 @@
 #include <ITMLib/ITMLibDefines.h>
 #include <ITMLib/Utils/ITMTimer.h>
 #include <ITMLib/Objects/Scene/ITMRepresentationAccess.h>
-#include <ITMLib/Engines/Visualisation/CUDA/RenderingTSDF_CUDA.cuh>
 #include <stdgpu/unordered_map.cuh>
 
 using namespace ITMLib;

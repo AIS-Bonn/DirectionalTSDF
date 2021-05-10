@@ -59,7 +59,7 @@ namespace ITMLib
 		{ return renderState_freeview; }
 
 		virtual const unsigned int* GetAllocationsPerDirection() override
-		{ return scene->localVBA.noAllocationsPerDirection; }
+		{ return scene->tsdf->allocationStats.noAllocationsPerDirection; }
 
 		/// Gives access to the internal world representation
 		Scene* GetScene() { return scene; }

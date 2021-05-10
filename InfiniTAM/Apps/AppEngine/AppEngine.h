@@ -224,7 +224,7 @@ public:
 
 		statisticsEngine.LogTimeStats(mainEngine->GetTimeStats());
 		statisticsEngine.LogPose(*mainEngine->GetTrackingState());
-//		statisticsEngine.LogBlockAllocations(mainEngine->GetAllocationsPerDirection());
+		statisticsEngine.LogBlockAllocations(mainEngine->GetAllocationsPerDirection());
 
 		currentFrameNo++;
 

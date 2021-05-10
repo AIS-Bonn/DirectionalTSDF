@@ -81,11 +81,11 @@ void ITMViewBuilder_CUDA::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImag
 
 	timer.Tick();
 	this->DepthFiltering(this->floatImage, view->depth);
-	timeStats.bilateralFilter = timer.Tock();
 	if (useBilateralFilter)
 	{ // user filtered depth image
 		view->depth->SetFrom(this->floatImage, MemoryBlock<float>::CUDA_TO_CUDA);
 	}
+	timeStats.bilateralFilter = timer.Tock();
 
 	if (modelSensorNoise)
 	{

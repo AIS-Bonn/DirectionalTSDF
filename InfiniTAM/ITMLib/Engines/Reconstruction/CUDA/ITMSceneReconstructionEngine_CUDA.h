@@ -11,8 +11,6 @@ class SummingVoxelMap_CUDA;
 class ITMSceneReconstructionEngine_CUDA : public ITMSceneReconstructionEngine
 {
 private:
-	void *allocationTempData_device;
-	void *allocationTempData_host;
 	HashEntryAllocType *entriesAllocType_device;
 	Vector4s *blockCoords_device;
 	TSDFDirection *blockDirections_device;

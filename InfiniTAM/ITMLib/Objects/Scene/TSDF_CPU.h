@@ -69,7 +69,6 @@ public:
 		if (newSize <= 0)
 			return;
 		this->allocatedBlocksMax = newSize;
-		this->allocatedBlocks = 0;
 
 		if (this->voxels)
 			destroyHostArray(this->voxels);

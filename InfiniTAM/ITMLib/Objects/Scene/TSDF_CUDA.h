@@ -55,7 +55,7 @@ void clearVoxels_device(TVoxel* voxels)
 
 template<typename TIndex, typename TVoxel, template<typename, typename...> class Map, typename... Args>
 __global__ void
-allocateBlocks_device(Map<TIndex, TVoxel*, Args...> tsdf, unsigned long long *noAllocatedBlocks, TVoxel* voxels, const TIndex* allocationBlocksList, const size_t N)
+allocateBlocks_device(Map<TIndex, TVoxel*, Args...> tsdf, AllocationStats *allocationStats, TVoxel* voxels, const TIndex* allocationBlocksList, const size_t N)
 {
 	size_t index = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -65,7 +65,17 @@ allocateBlocks_device(Map<TIndex, TVoxel*, Args...> tsdf, unsigned long long *no
 	if (tsdf.find(allocationBlocksList[index]) != tsdf.end())
 		return; // already allocated
 
-	size_t offset = atomicAdd(noAllocatedBlocks, 1);
+	if (allocationBlocksList[index].getDirection() != TSDFDirection::NONE)
+	{
+		atomicAdd(allocationStats->noAllocationsPerDirection +
+		          static_cast<TSDFDirection_type>(allocationBlocksList[index].getDirection()), 1);
+	}
+	else
+	{
+		atomicAdd(allocationStats->noAllocationsPerDirection, 1);
+	}
+
+	size_t offset = atomicAdd(&(allocationStats->noAllocations), 1);
 	tsdf.emplace(allocationBlocksList[index], voxels + offset * SDF_BLOCK_SIZE3);
 }
 
@@ -85,8 +95,6 @@ public:
 		if (newSize <= 0)
 			return;
 		this->allocatedBlocksMax = newSize;
-		this->allocatedBlocks = 0;
-		ORcudaSafeCall(cudaMemset(this->allocatedBlocks_device, 0, sizeof(int)));
 
 		if (this->voxels)
 			destroyDeviceArray(this->voxels);
@@ -99,30 +107,39 @@ public:
 
 		clearVoxels_device << < this->allocatedBlocksMax, SDF_BLOCK_SIZE3 >> > (this->voxels);
 		ORcudaKernelCheck;
+
+		this->allocationStats = AllocationStats();
 	}
 
 	inline void allocate(const TIndex* blocks, size_t N) override
 	{
 		if (N > 0 and this->size() > this->allocatedBlocksMax)
 		{
-			printf("warning: TSDF size exceeded (%i/%i allocated). stopped allocating.\n", this->size(), this->allocatedBlocksMax);
+			printf("warning: TSDF size exceeded (%i/%zu allocated). stopped allocating.\n", this->size(), this->allocatedBlocksMax);
 			return;
 		}
 		if (N <= 0)
 			return;
-		unsigned long long* noAllocatedBlocks = createDeviceArray<unsigned long long>(1, this->getMap().size());
+
+		ORcudaSafeCall(cudaMemcpy(allocationStats_device, &this->allocationStats, sizeof(AllocationStats), cudaMemcpyHostToDevice));
+
 		dim3 blockSize(256, 1);
 		dim3 gridSize((int) ceil((float) N / (float) blockSize.x));
-		allocateBlocks_device<<<blockSize, gridSize>>>(this->getMap(), noAllocatedBlocks, this->voxels, blocks, N);
+		allocateBlocks_device<<<blockSize, gridSize>>>(this->getMap(), allocationStats_device, this->voxels, blocks, N);
 		ORcudaKernelCheck;
-		destroyDeviceArray(noAllocatedBlocks);
+
+		ORcudaSafeCall(cudaMemcpy(&this->allocationStats, allocationStats_device, sizeof(AllocationStats), cudaMemcpyDeviceToHost));
 	}
 
 	explicit TSDF_CUDA(size_t size)
 	{
-		ORcudaSafeCall(cudaMalloc(&this->allocatedBlocks_device, sizeof(size_t)));
 		resize(size);
+		ORcudaSafeCall(cudaMalloc(&allocationStats_device, sizeof(AllocationStats)));
+		ORcudaSafeCall(cudaMemcpy(allocationStats_device, &this->allocationStats, sizeof(AllocationStats), cudaMemcpyHostToDevice));
 	}
+
+private:
+	AllocationStats* allocationStats_device;
 };
 
 template<typename TIndex, typename TVoxel>

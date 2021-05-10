@@ -272,10 +272,6 @@ combineDirectionalTSDFViewPoint2(stdgpu::unordered_map<ITMIndex, ITMVoxel*> rend
 		voxel.w_depth = w_depth;
 
 		bool found = false;
-//		float sdf = readWithConfidenceFromSDF_float_uninterpolated(found, w_depth, tsdf, voxelPos,
-//		                                                           maxW, TSDFDirection(directionIdx));
-//		if (not found)
-//			continue;
 
 		Vector3f color;
 		float color_w = 1;
@@ -789,7 +785,6 @@ void ITMVisualisationEngine_CUDA::GenericRaycast(const Scene* scene, const Vecto
 		genericRaycast_device << < gridSize, cudaBlockSize >> > (
 			renderState->raycastResult->GetData(MEMORYDEVICE_CUDA),
 				renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA),
-//				((TSDF_CUDA<ITMIndexDirectional, ITMVoxel>*) scene->tsdf)->getMap(),
 				dynamic_cast<TSDF_CUDA<ITMIndex, ITMVoxel>*> (renderingTSDF)->getMap(),
 				imgSize,
 				invM,
@@ -1095,10 +1090,7 @@ void ITMVisualisationEngine_CUDA::CreateICPMaps(const Scene* scene,
 	Vector2i imgSize = renderState->raycastResult->noDims;
 	Matrix4f invM = trackingState->pose_d->GetInvM();
 
-	ITMTimer timer;
-	timer.Tick();
 	GenericRaycast(scene, imgSize, invM, view->calib.intrinsics_d.projectionParamsSimple.all, renderState, true);
-//	printf("Rendering: %f\n", timer.Tock());
 	trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
 
 	Vector4f* pointsMap = trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CUDA);

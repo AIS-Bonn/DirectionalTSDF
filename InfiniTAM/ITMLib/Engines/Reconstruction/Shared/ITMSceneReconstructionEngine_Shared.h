@@ -16,14 +16,6 @@
 namespace ITMLib
 {
 
-struct AllocationTempData
-{
-	unsigned int noAllocationsPerDirection[N_DIRECTIONS];
-	int noAllocatedVoxelEntries;
-	int noAllocatedExcessEntries;
-	int noVisibleEntries;
-};
-
 _CPU_AND_GPU_CODE_ inline Vector3f
 normalCameraToWorld(const Vector4f& normal_camera, const Matrix4f& invM)
 {
@@ -1206,55 +1198,6 @@ _CPU_AND_GPU_CODE_ inline void checkBlockVisibility(bool& isVisible, bool& isVis
 	pt_image.z += factor;
 	checkPointVisibility<checkEnlarged>(isVisible, isVisibleEnlarged, pt_image, M_d, projParams_d, imgSize);
 	if (isVisible) return;
-}
-
-/** Check previously visible blocks for visibility from current pose
- *
- * @tparam useSwapping
- * @param hashTable
- * @param swapStates
- * @param noTotalEntries
- * @param visibleEntryIDs
- * @param allocData
- * @param entriesVisibleType
- * @param M_d
- * @param projParams_d
- * @param depthImgSize
- * @param voxelSize
- * @param targetIdx
- */
-template<bool useSwapping>
-_CPU_AND_GPU_CODE_
-void buildVisibleList(ITMHashEntry* hashTable, ITMHashSwapState* swapStates, int noTotalEntries,
-                      int* visibleEntryIDs, AllocationTempData* allocData, HashEntryVisibilityType* entriesVisibleType,
-                      Matrix4f M_d, Vector4f projParams_d, Vector2i depthImgSize, float voxelSize,
-                      int targetIdx)
-{
-	HashEntryVisibilityType hashVisibleType = entriesVisibleType[targetIdx];
-	const ITMHashEntry& hashEntry = hashTable[targetIdx];
-
-	if (hashVisibleType == PREVIOUSLY_VISIBLE)
-	{
-		bool isVisibleEnlarged, isVisible;
-
-		if (useSwapping)
-		{
-			checkBlockVisibility<true>(isVisible, isVisibleEnlarged, hashEntry.pos, M_d, projParams_d, voxelSize,
-			                           depthImgSize);
-			if (!isVisibleEnlarged) hashVisibleType = INVISIBLE;
-		} else
-		{
-			checkBlockVisibility<false>(isVisible, isVisibleEnlarged, hashEntry.pos, M_d, projParams_d, voxelSize,
-			                            depthImgSize);
-			if (!isVisible) hashVisibleType = INVISIBLE;
-		}
-		entriesVisibleType[targetIdx] = hashVisibleType;
-	}
-
-	if (useSwapping)
-	{
-		if (hashVisibleType > 0 && swapStates[targetIdx].state != 2) swapStates[targetIdx].state = 1;
-	}
 }
 
 } // namespace ITMLib

@@ -78,6 +78,18 @@ _CPU_AND_GPU_CODE_ inline void voxelIdxToIndexAndOffset(
 	index = IndexDirectional<T>(blockIdx.toShort(), direction);
 }
 
+struct AllocationStats
+{
+	unsigned int noAllocationsPerDirection[N_DIRECTIONS];
+	unsigned long long noAllocations;
+
+	AllocationStats()
+	{
+		noAllocations = 0;
+		memset(noAllocationsPerDirection, 0, sizeof(noAllocationsPerDirection));
+	}
+};
+
 template<typename TVoxel>
 class TSDF
 {
@@ -89,9 +101,9 @@ public:
 	virtual size_t size() = 0;
 
 	size_t allocatedBlocksMax = 0;
-	size_t allocatedBlocks = 0;
-	int* allocatedBlocks_device = nullptr;
 	TVoxel* voxels = nullptr;
+
+	AllocationStats allocationStats;
 };
 
 /**
@@ -110,6 +122,7 @@ public:
 
 	void clear() override
 	{
+		this->allocationStats.noAllocations = 0;
 		map.clear();
 	}
 
