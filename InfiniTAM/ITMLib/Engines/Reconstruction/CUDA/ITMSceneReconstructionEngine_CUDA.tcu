@@ -577,7 +577,8 @@ void ITMSceneReconstructionEngine_CUDA::FindVisibleBlocks(const Scene* scene, co
 	ITMRenderState_VH* renderState_vh = (ITMRenderState_VH*) renderState;
 	auto tsdf = dynamic_cast<TSDF_CUDA<ITMIndexDirectional, ITMVoxel>*>(scene->tsdf)->getMap();
 
-	stdgpu::unordered_set<ITMIndex> visibleBlocks = stdgpu::unordered_set<ITMIndex>::createDeviceObject(10000);
+	stdgpu::unordered_set<ITMIndex> visibleBlocks = stdgpu::unordered_set<ITMIndex>::createDeviceObject(
+		renderState_vh->AllocatedSize());
 
 	if (noFusionBlocks > 0.8 * allocationBlocksList->dataSize)
 	{

@@ -42,7 +42,7 @@ namespace ITMLib
 		{
 			this->memoryType = memoryType;
 
-			visibleBlocks = new ORUtils::MemoryBlock<ITMIndex>(100, memoryType);
+			visibleBlocks = new ORUtils::MemoryBlock<ITMIndex>(10000, memoryType);
 			visibleEntryIDs = new ORUtils::MemoryBlock<int>(SDF_LOCAL_BLOCK_NUM, memoryType);
 			entriesVisibleType = new ORUtils::MemoryBlock<HashEntryVisibilityType>(noTotalEntries, memoryType);
 
@@ -63,6 +63,11 @@ namespace ITMLib
 				noVisibleEntries = 0;
 				visibleBlocks->Resize(newSize * 2);
 			}
+		}
+
+		const size_t AllocatedSize() const
+		{
+			return visibleBlocks->dataSize;
 		}
 
 		/** Get the list of "visible entries", that are currently
