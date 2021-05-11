@@ -3,6 +3,7 @@
 #pragma once
 
 #include <ITMLib/Engines/Visualisation/Interface/ITMVisualisationEngine.h>
+#include <ITMLib/Objects/Stats/ITMRenderError.h>
 #include "ITMLib/Objects/Misc/ITMIMUMeasurement.h"
 #include "ITMLib/Objects/Stats/ITMTimeStats.h"
 #include "ITMLib/Trackers/Interface/ITMTracker.h"
@@ -76,6 +77,9 @@ namespace ITMLib
 		virtual ITMRenderState* GetRenderState(void) = 0;
 
 		virtual ITMRenderState* GetRenderStateFreeview(void) = 0;
+
+		virtual ITMRenderError ComputeICPError()
+		{ return ITMRenderError(); };
 
 		/// Process a frame with rgb and depth images and optionally a corresponding imu measurement
     virtual ITMTrackingState::TrackingResult ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement = nullptr, const ORUtils::SE3Pose* pose = nullptr) = 0;

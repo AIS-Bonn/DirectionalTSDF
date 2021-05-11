@@ -61,6 +61,8 @@ namespace ITMLib
 		virtual const unsigned int* GetAllocationsPerDirection() override
 		{ return scene->tsdf->allocationStats.noAllocationsPerDirection; }
 
+		ITMRenderError ComputeICPError() override;
+
 		/// Gives access to the internal world representation
 		Scene* GetScene() { return scene; }
 

@@ -23,6 +23,11 @@ void CLIEngine::Run()
 	{
 		if (!ProcessFrame()) break;
 	}
+
+	if (appData->computePostError)
+	{
+		ComputeICPErrors();
+	}
 }
 
 void CLIEngine::Shutdown()

@@ -1,5 +1,8 @@
 // Copyright 2014-2017 Oxford University Innovation Limited and the authors of InfiniTAM
 
+#include <Trackers/Shared/ITMDepthTracker_Shared.h>
+#include <thrust/reduce.h>
+#include <thrust/transform_reduce.h>
 #include "ITMBasicEngine.h"
 
 #include "ITMLib/Engines/LowLevel/ITMLowLevelEngineFactory.h"
@@ -372,6 +375,79 @@ ITMTrackingState::TrackingResult ITMBasicEngine::ProcessFrame(ITMUChar4Image *rg
 Vector2i ITMBasicEngine::GetImageSize(void) const
 {
 	return renderState_live->raycastImage->noDims;
+}
+
+template<typename T>
+struct add_const_and_square : public thrust::unary_function<T,T>
+{
+	add_const_and_square(T v) : v(v) {}
+
+	__host__ __device__ T operator()(const T &x) const
+	{
+		return (x + v) * (x + v);
+	}
+
+	T v;
+};
+
+ITMRenderError ITMBasicEngine::ComputeICPError()
+{
+	denseMapper->GetSceneReconstructionEngine()->FindVisibleBlocks(scene, trackingState->pose_d, &(view->calib.intrinsics_d), renderState_live);
+	visualisationEngine->CreateExpectedDepths(scene, trackingState->pose_d, &(view->calib.intrinsics_d), renderState_live);
+	visualisationEngine->CreateICPMaps(scene, view, trackingState, renderState_live);
+//	visualisationEngine->RenderTrackingError(renderState_live->raycastImage, trackingState, view);
+
+	view->depth->UpdateHostFromDevice();
+	trackingState->pointCloud->locations->UpdateHostFromDevice();
+	trackingState->pointCloud->colours->UpdateHostFromDevice();
+
+	float* depth = view->depth->GetData(MEMORYDEVICE_CPU);
+
+	const Vector4f* pointsRay = trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CPU);
+	const Vector4f* normalsRay = trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CPU);
+	const float* depthImage = view->depth->GetData(MEMORYDEVICE_CUDA);
+	const Matrix4f& depthImageInvPose = trackingState->pose_d->GetInvM();
+	const Matrix4f& sceneRenderingPose = trackingState->pose_pointCloud->GetM();
+	Vector2i imgSize = view->calib.intrinsics_d.imgSize;
+	const float maxError = this->settings->sceneParams.mu;
+
+	std::vector<float> errors;
+	for (int x = 0; x < imgSize.width; x++)
+		for (int y = 0; y < imgSize.height; y++)
+		{
+
+			int locId = x + y * imgSize.width;
+
+			float d = depth[locId];
+			const Vector4f& pt = pointsRay[locId];
+
+			float A[6];
+			float b;
+			bool isValidPoint = computePerPointGH_Depth_Ab<false, false>(
+				A, b, x, y, depth[locId],
+				view->calib.intrinsics_d.imgSize, view->calib.intrinsics_d.projectionParamsSimple.all,
+				view->calib.intrinsics_d.imgSize, view->calib.intrinsics_d.projectionParamsSimple.all,
+			                                                             depthImageInvPose, sceneRenderingPose,
+			                                                             pointsRay, normalsRay, 100.0);
+			float angle = -(sceneRenderingPose * normalsRay[locId]).z;
+
+			if (!isValidPoint)
+				continue;
+
+			b = fabs(b);
+			errors.push_back(b);
+		}
+
+	ITMRenderError result;
+	result.average = thrust::reduce(errors.begin(), errors.end(), (float) 0, thrust::plus<float>()) / errors.size();
+	result.min = thrust::reduce(errors.begin(), errors.end(), (float) 0, thrust::minimum<float>());
+	result.max = thrust::reduce(errors.begin(), errors.end(), (float) 0, thrust::maximum<float>());
+	result.variance = thrust::transform_reduce(errors.begin(), errors.end(),
+	                                           add_const_and_square<float>(-result.average),
+	                                           (float) 0,
+	                                           thrust::plus<float>()) / errors.size();
+
+	return result;
 }
 
 void ITMBasicEngine::GetImage(ITMUChar4Image *out, GetImageType getImageType, ORUtils::SE3Pose *pose, const ITMIntrinsics *intrinsics, bool normalsFromSDF)

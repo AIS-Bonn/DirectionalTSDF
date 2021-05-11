@@ -14,6 +14,7 @@ namespace fs = std::experimental::filesystem;
 #include <ITMLib/Engines/ViewBuilding/ITMViewBuilderFactory.h>
 #include <ORUtils/NVTimer.h>
 #include <ORUtils/FileUtils.h>
+#include <ITMLib/Utils/ITMTimer.h>
 
 namespace InfiniTAM
 {
@@ -42,6 +43,54 @@ protected:
 //	void CollectICPErrorImages();
 	std::vector<std::pair<ITMUChar4Image*, ITMShortImage*>> inputImages;
 	std::vector<ORUtils::SE3Pose> trackingPoses;
+
+	inline void ComputeICPErrors()
+	{
+		if (inputImages.empty())
+			return;
+
+		ITMLib::ITMView* view = nullptr;
+		ITMViewBuilder* viewBuilder = ITMViewBuilderFactory::MakeViewBuilder(appData->imageSource->getCalib(),
+		                                                                     appData->internalSettings->deviceType);
+		// needs to be called once with view=nullptr for initialization
+		viewBuilder->UpdateView(&view, inputImages.front().first, inputImages.front().second,
+		                        appData->internalSettings->useBilateralFilter);
+		view = mainEngine->GetView();
+
+		ITMUChar4Image* outputImage = new ITMUChar4Image(inputImages.front().first->noDims, true, false);
+
+		char str[250];
+		sprintf(str, "%s/icp_error.txt", outFolder);
+		std::ofstream icp_file(str);
+		icp_file << "# average variance min max" << std::endl;
+
+		printf("Compute ICP Error: ");
+		int lastPercentile = -1;
+		for (size_t i = 0; i < inputImages.size(); i++)
+		{
+			int percentile = (i * 10) / inputImages.size();
+			if (percentile != lastPercentile)
+			{
+				printf("%i%%\t", percentile * 10);
+				lastPercentile = percentile;
+			}
+			ITMUChar4Image* rgbImage = inputImages.at(i).first;
+			ITMShortImage* depthImage = inputImages.at(i).second;
+
+			viewBuilder->UpdateView(&view, rgbImage, depthImage,
+			                        appData->internalSettings->useBilateralFilter);
+
+			ORUtils::SE3Pose* pose = &trackingPoses.at(i);
+			mainEngine->GetTrackingState()->pose_d->SetFrom(pose);
+
+			ITMRenderError result = mainEngine->ComputeICPError();
+			icp_file << result.average << " " << result.variance << " " << result.min << " " << result.max << std::endl;
+		}
+		icp_file.close();
+
+		free(outputImage);
+		free(viewBuilder);
+	}
 
 	inline void CollectICPErrorImages()
 	{

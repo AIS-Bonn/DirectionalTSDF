@@ -26,6 +26,7 @@ struct AppData
 	std::string outputDirectory;
 	ORUtils::SE3Pose initialPose;
 	int numberExportPointClouds;
+	bool computePostError;
 
 	AppData()
 		: imageSource(nullptr), imuSource(nullptr), trajectorySource(nullptr),
@@ -86,6 +87,9 @@ inline int ParseCLIOptions(int argc, char** argv,
 		"Export rendered point clouds from tracking poses after finishing. N number total number of point clouds (evenly spaced). Default (0) = every pose.")
 		->type_name("N")
 		->default_str("0");
+
+	app.add_flag("--compute_post_error", appData.computePostError,
+	               "Re-render all views from tracked poses and compare to input data");
 
 	CLI11_PARSE(app, argc, argv)
 
