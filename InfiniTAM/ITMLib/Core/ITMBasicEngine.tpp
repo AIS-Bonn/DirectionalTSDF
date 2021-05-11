@@ -398,13 +398,21 @@ ITMRenderError ITMBasicEngine::ComputeICPError()
 //	visualisationEngine->RenderTrackingError(renderState_live->raycastImage, trackingState, view);
 
 	view->depth->UpdateHostFromDevice();
+	ORUtils::Image<ORUtils::Vector4<float>> locations(trackingState->pointCloud->locations->noDims, true, false);
+	ORUtils::Image<ORUtils::Vector4<float>> colours(trackingState->pointCloud->locations->noDims, true, false);
+
+	ORcudaSafeCall(cudaMemcpy(locations.GetData(MEMORYDEVICE_CPU), trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CUDA),
+													 locations.dataSize * sizeof(Vector4f), cudaMemcpyDeviceToHost));
+	ORcudaSafeCall(cudaMemcpy(colours.GetData(MEMORYDEVICE_CPU), trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CUDA),
+	                          colours.dataSize * sizeof(Vector4f), cudaMemcpyDeviceToHost));
+
 	trackingState->pointCloud->locations->UpdateHostFromDevice();
 	trackingState->pointCloud->colours->UpdateHostFromDevice();
 
 	float* depth = view->depth->GetData(MEMORYDEVICE_CPU);
 
-	const Vector4f* pointsRay = trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CPU);
-	const Vector4f* normalsRay = trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CPU);
+	const Vector4f* pointsRay = locations.GetData(MEMORYDEVICE_CPU);
+	const Vector4f* normalsRay = colours.GetData(MEMORYDEVICE_CPU);
 	const float* depthImage = view->depth->GetData(MEMORYDEVICE_CUDA);
 	const Matrix4f& depthImageInvPose = trackingState->pose_d->GetInvM();
 	const Matrix4f& sceneRenderingPose = trackingState->pose_pointCloud->GetM();

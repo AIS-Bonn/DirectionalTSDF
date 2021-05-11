@@ -13,6 +13,9 @@ namespace ITMLib
 		/// Size of a voxel, usually given in meters.
 		float voxelSize;
 
+		/// Num of allocated blocks in scene
+		size_t allocationSize;
+
 		float oneOverVoxelSize;
 
 		/** @{ */
@@ -55,19 +58,6 @@ namespace ITMLib
 			this->oneOverVoxelSize = 1 / voxelSize;
 			this->viewFrustum_min = viewFrustum_min; this->viewFrustum_max = viewFrustum_max;
 			this->stopIntegratingAtMaxW = stopIntegratingAtMaxW;
-		}
-
-		explicit ITMSceneParams(const ITMSceneParams *sceneParams) { this->SetFrom(sceneParams); }
-
-		void SetFrom(const ITMSceneParams *sceneParams)
-		{
-			this->voxelSize = sceneParams->voxelSize;
-			this->oneOverVoxelSize = 1 / this->voxelSize;
-			this->viewFrustum_min = sceneParams->viewFrustum_min;
-			this->viewFrustum_max = sceneParams->viewFrustum_max;
-			this->mu = sceneParams->mu;
-			this->maxW = sceneParams->maxW;
-			this->stopIntegratingAtMaxW = sceneParams->stopIntegratingAtMaxW;
 		}
 	};
 }

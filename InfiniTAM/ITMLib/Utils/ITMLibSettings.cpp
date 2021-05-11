@@ -206,6 +206,8 @@ ITMLibSettings::ITMLibSettings(const std::string& settingsFile)
 		sceneParams.viewFrustum_min = voxelParamsNode["minDistance"].as<float>();
 	if (voxelParamsNode["maxDistance"].IsDefined())
 		sceneParams.viewFrustum_max = voxelParamsNode["maxDistance"].as<float>();
+	if (voxelParamsNode["allocationSize"].IsDefined())
+		sceneParams.allocationSize = voxelParamsNode["allocationSize"].as<size_t>();
 
 
 	const YAML::Node& surfelParamsNode = root["surfelSceneParams"];

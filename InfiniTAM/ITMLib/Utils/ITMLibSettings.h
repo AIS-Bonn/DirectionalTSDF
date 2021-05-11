@@ -54,7 +54,7 @@ namespace ITMLib
 		bool skipPoints;
 
 		bool createMeshingEngine;
-        
+
 		FailureMode behaviourOnFailure;
 		SwappingMode swappingMode;
 		LibMode libMode;

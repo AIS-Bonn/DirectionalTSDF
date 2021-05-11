@@ -18,9 +18,9 @@ ITMScene<TVoxel>::ITMScene(const ITMSceneParams* _sceneParams, bool _useSwapping
 	else globalCache = NULL;
 
 	if (_memoryType == MEMORYDEVICE_CPU)
-		tsdf = new TSDF_CPU<IndexDirectionalShort, TVoxel>(2e5);
+		tsdf = new TSDF_CPU<IndexDirectionalShort, TVoxel>(sceneParams->allocationSize);
 	else
-		tsdf = new TSDF_CUDA<IndexDirectionalShort, TVoxel>(2e5);
+		tsdf = new TSDF_CUDA<IndexDirectionalShort, TVoxel>(sceneParams->allocationSize);
 }
 
 template class ITMScene<ITMVoxel>;

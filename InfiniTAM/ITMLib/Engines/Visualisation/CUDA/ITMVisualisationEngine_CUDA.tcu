@@ -36,7 +36,7 @@ ITMVisualisationEngine_CUDA::ITMVisualisationEngine_CUDA(std::shared_ptr<const I
 
 	if (CombineTSDFForRendering())
 	{
-		renderingTSDF = new TSDF_CUDA<Index<short>, ITMVoxel>(100000);
+		renderingTSDF = new TSDF_CUDA<Index<short>, ITMVoxel>(settings->sceneParams.allocationSize / 4);
 //	*combinedTSDF_device = stdgpu::unordered_map<Vector3s, Vector6f*>::createDeviceObject(100000);
 	}
 }
