@@ -164,13 +164,11 @@ __global__ void integrateIntoScene_device(stdgpu::unordered_map<ITMIndexDirectio
                                           float _voxelSize, const ITMFusionParams fusionParams,
                                           const ITMSceneParams sceneParams)
 {
-
 	const ITMIndexDirectional& index = visibleEntries[blockIdx.x];
 	auto it = tsdf.find(index);
 	if (it == tsdf.end())
 		return;
 	ITMVoxel *localVoxelBlock = it->second;
-
 	int x = threadIdx.x, y = threadIdx.y, z = threadIdx.z;
 
 	Vector4f pt_model; int locId;

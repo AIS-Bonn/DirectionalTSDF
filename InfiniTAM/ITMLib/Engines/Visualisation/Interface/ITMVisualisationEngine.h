@@ -141,6 +141,8 @@ public:
 		renderIndex->SaveToDirectory(outputDirectory);
 	}
 
+	float renderingTSDFTime = 0;
+
 protected:
 	std::shared_ptr<const ITMLibSettings> settings;
 

@@ -461,8 +461,8 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 	break;
 	case 'e':
 		printf("Collecting ICP Error Images ... ");
-//		uiEngine->CollectICPErrorImages();
-		uiEngine->CollectPointClouds();
+		uiEngine->CollectICPErrorImages();
+//		uiEngine->CollectPointClouds();
 		printf("done\n");
 		break;
 	case 'm':
@@ -940,12 +940,8 @@ bool UIEngine::_processFrame()
 		fs::create_directories(recordingFolder);
 		char str[250];
 
-		sprintf(str, "%s/recording/depth%04d.pgm", outFolder, currentFrameNo);
-		SaveImageToFile(inputRawDepthImage, str);
-//
-//		sprintf(str, "%s/recording/depth_color%04d.pgm", outFolder, currentFrameNo);
-//		mainEngine->GetImage(outImage[0], ITMMainEngine::GetImageType::InfiniTAM_IMAGE_ORIGINAL_DEPTH, &freeviewPose, &freeviewIntrinsics, normalsFromSDF);
-//		SaveImageToFile(outImage[0], str);
+//		sprintf(str, "%s/recording/depth%04d.pgm", outFolder, currentFrameNo);
+//		SaveImageToFile(inputRawDepthImage, str);
 
 //		{
 //			mainEngine->GetView()->depth->UpdateHostFromDevice();
@@ -988,14 +984,18 @@ bool UIEngine::_processFrame()
 
 		sprintf(str, "%s/recording/render%04d.ppm", outFolder, currentFrameNo);
 		SaveImageToFile(outImage[0], str);
+//
+//		sprintf(str, "%s/recording/normal%04d.ppm", outFolder, currentFrameNo);
+//		SaveNormalImage(mainEngine->GetView(), str, appData->internalSettings->deviceType);
+//
+//		sprintf(str, "%s/recording/normal_direction%04d.ppm", outFolder, currentFrameNo);
+//		SaveNormalDirectionImage(mainEngine->GetView(), str, mainEngine->GetTrackingState()->pose_d->GetInvM(), appData->internalSettings->deviceType);
+//
+//		sprintf(str, "%s/recording/depth_color%04d.pgm", outFolder, currentFrameNo);
+//		mainEngine->GetImage(outImage[0], ITMMainEngine::GetImageType::InfiniTAM_IMAGE_ORIGINAL_DEPTH, &freeviewPose, &freeviewIntrinsics, normalsFromSDF);
+//		SaveImageToFile(outImage[0], str);
 
-		sprintf(str, "%s/recording/normal%04d.ppm", outFolder, currentFrameNo);
-		SaveNormalImage(mainEngine->GetView(), str, appData->internalSettings->deviceType);
-
-		sprintf(str, "%s/recording/normal_direction%04d.ppm", outFolder, currentFrameNo);
-		SaveNormalDirectionImage(mainEngine->GetView(), str, mainEngine->GetTrackingState()->pose_d->GetInvM(), appData->internalSettings->deviceType);
-
-		sprintf(str, "%s/recording/error%04d.ppm", outFolder, currentFrameNo);
+//		sprintf(str, "%s/recording/error%04d.ppm", outFolder, currentFrameNo);
 //		mainEngine->GetTrackingState()
 //		mainEngine->GetView()
 //		SaveErrorImage()

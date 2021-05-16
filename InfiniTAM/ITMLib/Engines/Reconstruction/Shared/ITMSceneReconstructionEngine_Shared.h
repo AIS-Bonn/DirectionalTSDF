@@ -999,8 +999,10 @@ findAllocationBlocks(Set<ITMIndexDirectional, Args...>& visibleBlocks,
 		{
 			for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
 			{
-				if (DirectionWeight(angles[directionIdx]) <= 0)
+				if (angles[directionIdx] > M_PI_4)
 					continue;
+//				if (DirectionWeight(angles[directionIdx]) <= 0)
+//					continue;
 				visibleBlocks.insert(ITMIndexDirectional(blockIdx, TSDFDirection(directionIdx)));
 			}
 		} else

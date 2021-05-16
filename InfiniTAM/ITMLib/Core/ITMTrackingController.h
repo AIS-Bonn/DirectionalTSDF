@@ -108,7 +108,9 @@ namespace ITMLib
 					trackingState->age_pointCloud++;
 				}
 			}
-			timeStats.rendering += timer.Tock();
+			float t = timer.Tock();
+			timeStats.rendering += t - visualisationEngine->renderingTSDFTime;
+			timeStats.renderingTSDF = visualisationEngine->renderingTSDFTime;
 		}
 
 		ITMTrackingController(ITMTracker *tracker, const std::shared_ptr<const ITMLibSettings>& settings)

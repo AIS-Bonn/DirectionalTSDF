@@ -390,6 +390,15 @@ struct add_const_and_square : public thrust::unary_function<T,T>
 	T v;
 };
 
+template<typename T>
+struct square : public thrust::unary_function<T,T>
+{
+	__host__ __device__ T operator()(const T &x) const
+	{
+		return x * x;
+	}
+};
+
 ITMRenderError ITMBasicEngine::ComputeICPError()
 {
 	denseMapper->GetSceneReconstructionEngine()->FindVisibleBlocks(scene, trackingState->pose_d, &(view->calib.intrinsics_d), renderState_live);
@@ -419,7 +428,7 @@ ITMRenderError ITMBasicEngine::ComputeICPError()
 	Vector2i imgSize = view->calib.intrinsics_d.imgSize;
 	const float maxError = this->settings->sceneParams.mu;
 
-	std::vector<float> errors;
+	std::vector<float> errors, icpErrors;
 	for (int x = 0; x < imgSize.width; x++)
 		for (int y = 0; y < imgSize.height; y++)
 		{
@@ -430,30 +439,39 @@ ITMRenderError ITMBasicEngine::ComputeICPError()
 			const Vector4f& pt = pointsRay[locId];
 
 			float A[6];
-			float b;
+			float error, icpError;
 			bool isValidPoint = computePerPointGH_Depth_Ab<false, false>(
-				A, b, x, y, depth[locId],
+				A, icpError, x, y, depth[locId],
 				view->calib.intrinsics_d.imgSize, view->calib.intrinsics_d.projectionParamsSimple.all,
 				view->calib.intrinsics_d.imgSize, view->calib.intrinsics_d.projectionParamsSimple.all,
-			                                                             depthImageInvPose, sceneRenderingPose,
-			                                                             pointsRay, normalsRay, 100.0);
-			float angle = -(sceneRenderingPose * normalsRay[locId]).z;
+				depthImageInvPose, sceneRenderingPose,
+				pointsRay, normalsRay, 100.0);
+
+			isValidPoint &= computePerPointError<false, false>(
+				error, x, y, depth[locId],
+				view->calib.intrinsics_d.imgSize, view->calib.intrinsics_d.projectionParamsSimple.all,
+				view->calib.intrinsics_d.imgSize, view->calib.intrinsics_d.projectionParamsSimple.all,
+				depthImageInvPose, sceneRenderingPose,
+				pointsRay);
 
 			if (!isValidPoint)
 				continue;
 
-			b = fabs(b);
-			errors.push_back(b);
+			errors.push_back(fabs(error));
+			icpErrors.push_back(fabs(icpError));
 		}
 
 	ITMRenderError result;
-	result.average = thrust::reduce(errors.begin(), errors.end(), (float) 0, thrust::plus<float>()) / errors.size();
-	result.min = thrust::reduce(errors.begin(), errors.end(), (float) 0, thrust::minimum<float>());
-	result.max = thrust::reduce(errors.begin(), errors.end(), (float) 0, thrust::maximum<float>());
-	result.variance = thrust::transform_reduce(errors.begin(), errors.end(),
-	                                           add_const_and_square<float>(-result.average),
-	                                           (float) 0,
-	                                           thrust::plus<float>()) / errors.size();
+	result.MAE = thrust::reduce(errors.begin(), errors.end(), (float) 0, thrust::plus<float>()) / errors.size();
+	result.RMSE = sqrt(thrust::transform_reduce(errors.begin(), errors.end(),
+	                                            square<float>(),
+	                                            (float) 0,
+	                                            thrust::plus<float>()) / errors.size());
+	result.icpMAE = thrust::reduce(icpErrors.begin(), icpErrors.end(), (float) 0, thrust::plus<float>()) / icpErrors.size();
+	result.icpRMSE = sqrt(thrust::transform_reduce(icpErrors.begin(), icpErrors.end(),
+	                                               square<float>(),
+	                                               (float) 0,
+	                                               thrust::plus<float>()) / icpErrors.size());
 
 	return result;
 }

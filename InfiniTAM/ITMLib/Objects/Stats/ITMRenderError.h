@@ -7,10 +7,17 @@
 struct ITMRenderError
 {
 	ITMRenderError()
-	: min(0), max(0), average(0), variance(0) { }
+	: MAE(0), RMSE(0), icpMAE(0), icpRMSE(0) { }
 
-	float min;
-	float max;
-	float average;
-	float variance;
+	/// mean absolute error
+	float MAE;
+
+	/// root mean squared error
+	float RMSE;
+
+	/// mean absolute ICP error (using normal)
+	float icpMAE;
+
+	/// root mean squared ICP error (using normal)
+	float icpRMSE;
 };

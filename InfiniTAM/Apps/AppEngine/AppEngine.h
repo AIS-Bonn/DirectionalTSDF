@@ -62,7 +62,7 @@ protected:
 		char str[250];
 		sprintf(str, "%s/icp_error.txt", outFolder);
 		std::ofstream icp_file(str);
-		icp_file << "# average variance min max" << std::endl;
+		icp_file << "# MAE RMSE ICP_MAE ICP_RMSE" << std::endl;
 
 		printf("Compute ICP Error: ");
 		int lastPercentile = -1;
@@ -84,7 +84,7 @@ protected:
 			mainEngine->GetTrackingState()->pose_d->SetFrom(pose);
 
 			ITMRenderError result = mainEngine->ComputeICPError();
-			icp_file << result.average << " " << result.variance << " " << result.min << " " << result.max << std::endl;
+			icp_file << result.MAE << " " << result.RMSE << " " << result.icpMAE << " " << result.icpRMSE << std::endl;
 		}
 		icp_file.close();
 

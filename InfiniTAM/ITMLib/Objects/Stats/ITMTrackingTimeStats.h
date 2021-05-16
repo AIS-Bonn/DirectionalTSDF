@@ -20,6 +20,7 @@ struct ITMTrackingTimeStats : public ITMTimeStatsBase
 	{
 		tracking = 0;
 		rendering = 0;
+		renderingTSDF = 0;
 	}
 
 	float GetSum() const override
@@ -29,16 +30,17 @@ struct ITMTrackingTimeStats : public ITMTimeStatsBase
 
 	void Print(std::ostream &stream) const override
 	{
-		stream << tracking << " " << rendering;
+		stream << tracking << " " << rendering << " " << renderingTSDF;
 	}
 
 	void PrintHeader(std::ostream &stream) const override
 	{
-		stream << "tracking" << " " << "rendering";
+		stream << "tracking" << " " << "rendering" << " " << "renderingTSDF";
 	}
 
 	float tracking;
 	float rendering;
+	float renderingTSDF;
 };
 
 } // namespace ITMLib

@@ -631,6 +631,7 @@ void ITMVisualisationEngine_CUDA::CreateExpectedDepths(const Scene* scene, const
                                                        const ITMIntrinsics* intrinsics,
                                                        ITMRenderState* renderState)
 {
+	renderingTSDFTime = 0;
 	if (CombineTSDFForRendering())
 	{
 		Vector3f v1 = pose->GetR() * Vector3f(1, 0, 0);
@@ -640,14 +641,16 @@ void ITMVisualisationEngine_CUDA::CreateExpectedDepths(const Scene* scene, const
 		    or frameCounter - lastTSDFCombineFrameCounter > 50 // update sometimes, even if camera static
 		    or ORUtils::length(lastTSDFCombinePose.GetT() - pose->GetT()) > 0.05 // update, if camera translates
 		    or relativePoseAngle > 0.05 * M_PI_2 // update, if camera rotates
+		    or true
 			)
 		{
 			ITMTimer timer;
 			timer.Tick();
 			ComputeRenderingTSDF(scene, pose, intrinsics, renderState);
+			renderingTSDFTime = timer.Tock();
 //			printf("CombineTSDFForRendering() frames: %i\ttranslation: %f\tangle: %f\ttime: %fs\n",
 //			       frameCounter - lastTSDFCombineFrameCounter,
-//			       ORUtils::length(lastTSDFCombinePose.GetT() - pose->GetT()), relativePoseAngle, timer.Tock());
+//			       ORUtils::length(lastTSDFCombinePose.GetT() - pose->GetT()), relativePoseAngle, renderingTSDFTime);
 			lastTSDFCombinePose = *pose;
 			lastTSDFCombineFrameCounter = frameCounter;
 		}

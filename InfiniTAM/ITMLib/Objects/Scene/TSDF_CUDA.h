@@ -55,7 +55,7 @@ void clearVoxels_device(TVoxel* voxels)
 
 template<typename TIndex, typename TVoxel, template<typename, typename...> class Map, typename... Args>
 __global__ void
-allocateBlocks_device(Map<TIndex, TVoxel*, Args...> tsdf, AllocationStats *allocationStats, TVoxel* voxels, const TIndex* allocationBlocksList, const size_t N)
+allocateBlocks_device(Map<TIndex, TVoxel*, Args...> tsdf, AllocationStats *allocationStats, TVoxel* voxels, const TIndex* allocationBlocksList, const size_t N, const size_t maxAllocations)
 {
 	size_t index = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -76,6 +76,11 @@ allocateBlocks_device(Map<TIndex, TVoxel*, Args...> tsdf, AllocationStats *alloc
 	}
 
 	size_t offset = atomicAdd(&(allocationStats->noAllocations), 1);
+	if (offset >= maxAllocations)
+	{
+		atomicSub(&(allocationStats->noAllocations), 1);
+		return;
+	}
 	tsdf.emplace(allocationBlocksList[index], voxels + offset * SDF_BLOCK_SIZE3);
 }
 
@@ -113,19 +118,19 @@ public:
 
 	inline void allocate(const TIndex* blocks, size_t N) override
 	{
-		if (N > 0 and this->size() > this->allocatedBlocksMax)
+		if (N <= 0)
+			return;
+		if (this->size() >= this->allocatedBlocksMax)
 		{
 			printf("warning: TSDF size exceeded (%i/%zu allocated). stopped allocating.\n", this->size(), this->allocatedBlocksMax);
 			return;
 		}
-		if (N <= 0)
-			return;
 
 		ORcudaSafeCall(cudaMemcpy(allocationStats_device, &this->allocationStats, sizeof(AllocationStats), cudaMemcpyHostToDevice));
 
 		dim3 blockSize(256, 1);
 		dim3 gridSize((int) ceil((float) N / (float) blockSize.x));
-		allocateBlocks_device<<<blockSize, gridSize>>>(this->getMap(), allocationStats_device, this->voxels, blocks, N);
+		allocateBlocks_device<<<blockSize, gridSize>>>(this->getMap(), allocationStats_device, this->voxels, blocks, N, this->allocatedBlocksMax);
 		ORcudaKernelCheck;
 
 		ORcudaSafeCall(cudaMemcpy(&this->allocationStats, allocationStats_device, sizeof(AllocationStats), cudaMemcpyDeviceToHost));

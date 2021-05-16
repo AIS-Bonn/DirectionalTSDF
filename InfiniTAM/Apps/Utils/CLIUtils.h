@@ -26,11 +26,12 @@ struct AppData
 	std::string outputDirectory;
 	ORUtils::SE3Pose initialPose;
 	int numberExportPointClouds;
+	int maxNumFrames;
 	bool computePostError;
 
 	AppData()
 		: imageSource(nullptr), imuSource(nullptr), trajectorySource(nullptr),
-		  internalSettings(nullptr), outputDirectory("./Output"), numberExportPointClouds(-1)
+		  internalSettings(nullptr), outputDirectory("./Output"), numberExportPointClouds(-1), maxNumFrames(-1), computePostError(false)
 	{}
 };
 
@@ -87,6 +88,11 @@ inline int ParseCLIOptions(int argc, char** argv,
 		"Export rendered point clouds from tracking poses after finishing. N number total number of point clouds (evenly spaced). Default (0) = every pose.")
 		->type_name("N")
 		->default_str("0");
+
+	app.add_option("--max_frames", appData.maxNumFrames,
+	               "Maximum number of frames to process. After that, stop. Default (-1) = no limit")
+		->type_name("N")
+		->default_str("-1");
 
 	app.add_flag("--compute_post_error", appData.computePostError,
 	               "Re-render all views from tracked poses and compare to input data");
