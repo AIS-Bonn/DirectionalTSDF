@@ -333,7 +333,7 @@ _CPU_AND_GPU_CODE_ inline Vector4f readFromSDF_color4u_interpolated(float& confi
 
 	confidence = TVoxel::weightToFloat(w_color, maxW);
 
-	return Vector4f(color / 255.0f, 255.0f);
+	return Vector4f(color / 255.0f, 1.0f);
 }
 
 template<class TVoxel, class TIndex, class TCache>
@@ -369,7 +369,7 @@ _CPU_AND_GPU_CODE_ inline Vector4f readFromSDF_color4u_interpolated(const CONSTP
 	voxel = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 1), direction, vmIndex, cache);
 	color += (coeff.x) * (coeff.y) * coeff.z * voxel.clr.toFloat();
 
-	return Vector4f(color / 255.0f, 255.0f);
+	return Vector4f(color / 255.0f, 1.0f);
 }
 
 //template<class TVoxel, class TIndex, class TCache>

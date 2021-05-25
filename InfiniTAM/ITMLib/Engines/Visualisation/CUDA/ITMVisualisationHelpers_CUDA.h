@@ -477,17 +477,15 @@ template<class TVoxel, class TIndex>
 			                                                  ptRay.w > 0, voxelData, voxelIndex, sceneParams, lightSource);
 	}
 
-	template<class TVoxel, class TIndex>
-	__global__ void renderPointCloud_device(/*Vector4u *outRendering, */Vector4f *locations, Vector4f *colours, uint *noTotalPoints,
-		const Vector4f *ptsRay, const Vector6f *directionalContribution, const TVoxel *voxelData,
-		const typename TIndex::IndexData *voxelIndex, bool skipPoints,
+	template<class TIndex, class TVoxel, template<typename, typename...> class Map, typename... Args>
+	__global__ void renderPointCloud_device(Vector4f *locations, Vector4f *colours, uint *noTotalPoints,
+		const Vector4f *ptsRay, const Map<TIndex, TVoxel*, Args...> tsdf, bool skipPoints,
 		float voxelSize, Vector2i imgSize, Vector3f lightSource)
 	{
 		__shared__ bool shouldPrefix;
 		shouldPrefix = false;
 		__syncthreads();
 
-		bool foundPoint = false; Vector3f point(0.0f);
 
 		int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
 
@@ -495,14 +493,12 @@ template<class TVoxel, class TIndex>
 			return;
 
 		int locId = x + y * imgSize.x;
-		Vector3f outNormal; float angle; Vector4f pointRay;
+		Vector3f outNormal; float angle;
 
-		pointRay = ptsRay[locId];
-		point = pointRay.toVector3();
-		foundPoint = pointRay.w > 0;
-		const Vector6f *directional = directionalContribution ? &directionalContribution[locId] : nullptr;
-
-		computeNormalAndAngle<TVoxel, TIndex>(foundPoint, point, directional, voxelData, voxelIndex, lightSource, outNormal, angle);
+		const Vector4f& pointRay = ptsRay[locId];
+		Vector3f point = pointRay.toVector3();
+		bool foundPoint = pointRay.w > 0;
+		computeNormalAndAngle(foundPoint, point, tsdf, lightSource, outNormal, angle);
 
 		if (skipPoints && ((x % 2 == 0) || (y % 2 == 0))) foundPoint = false;
 
@@ -516,18 +512,7 @@ template<class TVoxel, class TIndex>
 
 			if (offset != -1)
 			{
-				Vector4f tmp(0, 0, 0, 0);
-				if (directionalContribution)
-				{
-					for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
-					{
-						tmp += directional->v[direction] * VoxelColorReader<TVoxel::hasColorInformation, TVoxel, TIndex>::interpolate(voxelData, voxelIndex, point, TSDFDirection(direction));
-					}
-				} else
-				{
-					tmp = VoxelColorReader<TVoxel::hasColorInformation, TVoxel, TIndex>::interpolate(voxelData, voxelIndex, point, TSDFDirection::NONE);
-				}
-				if (tmp.w > 0.0f) { tmp.x /= tmp.w; tmp.y /= tmp.w; tmp.z /= tmp.w; tmp.w = 1.0f; }
+				Vector4f tmp = readFromSDF_color4u_interpolated(tsdf, point);
 				colours[offset] = tmp;
 
 				Vector4f pt_ray_out;

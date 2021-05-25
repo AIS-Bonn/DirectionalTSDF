@@ -256,6 +256,45 @@ static bool pnm_writedata(FILE *f, int xsize, int ysize, FormatType type, const 
 	return true;
 }
 
+void SaveImageToFile(const ORUtils::Image<ORUtils::Vector4<float> > * image, const char* fileName, bool flipVertical)
+{
+	FILE *f = fopen(fileName, "wb");
+	if (!pnm_writeheader(f, image->noDims.x, image->noDims.y, RGB_8u)) {
+		fclose(f); return;
+	}
+
+	unsigned char* data = new unsigned char[image->noDims.x*image->noDims.y * 3];
+
+	ORUtils::Vector2<int> noDims = image->noDims;
+
+	if (flipVertical)
+	{
+		for (int y = 0; y < noDims.y; y++) for (int x = 0; x < noDims.x; x++)
+			{
+				int locId_src, locId_dst;
+				locId_src = x + y * noDims.x;
+				locId_dst = x + (noDims.y - y - 1) * noDims.x;
+
+				data[locId_dst * 3 + 0] = static_cast<unsigned char>(image->GetData(MEMORYDEVICE_CPU)[locId_src].x * 255);
+				data[locId_dst * 3 + 1] = static_cast<unsigned char>(image->GetData(MEMORYDEVICE_CPU)[locId_src].y * 255);
+				data[locId_dst * 3 + 2] = static_cast<unsigned char>(image->GetData(MEMORYDEVICE_CPU)[locId_src].z * 255);
+			}
+	}
+	else
+	{
+
+		for (int i = 0; i < noDims.x * noDims.y; ++i) {
+			data[i * 3 + 0] = static_cast<unsigned char>(image->GetData(MEMORYDEVICE_CPU)[i].x * 255);
+			data[i * 3 + 1] = static_cast<unsigned char>(image->GetData(MEMORYDEVICE_CPU)[i].y * 255);
+			data[i * 3 + 2] = static_cast<unsigned char>(image->GetData(MEMORYDEVICE_CPU)[i].z * 255);
+		}
+	}
+
+	pnm_writedata(f, image->noDims.x, image->noDims.y, RGB_8u, data);
+	delete[] data;
+	fclose(f);
+}
+
 void SaveImageToFile(const ORUtils::Image<ORUtils::Vector4<unsigned char> > * image, const char* fileName, bool flipVertical)
 {
 	FILE *f = fopen(fileName, "wb");

@@ -10,6 +10,7 @@
 #include <thrust/transform.h>
 #include <ITMLib/Utils/ITMTimer.h>
 #include <ITMLib/Engines/Reconstruction/Shared/ITMBlockTraversal.h>
+#include <ORUtils/FileUtils.h>
 
 namespace ITMLib
 {
@@ -1062,14 +1063,21 @@ void ITMVisualisationEngine_CUDA::CreatePointCloud(const Scene* scene,
 	Vector4f* locations = trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CUDA);
 	Vector4f* colours = trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CUDA);
 	Vector4f* pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CUDA);
-	Vector6f* directionalContribution = renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA);
 
 	dim3 cudaBlockSize(16, 16);
 	dim3 gridSize = getGridSize(imgSize, cudaBlockSize);
-	renderPointCloud_device<ITMVoxel, ITMVoxelIndex> << < gridSize, cudaBlockSize >> >
-	                                                                (locations, colours, noTotalPoints_device, pointsRay,
-		                                                                useDirectial ? directionalContribution : nullptr,
-		                                                                scene->localVBA.GetVoxelBlocks(), scene->index.getIndexData(), skipPoints, scene->sceneParams->voxelSize, imgSize, lightSource);
+	if (this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL and DIRECTIONAL_RENDERING_MODE == 1)
+	{
+		renderPointCloud_device << < gridSize, cudaBlockSize >> > (locations, colours, noTotalPoints_device, pointsRay,
+			dynamic_cast<TSDF_CUDA<ITMIndex, ITMVoxel>*>(renderingTSDF)->getMap(),
+			skipPoints, scene->sceneParams->voxelSize, imgSize, lightSource);
+	}
+	else
+	{
+		renderPointCloud_device << < gridSize, cudaBlockSize >> > (locations, colours, noTotalPoints_device, pointsRay,
+			dynamic_cast<TSDF_CUDA<ITMIndexDirectional, ITMVoxel>*>(scene->tsdf)->getMap(),
+			skipPoints, scene->sceneParams->voxelSize, imgSize, lightSource);
+	}
 	ORcudaKernelCheck;
 
 	ORcudaSafeCall(

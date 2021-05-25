@@ -33,4 +33,5 @@
 // Set to
 // 0 render using fused colors
 // 1 render colors according to direction weight (debug)
-#define RENDER_DIRECTION_COLORS 1
+#define RENDER_DIRECTION_COLORS 0
+
