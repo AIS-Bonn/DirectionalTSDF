@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "CPU/ITMColorTracker_CPU.h"
-#include "CPU/ITMDepthTracker_CPU.h"
+#include "CPU/ITMICPTracker_CPU.h"
 #include "CPU/ITMExtendedTracker_CPU.h"
 #include "Interface/ITMCompositeTracker.h"
 #include "Interface/ITMIMUTracker.h"
@@ -18,7 +18,7 @@
 
 #ifndef COMPILE_WITHOUT_CUDA
 #include "CUDA/ITMColorTracker_CUDA.h"
-#include "CUDA/ITMDepthTracker_CUDA.h"
+#include "CUDA/ITMICPTracker_CUDA.h"
 #include "CUDA/ITMExtendedTracker_CUDA.h"
 #endif
 
@@ -205,42 +205,41 @@ namespace ITMLib
 	static ITMTracker *MakeICPTracker(const Vector2i& imgSize_rgb, const Vector2i& imgSize_d, ITMLibSettings::DeviceType deviceType, const ORUtils::KeyValueConfig & cfg,
 		const ITMLowLevelEngine *lowLevelEngine, ITMIMUCalibrator *imuCalibrator, const ITMSceneParams *sceneParams)
 	{
-		const char *levelSetup = "rrrbb";
-		float smallStepSizeCriterion = 1e-3f;
-		float outlierDistanceFine = 0.002f;
-		float outlierDistanceCoarse = 0.01f;
-		float failureDetectorThd = 3.0f;
-		int numIterationsCoarse = 10;
-		int numIterationsFine = 2;
+		ITMICPTracker::Parameters parameters;
 
 		int verbose = 0;
-		if (cfg.getProperty("help") != NULL) if (verbose < 10) verbose = 10;
+		if (cfg.getProperty("help") != nullptr) if (verbose < 10) verbose = 10;
+
+		const char *levelSetup = "rrrbb";
 		cfg.parseStrProperty("levels", "resolution hierarchy levels", levelSetup, verbose);
-		std::vector<TrackerIterationType> levels = parseLevelConfig(levelSetup);
+		parameters.levels = parseLevelConfig(levelSetup);
 
-		cfg.parseFltProperty("minstep", "step size threshold for convergence", smallStepSizeCriterion, verbose);
-		cfg.parseFltProperty("outlierC", "outlier threshold at coarsest level", outlierDistanceCoarse, verbose);
-		cfg.parseFltProperty("outlierF", "outlier threshold at finest level", outlierDistanceFine, verbose);
-		cfg.parseIntProperty("numiterC", "maximum number of iterations at coarsest level", numIterationsCoarse, verbose);
-		cfg.parseIntProperty("numiterF", "maximum number of iterations at finest level", numIterationsFine, verbose);
-		cfg.parseFltProperty("failureDec", "threshold for the failure detection", failureDetectorThd, verbose);
+		cfg.parseBoolProperty("useColour", "use colour based tracking", parameters.useColour, verbose);
+		cfg.parseFltProperty("colourWeight", "weight used to scale colour errors and jacobians when both useColour and useWeights are set", parameters.colourWeight, verbose);
+		cfg.parseFltProperty("minstep", "step size threshold for convergence", parameters.smallStepSizeCriterion, verbose);
+		cfg.parseFltProperty("outlierDistanceC", "distance outlier threshold at coarsest level", parameters.outlierDistanceCoarse, verbose);
+		cfg.parseFltProperty("outlierDistanceF", "distance outlier threshold at finest level", parameters.outlierDistanceFine, verbose);
+		cfg.parseFltProperty("outlierColourC", "colour outlier threshold at coarsest level", parameters.outlierColourCoarse, verbose);
+		cfg.parseFltProperty("outlierColourF", "colour outlier threshold at finest level", parameters.outlierColourFine, verbose);
+		cfg.parseFltProperty("minColourGradient", "minimum colour gradient for a pixel to be used in the tracking", parameters.minColourGradient, verbose);
+		cfg.parseIntProperty("numiterC", "maximum number of iterations at coarsest level", parameters.numIterationsCoarse, verbose);
+		cfg.parseIntProperty("numiterF", "maximum number of iterations at finest level", parameters.numIterationsFine, verbose);
+		cfg.parseFltProperty("failureDec", "threshold for the failure detection", parameters.failureDetectorThreshold, verbose);
 
-		ITMDepthTracker *ret = NULL;
+		ITMICPTracker *ret = nullptr;
 		switch (deviceType)
 		{
 		case ITMLibSettings::DEVICE_CPU:
-			ret = new ITMDepthTracker_CPU(imgSize_d, &(levels[0]), static_cast<int>(levels.size()), smallStepSizeCriterion, failureDetectorThd, lowLevelEngine);
+			ret = new ITMICPTracker_CPU(imgSize_d, imgSize_rgb, parameters, lowLevelEngine);
 			break;
 		case ITMLibSettings::DEVICE_CUDA:
 #ifndef COMPILE_WITHOUT_CUDA
-			ret = new ITMDepthTracker_CUDA(imgSize_d, &(levels[0]), static_cast<int>(levels.size()), smallStepSizeCriterion, failureDetectorThd, lowLevelEngine);
+			ret = new ITMICPTracker_CUDA(imgSize_d, imgSize_rgb, parameters, lowLevelEngine);
 #endif
 			break;
 		}
 
-		if (ret == NULL) DIEWITHEXCEPTION("Failed to make ICP tracker");
-		ret->SetupLevels(numIterationsCoarse, numIterationsFine,
-			outlierDistanceCoarse, outlierDistanceFine);
+		if (ret == nullptr) DIEWITHEXCEPTION("Failed to make ICP tracker");
 		return ret;
 	}
 
@@ -362,23 +361,21 @@ namespace ITMLib
 		cfg.parseIntProperty("numiterF", "maximum number of iterations at finest level", numIterationsFine, verbose);
 		cfg.parseFltProperty("failureDec", "threshold for the failure detection", failureDetectorThd, verbose);
 
-		ITMDepthTracker *dTracker = NULL;
+		ITMICPTracker *dTracker = NULL;
 		switch (deviceType)
 		{
 		case ITMLibSettings::DEVICE_CPU:
-			dTracker = new ITMDepthTracker_CPU(imgSize_d, &(levels[0]), static_cast<int>(levels.size()), smallStepSizeCriterion, failureDetectorThd, lowLevelEngine);
+//			dTracker = new ITMICPTracker_CPU(imgSize_d, &(levels[0]), static_cast<int>(levels.size()), smallStepSizeCriterion, failureDetectorThd, lowLevelEngine);
 			break;
 		case ITMLibSettings::DEVICE_CUDA:
 #ifndef COMPILE_WITHOUT_CUDA
-			dTracker = new ITMDepthTracker_CUDA(imgSize_d, &(levels[0]), static_cast<int>(levels.size()), smallStepSizeCriterion, failureDetectorThd, lowLevelEngine);
+//			dTracker = new ITMICPTracker_CUDA(imgSize_d, &(levels[0]), static_cast<int>(levels.size()), smallStepSizeCriterion, failureDetectorThd, lowLevelEngine);
 #endif
 			break;
 		default: break;
 		}
 
 		if (dTracker == NULL) DIEWITHEXCEPTION("Failed to make IMU tracker");
-		dTracker->SetupLevels(numIterationsCoarse, numIterationsFine,
-			outlierDistanceCoarse, outlierDistanceFine);
 
 		ITMCompositeTracker *compositeTracker = new ITMCompositeTracker;
 		compositeTracker->AddTracker(new ITMIMUTracker(imuCalibrator));

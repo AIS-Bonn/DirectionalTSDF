@@ -1,6 +1,6 @@
 // Copyright 2014-2017 Oxford University Innovation Limited and the authors of InfiniTAM
 
-#include <Trackers/Shared/ITMDepthTracker_Shared.h>
+#include <Trackers/Shared/ITMICPTracker_Shared.h>
 #include <thrust/reduce.h>
 #include <thrust/transform_reduce.h>
 #include "ITMBasicEngine.h"

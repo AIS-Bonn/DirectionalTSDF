@@ -389,6 +389,7 @@ Objects/Scene/TSDF_CUDA.h
 
 ##
 SET(ITMLIB_OBJECTS_TRACKING_HEADERS
+Objects/Tracking/ITMHierarchyLevel.h
 Objects/Tracking/ITMDepthHierarchyLevel.h
 Objects/Tracking/ITMImageHierarchy.h
 Objects/Tracking/ITMIntensityHierarchyLevel.h
@@ -414,34 +415,34 @@ Trackers/ITMTrackerFactory.h
 ##
 SET(ITMLIB_TRACKERS_CPU_SOURCES
 Trackers/CPU/ITMColorTracker_CPU.cpp
-Trackers/CPU/ITMDepthTracker_CPU.cpp
+  Trackers/CPU/ITMICPTracker_CPU.cpp
 Trackers/CPU/ITMExtendedTracker_CPU.cpp
 )
 
 SET(ITMLIB_TRACKERS_CPU_HEADERS
 Trackers/CPU/ITMColorTracker_CPU.h
-Trackers/CPU/ITMDepthTracker_CPU.h
+  Trackers/CPU/ITMICPTracker_CPU.h
 Trackers/CPU/ITMExtendedTracker_CPU.h
 )
 
 ##
 SET(ITMLIB_TRACKERS_CUDA_SOURCES
 Trackers/CUDA/ITMColorTracker_CUDA.cu
-Trackers/CUDA/ITMDepthTracker_CUDA.cu
+  Trackers/CUDA/ITMICPTracker_CUDA.cu
 Trackers/CUDA/ITMExtendedTracker_CUDA.cu
 
 )
 
 SET(ITMLIB_TRACKERS_CUDA_HEADERS
 Trackers/CUDA/ITMColorTracker_CUDA.h
-Trackers/CUDA/ITMDepthTracker_CUDA.h
+  Trackers/CUDA/ITMICPTracker_CUDA.h
 Trackers/CUDA/ITMExtendedTracker_CUDA.h
 )
 
 ##
 SET(ITMLIB_TRACKERS_INTERFACE_SOURCES
 Trackers/Interface/ITMColorTracker.cpp
-Trackers/Interface/ITMDepthTracker.cpp
+  Trackers/Interface/ITMICPTracker.cpp
 Trackers/Interface/ITMExtendedTracker.cpp
 Trackers/Interface/ITMFileBasedTracker.cpp
 Trackers/Interface/ITMForceFailTracker.cpp
@@ -451,7 +452,7 @@ Trackers/Interface/ITMIMUTracker.cpp
 SET(ITMLIB_TRACKERS_INTERFACE_HEADERS
 Trackers/Interface/ITMColorTracker.h
 Trackers/Interface/ITMCompositeTracker.h
-Trackers/Interface/ITMDepthTracker.h
+  Trackers/Interface/ITMICPTracker.h
 Trackers/Interface/ITMExtendedTracker.h
 Trackers/Interface/ITMFileBasedTracker.h
 Trackers/Interface/ITMForceFailTracker.h
@@ -461,8 +462,9 @@ Trackers/Interface/ITMTracker.h
 
 ##
 SET(ITMLIB_TRACKERS_SHARED_HEADERS
+Trackers/Shared/ITMTracker_Shared.h
 Trackers/Shared/ITMColorTracker_Shared.h
-Trackers/Shared/ITMDepthTracker_Shared.h
+  Trackers/Shared/ITMICPTracker_Shared.h
 Trackers/Shared/ITMExtendedTracker_Shared.h
 )
 

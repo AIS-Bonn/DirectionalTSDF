@@ -52,7 +52,48 @@ namespace ORUtils {
 		T m[s*s];
 	};
 
-	//////////////////////////////////////////////////////////////////////////
+	template<typename T, int rows, int cols> struct MatrixX_{
+		T m[rows * cols]; // column-wise
+	};
+
+template<typename T, int rows, int cols>
+class MatrixX : public MatrixX_<T, rows, cols>
+{
+public:
+	_CPU_AND_GPU_CODE_ inline T &operator()(int x, int y)	{ return at(x, y); }
+	_CPU_AND_GPU_CODE_ inline const T &operator()(int x, int y) const	{ return at(x, y); }
+	_CPU_AND_GPU_CODE_ inline T &operator()(Vector2<int> pnt)	{ return at(pnt.x, pnt.y); }
+	_CPU_AND_GPU_CODE_ inline const T &operator()(Vector2<int> pnt) const	{ return at(pnt.x, pnt.y); }
+	_CPU_AND_GPU_CODE_ inline T &at(int x, int y) { return this->m[y * cols + x]; }
+	_CPU_AND_GPU_CODE_ inline const T &at(int x, int y) const { return this->m[y * cols + x]; }
+
+	_CPU_AND_GPU_CODE_ inline void setZeros() { for (int i = 0; i < rows * cols; i++) this->m[i] = 0; }
+
+	_CPU_AND_GPU_CODE_ inline friend MatrixX operator + (const MatrixX &lhs, const MatrixX &rhs)
+	{
+		MatrixX r;
+		for (int i = 0; i < rows * cols; i++) r.m[i] = lhs.m[i] + rhs.m[i];
+		return r;
+	}
+
+	_CPU_AND_GPU_CODE_ inline friend MatrixX operator * (const MatrixX &lhs, const T &rhs)
+	{
+		MatrixX r;
+		for (int i = 0; i < rows * cols; i++) r.m[i] = lhs.m[i] * rhs;
+		return r;
+	}
+	_CPU_AND_GPU_CODE_ inline friend MatrixX operator * (const T &lhs, const MatrixX &rhs) { return rhs * lhs; }
+
+	template<int K>
+	_CPU_AND_GPU_CODE_ inline friend MatrixX<T, rows, K> operator * (const MatrixX<T, rows, cols>  &lhs, const MatrixX<T, cols, K> &rhs)	{
+		MatrixX<T, rows, K> r;
+		for (int x = 0; x < K; x++) for (int y = 0; y < rows; y++) for (int k = 0; k < cols; k++)
+					r(x, y) += lhs(k, y) * rhs(x, k);
+		return r;
+	}
+};
+
+//////////////////////////////////////////////////////////////////////////
 	// Matrix class with math operators
 	//////////////////////////////////////////////////////////////////////////
 	template<class T>

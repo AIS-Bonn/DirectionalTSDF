@@ -311,5 +311,5 @@ void ITMExtendedTracker_CPU::ProjectCurrentIntensityFrame(ITMFloat4Image *points
 	float *intensityOut = intensity_out->GetData(MEMORYDEVICE_CPU);
 
 	for (int y = 0; y < imageSize_depth.y; y++) for (int x = 0; x < imageSize_depth.x; x++)
-		projectPoint_exRGB(x, y, pointsOut, intensityOut, intensityIn, depths, imageSize_rgb, imageSize_depth, intrinsics_rgb, intrinsics_depth, scenePose);
+		computeDepthPointAndColour(x, y, pointsOut, intensityOut, intensityIn, depths, imageSize_rgb, imageSize_depth, intrinsics_rgb, intrinsics_depth, scenePose);
 }

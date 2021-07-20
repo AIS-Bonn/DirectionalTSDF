@@ -2,43 +2,34 @@
 
 #pragma once
 
+#include "ITMHierarchyLevel.h"
 #include "TrackerIterationType.h"
 #include "../../Utils/ITMMath.h"
 #include "../../../ORUtils/Image.h"
 
 namespace ITMLib
 {
-	class ITMDepthHierarchyLevel
+	class ITMDepthHierarchyLevel : public ITMHierarchyLevel
 	{
 	public:
-		int levelId;
-
-		TrackerIterationType iterationType;
-
-		ORUtils::Image<float> *depth;
-
-		Vector4f intrinsics;
-		bool manageData;
+		ORUtils::Image<float> *depth = nullptr;
 
 		ITMDepthHierarchyLevel(Vector2i imgSize, int levelId, TrackerIterationType iterationType,
 			MemoryDeviceType memoryType, bool skipAllocation = false)
+			: ITMHierarchyLevel(levelId, iterationType, skipAllocation)
 		{
-			this->manageData = !skipAllocation;
-			this->levelId = levelId;
-			this->iterationType = iterationType;
-
 			if (!skipAllocation)
 			{
 				this->depth = new ORUtils::Image<float>(imgSize, memoryType);
 			}
 		}
 
-		void UpdateHostFromDevice()
+		void UpdateHostFromDevice() override
 		{ 
 			this->depth->UpdateHostFromDevice();
 		}
 
-		void UpdateDeviceFromHost()
+		void UpdateDeviceFromHost() override
 		{ 
 			this->depth->UpdateDeviceFromHost();
 		}
@@ -46,9 +37,7 @@ namespace ITMLib
 		~ITMDepthHierarchyLevel(void)
 		{
 			if (manageData)
-			{
 				delete depth;
-			}
 		}
 
 		// Suppress the default copy constructor and assignment operator

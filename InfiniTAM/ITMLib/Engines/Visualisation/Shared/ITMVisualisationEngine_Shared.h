@@ -3,7 +3,7 @@
 #pragma once
 
 #include <math_constants.h>
-#include <ITMLib/Trackers/Shared/ITMDepthTracker_Shared.h>
+#include <ITMLib/Trackers/Shared/ITMICPTracker_Shared.h>
 #include <ITMLib/Engines/Reconstruction/Shared/ITMFusionWeight.hpp>
 #include "ITMLib/Objects/Scene/ITMDirectional.h"
 #include "ITMLib/Objects/Scene/ITMMultiSceneAccess.h"

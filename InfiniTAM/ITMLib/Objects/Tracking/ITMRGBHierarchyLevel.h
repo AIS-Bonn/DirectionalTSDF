@@ -3,33 +3,24 @@
 #pragma once
 
 #include "TrackerIterationType.h"
+#include "ITMHierarchyLevel.h"
 #include "../../Utils/ITMMath.h"
 #include "../../../ORUtils/Image.h"
 
 namespace ITMLib
 {
-	class ITMRGBHierarchyLevel
+	class ITMRGBHierarchyLevel : public ITMHierarchyLevel
 	{
 	public:
-		int levelId;
+		ORUtils::Image<Vector4u> *rgb_current = nullptr;
 
-		TrackerIterationType iterationType;
-
-		ORUtils::Image<Vector4u> *rgb_current;
-
-		ORUtils::Image<Vector4u> *rgb_prev;
-		ORUtils::Image<Vector4s> *gX, *gY;
-		Vector4f intrinsics;
-
-		bool manageData;
+		ORUtils::Image<Vector4u> *rgb_prev = nullptr;
+		ORUtils::Image<Vector4s> *gX = nullptr, *gY = nullptr;
 
 		ITMRGBHierarchyLevel(Vector2i imgSize, int levelId, TrackerIterationType iterationType,
 			MemoryDeviceType memoryType, bool skipAllocation = false)
+			: ITMHierarchyLevel(levelId, iterationType, skipAllocation)
 		{
-			this->manageData = !skipAllocation;
-			this->levelId = levelId;
-			this->iterationType = iterationType;
-
 			if (!skipAllocation)
 			{
 				this->rgb_current = new ORUtils::Image<Vector4u>(imgSize, memoryType);
@@ -40,7 +31,7 @@ namespace ITMLib
 			this->gY = new ORUtils::Image<Vector4s>(imgSize, memoryType);
 		}
 
-		void UpdateHostFromDevice()
+		void UpdateHostFromDevice() override
 		{ 
 			this->rgb_current->UpdateHostFromDevice();
 			this->rgb_prev->UpdateHostFromDevice();
@@ -48,7 +39,7 @@ namespace ITMLib
 			this->gY->UpdateHostFromDevice();
 		}
 
-		void UpdateDeviceFromHost()
+		void UpdateDeviceFromHost() override
 		{ 
 			this->rgb_current->UpdateDeviceFromHost();
 			this->rgb_prev->UpdateDeviceFromHost();

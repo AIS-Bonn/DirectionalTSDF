@@ -3,30 +3,22 @@
 #pragma once
 
 #include "TrackerIterationType.h"
+#include "ITMHierarchyLevel.h"
 #include "../../Utils/ITMMath.h"
 #include "../../../ORUtils/Image.h"
 
 namespace ITMLib
 {
-	class ITMViewHierarchyLevel
+	class ITMViewHierarchyLevel : public ITMHierarchyLevel
 	{
 	public:
-		int levelId;
-
-		TrackerIterationType iterationType;
-
-		ORUtils::Image<Vector4u> *rgb; ORUtils::Image<float> *depth;
-		ORUtils::Image<Vector4s> *gradientX_rgb, *gradientY_rgb;
-		Vector4f intrinsics;
-
-		bool manageData;
+		ORUtils::Image<Vector4u> *rgb = nullptr;
+		ORUtils::Image<float> *depth = nullptr;
+		ORUtils::Image<Vector4s> *gradientX_rgb = nullptr, *gradientY_rgb = nullptr;
 
 		ITMViewHierarchyLevel(Vector2i imgSize, int levelId, TrackerIterationType iterationType, MemoryDeviceType memoryType, bool skipAllocation)
+		: ITMHierarchyLevel(levelId, iterationType, skipAllocation)
 		{
-			this->manageData = !skipAllocation;
-			this->levelId = levelId;
-			this->iterationType = iterationType;
-
 			if (!skipAllocation) {
 				this->rgb = new ORUtils::Image<Vector4u>(imgSize, memoryType);
 				this->depth = new ORUtils::Image<float>(imgSize, memoryType);

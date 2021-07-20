@@ -38,6 +38,9 @@ typedef class ORUtils::Vector4<uchar> Vector4u;
 
 typedef class ORUtils::Vector6<float> Vector6f;
 
+template<int rows, int cols>
+using MatrixXf = ORUtils::MatrixX<float, rows, cols>;
+
 #ifndef TO_INT_ROUND3
 #define TO_INT_ROUND3(x) (x).toIntRound()
 #endif

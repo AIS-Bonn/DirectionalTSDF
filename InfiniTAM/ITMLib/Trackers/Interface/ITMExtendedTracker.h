@@ -87,6 +87,17 @@ namespace ITMLib
 
 		virtual int ComputeGandH_Depth(float &f, float *nabla, float *hessian, Matrix4f approxInvPose) = 0;
 		virtual int ComputeGandH_RGB(float &f, float *nabla, float *hessian, Matrix4f approxPose) = 0;
+
+		/** Project depth points into intensity frame and lookup a corresponding intensity value
+		 *
+		 * @param points_out 3D position of depth points in depth frame
+		 * @param intensity_out corresponding intensity value for every depth point
+		 * @param intensity_in
+		 * @param depth_in
+		 * @param intrinsics_depth
+		 * @param intrinsics_rgb
+		 * @param scenePose transformation between rgb and depth frame
+		 */
 		virtual void ProjectCurrentIntensityFrame(ITMFloat4Image *points_out,
 												  ITMFloatImage *intensity_out,
 												  const ITMFloatImage *intensity_in,

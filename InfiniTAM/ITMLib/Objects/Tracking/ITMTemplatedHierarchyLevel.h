@@ -5,45 +5,37 @@
 #include "TrackerIterationType.h"
 #include "../../Utils/ITMMath.h"
 #include "../../../ORUtils/MemoryBlock.h"
+#include "ITMHierarchyLevel.h"
 
 namespace ITMLib
 {
 	template <class ImageType>
-	class ITMTemplatedHierarchyLevel
+	class ITMTemplatedHierarchyLevel : public ITMHierarchyLevel
 	{
 	public:
-		int levelId;
-
-		TrackerIterationType iterationType;
-
 		ImageType *data;
-
-		Vector4f intrinsics;
-		bool manageData;
 
 		ITMTemplatedHierarchyLevel(Vector2i imgSize, int levelId, TrackerIterationType iterationType, 
 			MemoryDeviceType memoryType, bool skipAllocation = false)
+			: ITMHierarchyLevel(levelId, iterationType, skipAllocation)
 		{
-			this->manageData = !skipAllocation;
-			this->levelId = levelId;
-			this->iterationType = iterationType;
-
 			if (!skipAllocation) this->data = new ImageType(imgSize, memoryType);
 		}
 
-		void UpdateHostFromDevice()
+		~ITMTemplatedHierarchyLevel()
+		{
+			if (manageData)
+				delete data;
+		}
+
+		void UpdateHostFromDevice() override
 		{ 
 			this->data->UpdateHostFromDevice();
 		}
 
-		void UpdateDeviceFromHost()
+		void UpdateDeviceFromHost() override
 		{ 
 			this->data->UpdateDeviceFromHost();
-		}
-
-		~ITMTemplatedHierarchyLevel(void)
-		{
-			if (manageData) delete data;
 		}
 
 		// Suppress the default copy constructor and assignment operator

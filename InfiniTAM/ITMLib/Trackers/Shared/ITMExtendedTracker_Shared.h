@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "ITMTracker_Shared.h"
 #include "../../Utils/ITMPixelUtils.h"
 #include "../../Utils/ITMProjectionUtils.h"
 
@@ -206,7 +207,7 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_exRGB_inv_Ab(
 	if (fabs(intensity_diff) >= tukeyCutoff * colourThresh) return false; // Difference too big
 	if (fabs(gradient_prev.x) < minGradient || fabs(gradient_prev.y) < minGradient) return false; // Gradient too small
 
-	// Cache rows of the scenePose rotation matrix, to be used in the pose derivative
+	// Cache rows of the renderedScenePose rotation matrix, to be used in the pose derivative
 	const Vector3f scene_rot_row_0 = scenePose.getRow(0).toVector3();
 	const Vector3f scene_rot_row_1 = scenePose.getRow(1).toVector3();
 	const Vector3f scene_rot_row_2 = scenePose.getRow(2).toVector3();
@@ -259,7 +260,7 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_exRGB_inv_Ab(
 			break;
 		};
 
-		// Chain the above with scenePose
+		// Chain the above with renderedScenePose
 		const Vector3f d_point_col_rot(dot(scene_rot_row_0, d_point_col),
 									   dot(scene_rot_row_1, d_point_col),
 									   dot(scene_rot_row_2, d_point_col));
@@ -328,69 +329,6 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_exDepth(THREADPTR(float) *local
 	}
 
 	return true;
-}
-
-_CPU_AND_GPU_CODE_ inline bool computePerPointProjectedColour_exRGB(
-		THREADPTR(int) x,
-		THREADPTR(int) y,
-		DEVICEPTR(Vector4f) *out_points,
-		DEVICEPTR(float) *out_rgb,
-		const DEVICEPTR(float) *in_rgb,
-		const DEVICEPTR(float) *in_depths,
-		const CONSTPTR(Vector2i) &imageSize,
-		const CONSTPTR(int) sceneIdx,
-		const CONSTPTR(Vector4f) &intrinsics_rgb,
-		const CONSTPTR(Vector4f) &intrinsics_depth,
-		const CONSTPTR(Matrix4f) &scenePose)
-{
-	float depth_camera = in_depths[sceneIdx];
-
-	// Invalid point
-	if (depth_camera <= 0.f) return false;
-
-	const Vector3f pt_camera = unproject(x, y, depth_camera, intrinsics_depth);
-
-	// Transform the point in the RGB sensor frame
-	const Vector3f pt_image = scenePose * pt_camera;
-
-	// Point behind the camera
-	if(pt_image.z <= 0.f) return false;
-
-	// Project the point onto the previous frame
-	const Vector2f pt_image_proj = project(pt_image, intrinsics_rgb);
-
-	// Projection outside the previous rgb frame
-	if (pt_image_proj.x < 0 || pt_image_proj.x >= imageSize.x - 1 ||
-		pt_image_proj.y < 0 || pt_image_proj.y >= imageSize.y - 1) return false;
-
-	out_rgb[sceneIdx] = interpolateBilinear_single(in_rgb, pt_image_proj, imageSize);
-	out_points[sceneIdx] = Vector4f(pt_camera, 1.f);
-	return true;
-}
-
-_CPU_AND_GPU_CODE_ inline void projectPoint_exRGB(
-		THREADPTR(int) x,
-		THREADPTR(int) y,
-		DEVICEPTR(Vector4f) *out_points,
-		DEVICEPTR(float) *out_rgb,
-		const DEVICEPTR(float) *in_rgb,
-		const DEVICEPTR(float) *in_depths,
-		const CONSTPTR(Vector2i) &imageSize_rgb,
-		const CONSTPTR(Vector2i) &imageSize_depth,
-		const CONSTPTR(Vector4f) &intrinsics_rgb,
-		const CONSTPTR(Vector4f) &intrinsics_depth,
-		const CONSTPTR(Matrix4f) &scenePose)
-{
-	if (x >= imageSize_depth.x || y >= imageSize_depth.y) return;
-
-	int sceneIdx = y * imageSize_depth.x + x;
-
-	if (!computePerPointProjectedColour_exRGB(x, y, out_points, out_rgb, in_rgb, in_depths,
-		 imageSize_rgb, sceneIdx, intrinsics_rgb, intrinsics_depth, scenePose))
-	{
-		out_rgb[sceneIdx] = -1.f; // Mark as invalid
-		out_points[sceneIdx] = Vector4f(0.f, 0.f, 0.f, -1.f); // Mark as invalid
-	}
 }
 
 } // namespace ITMLib

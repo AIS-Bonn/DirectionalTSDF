@@ -15,7 +15,7 @@ namespace ITMLib
 		T **levels;
 
 	public:
-		ITMImageHierarchy(Vector2i imgSize, TrackerIterationType *trackingRegime, int noHierarchyLevels, 
+		ITMImageHierarchy(Vector2i imgSize, const TrackerIterationType *trackingRegime, int noHierarchyLevels,
 			MemoryDeviceType memoryType, bool skipAllocationForLevel0 = false)
 		{
 			this->noLevels = noHierarchyLevels;

@@ -2,31 +2,22 @@
 
 #pragma once
 
+#include "ITMHierarchyLevel.h"
 #include "TrackerIterationType.h"
 #include "../../Utils/ITMMath.h"
 #include "../../../ORUtils/Image.h"
 
 namespace ITMLib
 {
-	class ITMSceneHierarchyLevel
+	class ITMSceneHierarchyLevel : public ITMHierarchyLevel
 	{
 	public:
-		int levelId;
-
-		TrackerIterationType iterationType;
-
-		ORUtils::Image<Vector4f> *pointsMap;
-		ORUtils::Image<Vector4f> *normalsMap;
-		Vector4f intrinsics;
-
-		bool manageData;
+		ORUtils::Image<Vector4f> *pointsMap = nullptr;
+		ORUtils::Image<Vector4f> *normalsMap = nullptr;
 
 		ITMSceneHierarchyLevel(Vector2i imgSize, int levelId, TrackerIterationType iterationType, MemoryDeviceType memoryType, bool skipAllocation = false)
+		:ITMHierarchyLevel(levelId, iterationType, skipAllocation)
 		{
-			this->manageData = !skipAllocation;
-			this->levelId = levelId;
-			this->iterationType = iterationType;
-
 			if (!skipAllocation) {
 				this->pointsMap = new ORUtils::Image<Vector4f>(imgSize, memoryType);
 				this->normalsMap = new ORUtils::Image<Vector4f>(imgSize, memoryType);

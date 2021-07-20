@@ -2,48 +2,36 @@
 
 #pragma once
 
+#include "ITMHierarchyLevel.h"
 #include "TrackerIterationType.h"
 #include "../../Utils/ITMMath.h"
 #include "../../../ORUtils/Image.h"
 
 namespace ITMLib
 {
-	class ITMIntensityHierarchyLevel
+	class ITMIntensityHierarchyLevel : public ITMHierarchyLevel
 	{
 	public:
-		int levelId;
+		ORUtils::Image<float> *intensity_current = nullptr;
+		ORUtils::Image<float> *intensity_prev = nullptr;
 
-		TrackerIterationType iterationType;
-
-		ORUtils::Image<float> *intensity_current;
-		ORUtils::Image<float> *intensity_prev;
-		ORUtils::Image<Vector2f> *gradients;
-		Vector4f intrinsics;
-
-		bool manageData;
+		/** Gradient of intensity_prev used for computing the Jacobian */
+		ORUtils::Image<Vector2f> *gradients = nullptr;
 
 		ITMIntensityHierarchyLevel(Vector2i imgSize, int levelId, TrackerIterationType iterationType,
 			MemoryDeviceType memoryType, bool skipAllocation = false)
+			: ITMHierarchyLevel(levelId, iterationType, skipAllocation)
 		{
-			this->manageData = !skipAllocation;
-			this->levelId = levelId;
-			this->iterationType = iterationType;
-
 			if (!skipAllocation)
 			{
 				this->intensity_current = new ORUtils::Image<float>(imgSize, memoryType);
 				this->intensity_prev = new ORUtils::Image<float>(imgSize, memoryType);
 			}
-			else
-			{
-				this->intensity_current = NULL;
-				this->intensity_prev = NULL;
-			}
 
 			this->gradients = new ORUtils::Image<Vector2f>(imgSize, memoryType);
 		}
 
-		void UpdateHostFromDevice()
+		void UpdateHostFromDevice() override
 		{ 
 			if (!this->intensity_current || !this->intensity_prev)
 				throw std::runtime_error("ITMIntensityHierarchyLevel: did not set intensity images.");
@@ -53,7 +41,7 @@ namespace ITMLib
 			this->gradients->UpdateHostFromDevice();
 		}
 
-		void UpdateDeviceFromHost()
+		void UpdateDeviceFromHost() override
 		{ 
 			if (!this->intensity_current || !this->intensity_prev)
 				throw std::runtime_error("ITMIntensityHierarchyLevel: did not set intensity images.");
