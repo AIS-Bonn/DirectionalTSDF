@@ -269,9 +269,6 @@ combineDirectionalTSDFViewPoint2(stdgpu::unordered_map<ITMIndex, ITMVoxel*> rend
 		float sdf = block[linearIdx].sdf;
 		float w_depth = block[linearIdx].w_depth;
 
-		voxel.sdf = sdf;
-		voxel.w_depth = w_depth;
-
 		bool found = false;
 
 		Vector3f color;

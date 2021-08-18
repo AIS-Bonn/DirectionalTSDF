@@ -77,7 +77,7 @@ fusionParams:
   useSpaceCarving: true
 
 # Defautl ICP tracking:
-voxelTrackerConfig: "type=icp,levels=rrbb,useColour=1,colourWeight=0.1,
+voxelTrackerConfig: "type=icp,levels=rrbb,useColour=0,colourWeight=0.1,
   minstep=1e-6,
   outlierDistanceC=0.05,outlierDistanceF=0.01,
   outlierColourC=0.175,outlierColourF=0.05,

@@ -257,7 +257,7 @@ computeUpdatedVoxelColorInfo(TVoxel& voxel, const TSDFDirection direction,
 					depthWeight_new = combinedWeight(depth_measure, distance, normal_camera.toVector3(), viewRay_camera, sceneParams);
 //					depthWeight_new = weightDepth(1, sceneParams) * weightNormal(normal_camera.toVector3(), viewRay_camera);
 			}
-			colorWeight_new *= MAX(0, depthWeight_new * fabs(1 - sdf_new)); // distance from surface
+			colorWeight_new *= MAX(0, depthWeight_new * (1 - MIN(1.0f, ORUtils::length(voxel_world.toVector3() - pt_world) / sceneParams.mu))); // distance from surface
 		}
 	}
 	if (depthWeight_new <= 0)
