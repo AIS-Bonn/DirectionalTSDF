@@ -1,178 +1,136 @@
-# InfiniTAM v3
+# Directional TSDF InfiniTAM
 
-This is the DTSDF branch of the software bundle "InfiniTAM".
+This repository contains an implementation of Directional TSDF (DTSDF) and is based on InfiniTAM v3. If you use our code
+for your publications, please cite our work (see [Research](#3-research))
 
-  
+* The original InfiniTAM code was heavily modified
+* CPU-only operation is currently defunct
+
 Previous maintainers and contributors are:
-  Victor Adrian Prisacariu <victor@robots.ox.ac.uk>  
-  Olaf Kaehler <olaf@robots.ox.ac.uk>  
-  Stuart Golodetz <smg@robots.ox.ac.uk>  
-  Michael Sapienza <michael.sapienza@eng.ox.ac.uk>  
-  Tommaso Cavallari <tommaso.cavallari@unibo.it>
-  Carl Yuheng Ren <carl@robots.ox.ac.uk>  
-  Ming Ming Cheng <cmm.thu@gmail.com>  
-  Xin Sun <xin.sun@st-hughs.ox.ac.uk>  
-  Philip H.S. Torr <philip.torr@eng.ox.ac.uk>  
-  Ian D Reid <ian.reid@adelaide.edu.au>  
-  David W Murray <dwm@robots.ox.ac.uk>
 
-For more information about InfiniTAM please visit the project website <http://www.infinitam.org>. 
+Malte Splietker  
+Victor Adrian Prisacariu <victor@robots.ox.ac.uk>  
+Olaf Kaehler <olaf@robots.ox.ac.uk>  
+Stuart Golodetz <smg@robots.ox.ac.uk>  
+Michael Sapienza <michael.sapienza@eng.ox.ac.uk>  
+Tommaso Cavallari <tommaso.cavallari@unibo.it>  
+Carl Yuheng Ren <carl@robots.ox.ac.uk>  
+Ming Ming Cheng <cmm.thu@gmail.com>  
+Xin Sun <xin.sun@st-hughs.ox.ac.uk>  
+Philip H.S. Torr <philip.torr@eng.ox.ac.uk>  
+Ian D Reid <ian.reid@adelaide.edu.au>  
+David W Murray <dwm@robots.ox.ac.uk>
 
-Other related projects can be found on the AVLCode website <http://www.avlcode.org>.
-
-# 1. Building the System
+## 1. Building the System
 
 ### 1.1 Requirements
 
-Several 3rd party libraries are needed for compiling InfiniTAM. The given version numbers are checked and working, but different versions might be fine as well. Some of the libraries are optional, and skipping them will reduce functionality.
+Several 3rd party libraries are needed for compiling InfiniTAM. The given version numbers are checked and working, but
+different versions might be fine as well. Some of the libraries are optional, and skipping them will reduce
+functionality.
 
-  - cmake (e.g. version 2.8.10.2 or 3.2.3)
-    REQUIRED for Linux, unless you write your own build system
-    OPTIONAL for MS Windows, if you use MSVC instead
-    available at http://www.cmake.org/
+#### Required
 
-  - OpenGL / GLUT (e.g. freeglut 2.8.0 or 3.0.0)
-    REQUIRED for the visualisation
-    the library should run without
-    available at http://freeglut.sourceforge.net/
+- cmake (e.g. version 2.8.10.2 or 3.2.3)
+  Required for Linux, unless you write your own build system OPTIONAL for MS Windows, if you use MSVC instead available
+  at http://www.cmake.org/
 
-  - CUDA (e.g. version 9.0 or 10.0)
-    OPTIONAL but REQUIRED for all GPU accelerated code
-    at least with cmake it is still possible to compile the CPU part without
-    available at https://developer.nvidia.com/cuda-downloads
+- OpenGL / GLUT (e.g. freeglut 2.8.0 or 3.0.0)
+  Required for the visualisation. Library and command line app should run without available at http://freeglut.sourceforge.net/
 
-  - OpenNI (e.g. version 2.2.0.33)
-    OPTIONAL but REQUIRED to get live images from suitable hardware
-    also make sure you have freenect/OpenNI2-FreenectDriver if you need it
-    available at http://structure.io/openni
+- CUDA (e.g. version 9.0 or 10.0)
+  Required for all GPU accelerated code (CPU only version currently defunct) available at https://developer.nvidia.com/cuda-downloads
 
-  - libpng (e.g. version 1.6)
-    OPTIONAL, allows to read PNG input files
-    available at http://libpng.org
+#### Optional
 
-  - FFMPEG (e.g. version 2.8.6)
-    OPTIONAL, allows writing and playback of lossless FFV1 encoded videos
-    available at https://www.ffmpeg.org/
+- OpenNI (e.g. version 2.2.0.33)
+  Allows get live images from OpenNI hardware. Also make sure you have freenect/OpenNI2-FreenectDriver if you need it available at http://structure.io/openni
 
-  - librealsense (e.g. github version from 2016-MAR-22)
-    OPTIONAL, allows to get live images from Intel Realsense cameras
-    available at https://github.com/IntelRealSense/librealsense
+- libpng (e.g. version 1.6)
+  Allows to read and write PNG files available at http://libpng.org
 
-  - librealsense2 (e.g. Intel® RealSense™ SDK 2.X)
-    OPTIONAL, allows to get live images from Intel Realsense cameras
-    available at https://github.com/IntelRealSense/librealsense
+- FFMPEG (e.g. version 2.8.6)
+  Allows writing and playback of lossless FFV1 encoded videos available at https://www.ffmpeg.org/
 
-  - libuvc (e.g. github version from 2015-OCT-27)
-    OPTIONAL, deprecated alternative to librealsense
-    currently this works only with branch olafkaehler/master
-    available at https://github.com/olafkaehler/libuvc
+- librealsense (e.g. github version from 2016-MAR-22)
+  Allows to get live images from Intel Realsense cameras available at https://github.com/IntelRealSense/librealsense
 
-  - doxygen (e.g. version 1.8.2)
-    OPTIONAL, builds a nice reference manual
-    available at http://www.doxygen.org/
+- librealsense2 (e.g. Intel® RealSense™ SDK 2.X)
+  Allows to get live images from Intel Realsense cameras available at https://github.com/IntelRealSense/librealsense
 
-###1.2 Build Process
+- doxygen (e.g. version 1.8.2)
+  Builds a nice reference manual available at http://www.doxygen.org/
 
-  To compile the system, use the standard cmake approach (use options for required input devices, e.g. by using ccmake):
+### 1.2 Build Process
+
+To compile the system, use the standard cmake approach (use options for required input devices, e.g. by using ccmake). For example
 ```
-  $ git submodule update --init --recursive
-  $ mkdir build
-  $ cd build
-  $ cmake -DWITH_PNG=ON -DWITH_OPENNI=ON -DWITH_REALSENSE2=ON -DREALSENSE2_ROOT="/usr/" -DOPENNI_ROOT="/usr/" -DWITH_KINECT2=ON ..
-  $ make
+git submodule update --init --recursive
+mkdir build
+cd build
+cmake -DWITH_PNG=ON -DWITH_OPENNI=ON -DWITH_REALSENSE2=ON -DREALSENSE2_ROOT="/usr/" -DOPENNI_ROOT="/usr/" -DWITH_KINECT2=ON ..
+make
 ```
-  To create a doxygen documentation, just run doxygen:
-```
-  $ doxygen Doxyfile
-```
-  This will create a new directory doxygen-html/ containing all the
-documentation.
 
-### 1.3 Odds and Ends
+To create a doxygen documentation, just run doxygen:
 
-Padding the data structure ITMVoxel in ITMLibDefines.h with one extra byte may or may not improve the overall performance on certain GPUs. On a NVidia GTX 680 it appears to do, on a GTX 780 it does not. Have a try yourself if you need the speed.
+```
+doxygen Doxyfile
+```
 
-On Mac OS X 10.9 there are currently some issues with libc++ vs. libstdc++ in conjunction with CUDA. They eventually manifest in error messages like:
-```
-Undefined symbols for architecture x86_64: 
-"std::ios_base::Init::Init()", referenced from:
-      __GLOBAL__I_a in libITMLib.a(ITMLib_generated_ITMColorTracker_CUDA.cu.o)
-      __GLOBAL__I_a in libITMLib.a(ITMLib_generated_ITMDepthTracker_CUDA.cu.o)
-     [...]
-```
-In the current version of InfiniTAM these errors are avoided by specifying ```CMAKE_CXX_FLAGS=-stdlib=libstdc++``` whenever clang is detected as complier. However, future versions of CUDA might not require this anymore or even get confused and/or require ```CUDA_HOST_COMPILER=/usr/bin/clang``` instead.
+This will create a new directory doxygen-html/ containing all the documentation.
 
-If a version of GLUT other than freeglut is used, the InfiniTAM sample application has problems on exit, as it is currently not explicitly cleaning up CUDA memory or closing the OpenNI device. Use freeglut to avoid this if you experience any problems.
+## 2. Sample Programs
 
-# 2. Sample Programs
+The build process should result in two executables, ```InfiniTAM``` and ```InfiniTAM_cli```. The former is a GUI, the latter a
+headless command line application. If compiled with for example OpenNI support, both should run out-of-the-box without problems for live
+reconstruction. All available command line options are printed using the ```--help``` flag. If no device support has
+been compiled in, the program can be used for offline processing. For raw datasets in the form of
 
-The build process should result in two executables, InfiniTAM and InfiniTAM_cli. The former is a GUI, the latter a headless application. If compiled with OpenNI support, both should run out-of-the-box without problems for live reconstruction. All available command line options are printed using the ```--help``` flag.
-If no OpenNI support has been compiled in, the program can be used for offline processing. For raw datasets in the form of
 ```
-  $ ./InfiniTAM Teddy/calib.txt --settings ./Files/settings.yaml --raw Teddy/Frames/%04i.ppm Teddy/Frames/%04i.pgm
-```
-Datasets in TUM format are also supported. Here is an example for a dataset from the fr3 sequences. (Note: the dataset's rgb.txt and depth.txt must only use the associated files) 
-```
-  $ ./InfiniTAM --calibration ./Files/TUM3.txt --settings ./Files/settings.yaml --tum /path/to/dataset
+path/to/InfiniTAM Teddy/calib.txt --settings ./Files/settings.yaml --raw Teddy/Frames/%04i.ppm Teddy/Frames/%04i.pgm
 ```
 The arguments are essentially masks for sprintf and the %04i will be replaced by a running number, accordingly.
 
-The calibration files (e.g. ```.Files/TUM3.txt```) contain camera calibrations required for differnt datasets. Many live input sources like OpenNI2 provied their instrinsics themselves.
-The file ```./Files/settings.yaml``` contains algorithm parameters like voxel size, tracking parameters etc.
-
-
-# 3. Additional Documentation
-
-Apart from the doxygen documentation there should also be a technical report
-shipped along with this package. It is also available from the official project
-website. Further technical information is to be found in:
+Datasets in [TUM](https://vision.in.tum.de/data/datasets/rgbd-dataset) format are also supported. Here is an example for a dataset from the fr3 sequences. (Note: the dataset's
+rgb.txt and depth.txt must only contain matched pairs of rgb and depth images.
 
 ```
-@inproceedings{InfiniTAM_ECCV_2016,
-  author    = {Olaf K{\"{a}}hler and
-               Victor Adrian Prisacariu and
-               David W. Murray},
-  title     = {Real-Time Large-Scale Dense 3D Reconstruction with Loop Closure},
-  booktitle = {Computer Vision - {ECCV} 2016 - 14th European Conference, Amsterdam,
-               The Netherlands, October 11-14, 2016, Proceedings, Part {VIII}},
-  pages     = {500--516},
-  year      = {2016}
+path/to/InfiniTAM --calibration ./Files/TUM3.txt --settings ./Files/settings.yaml --tum /path/to/dataset
+```
+
+The calibration files (e.g. ```.Files/TUM3.txt```) contain camera calibrations specific for each datasets. Many live
+input sources like OpenNI2 automatically provide their intrinsics via the respective library. The file ```./Files/settings.yaml``` contains algorithm
+parameters like voxel size, allocation sizes tracking parameters etc.
+
+Statistics and other output are written in the ```Output``` directory of the present working director, if it exists.
+
+# 3. Research
+Original paper (IROS 2019) introducing the Directional TSDF and modified Marching Cubes
+algorithm. [PDF](http://ais.uni-bonn.de/papers/IROS_2019_Splietker.pdf)
+
+```
+@InProceedings{DTSDF_IROS_2019,
+  author    = {M. {Splietker} and S. {Behnke}},
+  title     = {Directional {TSDF}: Modeling Surface Orientation for Coherent Meshes},
+  booktitle = {IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
+  year      = {2019},
+  pages     = {1727--1734}
 }
 ```
 
-and
+Most recent paper (ECMR 2021) including ray-casting rendering, combined TSDF, ICP tracking and color
+fusion. [PDF](https://arxiv.org/abs/2108.08115)
 
 ```
-@article{InfiniTAM_ISMAR_2015,
-author = {{K{\"a}hler}, O. and
-		  {Prisacariu}, V.~A. and
-		  {Ren}, C.~Y. and
-		  {Sun}, X. and
-		  {Torr}, P.~H.~S and
-		  {Murray}, D.~W.},
-title = "{Very High Frame Rate Volumetric Integration of Depth Images on Mobile Device}",
-journal = "{IEEE Transactions on Visualization and Computer Graphics 
-	   (Proceedings International Symposium on Mixed and Augmented Reality 2015}",
-volume = {22},
-number = {11},
-year = 2015
-```
-
-and
-
-```
-@article{InfiniTAM_arXiv_2017,
-author = {V A Prisacariu and O K{\"a}hler and S Golodetz and M Sapienza and T Cavallari and P H S Torr and D W Murray},
-title = {{InfiniTAM v3: A Framework for Large-Scale 3D Reconstruction with Loop Closure}},
-journal = {arXiv pre-print arXiv:1708.00783v1},
-year = {2017}
+@misc{DTSDF_IROS_2021,,
+      title={Rendering and Tracking the Directional {TSDF}: Modeling Surface Orientation for Coherent Maps}, 
+      author={Malte {Splietker} and Sven {Behnke}},
+      year={2021},
+      eprint={2108.08115},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV}
 }
 ```
 
-------
-
-### History:
-- 2017-JUL-23: version 3 release
-- 2016-NOV-18: updated to reflect changes to team and project structure
-- 2015-JUL-10: updated dependencies, added reference to ISMAR paper
-- 2014-OCT-06: initial public release
+For more information about the original InfiniTAM please visit the project website <http://www.infinitam.org>.
