@@ -90,7 +90,12 @@ struct AllocationStats
 	}
 };
 
-template<typename TVoxel>
+template<typename TIndex, typename TVoxel>
+class TSDF_CUDA;
+template<typename TIndex, typename TVoxel>
+class TSDF_CPU;
+
+template<typename TIndex, typename TVoxel>
 class TSDF
 {
 public:
@@ -99,6 +104,18 @@ public:
 	virtual void clear() = 0;
 
 	virtual size_t size() = 0;
+
+	TSDF_CUDA<TIndex, TVoxel>* toCUDA()
+	{
+		return dynamic_cast<TSDF_CUDA<TIndex, TVoxel>*>(this);
+	}
+
+	TSDF_CPU<TIndex, TVoxel>* toCPU()
+	{
+		return dynamic_cast<TSDF_CPU<TIndex, TVoxel>*>(this);
+	}
+
+	virtual  MemoryDeviceType deviceType() = 0;
 
 	size_t allocatedBlocksMax = 0;
 	TVoxel* voxels = nullptr;
@@ -113,7 +130,7 @@ public:
  * @tparam Map map type. Either std::unordered_map or stdgpu::unordered_map
  */
 template<typename TIndex, typename TVoxel, template<typename, typename...> class Map>
-class TSDFBase : public TSDF<TVoxel>
+class TSDFBase : public TSDF<TIndex, TVoxel>
 {
 public:
 	virtual ~TSDFBase() = default;

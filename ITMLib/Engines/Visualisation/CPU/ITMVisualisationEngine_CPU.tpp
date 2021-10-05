@@ -491,10 +491,10 @@ void ITMVisualisationEngine_CPU::ForwardRender(const Scene* scene,
 		int locId2 =
 			(int) floor((float) x / minmaximg_subsample) + (int) floor((float) y / minmaximg_subsample) * imgSize.x;
 
-		castRay<ITMIndexDirectional, ITMVoxel>(forwardProjection[locId], nullptr, x, y,
-		                                       ((TSDF_CPU<ITMIndexDirectional, ITMVoxel>*) scene->tsdf)->getMap(),
-		                                       invM, invProjParams,
-		                                       *(scene->sceneParams), minmaximg[locId2],
+		castRay<ITMIndex, ITMVoxel>(forwardProjection[locId], nullptr, x, y,
+		                            ((TSDF_CPU<ITMIndex, ITMVoxel>*) scene->tsdf)->getMap(),
+		                            invM, invProjParams,
+		                            *(scene->sceneParams), minmaximg[locId2],
 		                                 this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL
 		);
 	}
@@ -592,11 +592,11 @@ void ITMVisualisationEngine_CPU::GenericRaycast(const Scene* scene,
 			int locId2 =
 				(int) floor((float) x / minmaximg_subsample) + (int) floor((float) y / minmaximg_subsample) * imgSize.x;
 
-				castRay<ITMIndexDirectional, ITMVoxel>(
+				castRay<ITMIndex, ITMVoxel>(
 				pointsRay[locId],
 				&directionalContribution[locId],
 				x, y,
-				((TSDF_CPU<ITMIndexDirectional, ITMVoxel>*) scene->tsdf)->getMap(),
+				((TSDF_CPU<ITMIndex, ITMVoxel>*) scene->tsdf)->getMap(),
 				invM,
 				invProjParams,
 				*(scene->sceneParams),

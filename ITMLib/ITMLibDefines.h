@@ -22,7 +22,10 @@ typedef ITMVoxel_f_rgb ITMVoxel;
 */
 typedef ITMLib::ITMVoxelBlockHash ITMVoxelIndex;
 
-typedef ITMLib::IndexDirectionalShort ITMIndexDirectional;
-typedef ITMLib::IndexShort ITMIndex;
+/**
+ * Index used for TSDF data structure. To keep the code simple, directional is used even for non-directional mode
+ */
+typedef ITMLib::IndexDirectionalShort ITMIndex;
+typedef ITMLib::IndexShort ITMIndexXYZ;
 
 typedef ITMLib::ITMScene<ITMVoxel> Scene;

@@ -26,7 +26,7 @@ __global__ void countVisibleBlocks_device(const int *visibleEntryIDs, int noVisi
 }
 
 __global__ void
-projectAndSplitBlocks_device(RenderingBlock* renderingBlocks, uint* noTotalBlocks, const ITMIndex* visibleBlocks,
+projectAndSplitBlocks_device(RenderingBlock* renderingBlocks, uint* noTotalBlocks, const ITMIndexXYZ* visibleBlocks,
                              int noVisibleEntries, const Matrix4f pose_M, const Vector4f intrinsics,
                              const Vector2i imgSize, float voxelSize)
 {

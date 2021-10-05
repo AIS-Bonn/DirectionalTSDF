@@ -59,7 +59,7 @@ protected:
 	                    const Vector4f& projParams, const ITMRenderState* renderState, bool updateVisibleList) const;
 
 private:
-	TSDF<ITMVoxel>* renderingTSDF;
+	TSDF<ITMIndexXYZ, ITMVoxel>* renderingTSDF;
 	stdgpu::unordered_map<Vector3s, Vector6f*>* combinedTSDF_device;
 	Vector6f* combinedTSDFWeights_device;
 

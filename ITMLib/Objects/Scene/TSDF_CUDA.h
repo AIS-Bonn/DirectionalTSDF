@@ -136,6 +136,8 @@ public:
 		ORcudaSafeCall(cudaMemcpy(&this->allocationStats, allocationStats_device, sizeof(AllocationStats), cudaMemcpyDeviceToHost));
 	}
 
+	MemoryDeviceType deviceType() override { return MemoryDeviceType::MEMORYDEVICE_CUDA; }
+
 	explicit TSDF_CUDA(size_t size)
 	{
 		resize(size);

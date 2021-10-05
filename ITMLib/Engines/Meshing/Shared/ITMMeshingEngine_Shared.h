@@ -149,44 +149,44 @@ static const _CPU_AND_GPU_CONSTANT_ int triangleTable[256][16] = { { -1, -1, -1,
 { 0, 9, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 }, { 0, 3, 8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
 { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 } };
 
-template<class TVoxel>
+template<class TVoxel, typename TIndex, template<typename, typename...> class Map, typename... Args>
 _CPU_AND_GPU_CODE_ inline bool findPointNeighbors(THREADPTR(Vector3f) *p, THREADPTR(float) *sdf,
-	Vector3i blockLocation, const ITMLib::TSDFDirection direction, const CONSTPTR(TVoxel) *localVBA,
-	const CONSTPTR(ITMHashEntry) *hashTable)
+	Vector3i blockLocation, const ITMLib::TSDFDirection direction, const Map<TIndex, TVoxel*, Args...> tsdf)
 {
-	int vmIndex; Vector3i localBlockLocation;
+	Vector3i localBlockLocation;
+	bool found;
 
 	localBlockLocation = blockLocation + Vector3i(0, 0, 0); p[0] = localBlockLocation.toFloat();
-	sdf[0] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, direction, vmIndex).sdf);
-	if (!vmIndex || sdf[0] == 1.0f) return false;
+	sdf[0] = readVoxel(found, tsdf, localBlockLocation, direction).sdf;
+	if (!found || sdf[0] == 1.0f) return false;
 
 	localBlockLocation = blockLocation + Vector3i(1, 0, 0); p[1] = localBlockLocation.toFloat();
-	sdf[1] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, direction, vmIndex).sdf);
-	if (!vmIndex || sdf[1] == 1.0f) return false;
+	sdf[1] = readVoxel(found, tsdf, localBlockLocation, direction).sdf;
+	if (!found || sdf[1] == 1.0f) return false;
 
 	localBlockLocation = blockLocation + Vector3i(1, 1, 0); p[2] = localBlockLocation.toFloat();
-	sdf[2] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, direction, vmIndex).sdf);
-	if (!vmIndex || sdf[2] == 1.0f) return false;
+	sdf[2] = readVoxel(found, tsdf, localBlockLocation, direction).sdf;
+	if (!found || sdf[2] == 1.0f) return false;
 
 	localBlockLocation = blockLocation + Vector3i(0, 1, 0); p[3] = localBlockLocation.toFloat();
-	sdf[3] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, direction, vmIndex).sdf);
-	if (!vmIndex || sdf[3] == 1.0f) return false;
+	sdf[3] = readVoxel(found, tsdf, localBlockLocation, direction).sdf;
+	if (!found || sdf[3] == 1.0f) return false;
 
 	localBlockLocation = blockLocation + Vector3i(0, 0, 1); p[4] = localBlockLocation.toFloat();
-	sdf[4] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, direction, vmIndex).sdf);
-	if (!vmIndex || sdf[4] == 1.0f) return false;
+	sdf[4] = readVoxel(found, tsdf, localBlockLocation, direction).sdf;
+	if (!found || sdf[4] == 1.0f) return false;
 
 	localBlockLocation = blockLocation + Vector3i(1, 0, 1); p[5] = localBlockLocation.toFloat();
-	sdf[5] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, direction, vmIndex).sdf);
-	if (!vmIndex || sdf[5] == 1.0f) return false;
+	sdf[5] = readVoxel(found, tsdf, localBlockLocation, direction).sdf;
+	if (!found || sdf[5] == 1.0f) return false;
 
 	localBlockLocation = blockLocation + Vector3i(1, 1, 1); p[6] = localBlockLocation.toFloat();
-	sdf[6] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, direction, vmIndex).sdf);
-	if (!vmIndex || sdf[6] == 1.0f) return false;
+	sdf[6] = readVoxel(found, tsdf, localBlockLocation, direction).sdf;
+	if (!found || sdf[6] == 1.0f) return false;
 
 	localBlockLocation = blockLocation + Vector3i(0, 1, 1); p[7] = localBlockLocation.toFloat();
-	sdf[7] = TVoxel::valueToFloat(readVoxel(localVBA, hashTable, localBlockLocation, direction, vmIndex).sdf);
-	if (!vmIndex || sdf[7] == 1.0f) return false;
+	sdf[7] = readVoxel(found, tsdf, localBlockLocation, direction).sdf;
+	if (!found || sdf[7] == 1.0f) return false;
 
 	return true;
 }
@@ -200,12 +200,13 @@ _CPU_AND_GPU_CODE_ inline Vector3f sdfInterp(const Vector3f &p1, Vector3f &p2, f
 	return p1 + ((0.0f - valp1) / (valp2 - valp1)) * (p2 - p1);
 }
 
-_CPU_AND_GPU_CODE_ inline int buildVertList(Vector3f *vertList, Vector3i globalPos, Vector3i localPos, const ITMVoxel *localVBA, const ITMHashEntry *hashTable)
+template<typename TIndex, template<typename, typename...> class Map, typename... Args>
+_CPU_AND_GPU_CODE_ inline int buildVertList(Vector3f *vertList, Vector3i globalPos, Vector3i localPos, const Map<TIndex, ITMVoxel*, Args...>& tsdf)
 {
-	Vector3f points[8]; float sdfVals[8];
+Vector3f points[8]; float sdfVals[8];
 
 	// FIXME: directional
-	if (!findPointNeighbors<ITMVoxel>(points, sdfVals, globalPos + localPos, ITMLib::TSDFDirection::NONE, localVBA, hashTable)) return -1;
+	if (!findPointNeighbors(points, sdfVals, globalPos + localPos, ITMLib::TSDFDirection::NONE, tsdf)) return -1;
 
 	int cubeIndex = 0;
 	if (sdfVals[0] < 0) cubeIndex |= 1; if (sdfVals[1] < 0) cubeIndex |= 2;

@@ -4,89 +4,119 @@
 
 #include <algorithm>
 #include <ITMLib/ITMLibDefines.h>
+#include <ITMLib/Objects/Scene/TSDF_CUDA.h>
+#include <ITMLib/Utils/ITMCUDAUtils.h>
 
 #include "../Shared/ITMMeshingEngine_Shared.h"
-#include "../../../Utils/ITMCUDAUtils.h"
-#include "../../../../ORUtils/CUDADefines.h"
+
+#include <ORUtils/CUDADefines.h>
+
+#include <stdgpu/unordered_map.cuh>
+#include <stdgpu/unordered_set.cuh>
 
 using namespace ITMLib;
 
-__global__ void meshScene_device(ITMMesh::Triangle *triangles, unsigned int *noTriangles_device, float factor, int noTotalEntries,
-	int noMaxTriangles, const Vector4s *visibleBlockGlobalPos, const ITMVoxel *localVBA, const ITMHashEntry *hashTable);
+template <typename TIndex>
+__global__ void meshScene_device(ITMMesh::Triangle *triangles, unsigned int *noTriangles_device, float factor,
+                                 int noMaxTriangles, const ITMIndexXYZ *blocksList, stdgpu::unordered_map<TIndex, ITMVoxel*> tsdf);
 
-template<int dummy>
-__global__ void findAllocateBlocks(Vector4s *visibleBlockGlobalPos, const ITMHashEntry *hashTable, int noTotalEntries)
-{
-	int entryId = threadIdx.x + blockIdx.x * blockDim.x;
-	if (entryId > noTotalEntries - 1) return;
-
-	const ITMHashEntry &currentHashEntry = hashTable[entryId];
-
-	if (currentHashEntry.ptr >= 0) 
-		visibleBlockGlobalPos[currentHashEntry.ptr] = Vector4s(currentHashEntry.pos.x, currentHashEntry.pos.y, currentHashEntry.pos.z, 1);
-}
-
-ITMMeshingEngine_CUDA::ITMMeshingEngine_CUDA(void)
+ITMMeshingEngine_CUDA::ITMMeshingEngine_CUDA()
 {
 	ORcudaSafeCall(cudaMalloc((void**)&visibleBlockGlobalPos_device, SDF_LOCAL_BLOCK_NUM * sizeof(Vector4s)));
 	ORcudaSafeCall(cudaMalloc((void**)&noTriangles_device, sizeof(unsigned int)));
 }
 
-ITMMeshingEngine_CUDA::~ITMMeshingEngine_CUDA(void)
+ITMMeshingEngine_CUDA::~ITMMeshingEngine_CUDA()
 {
 	ORcudaSafeCall(cudaFree(visibleBlockGlobalPos_device));
 	ORcudaSafeCall(cudaFree(noTriangles_device));
 }
 
+template<typename TIndex>
+struct findAllocatedBlocksFunctor
+{
+	findAllocatedBlocksFunctor(stdgpu::unordered_set<ITMIndexXYZ> visibleBlocks)
+		: visibleBlocks(visibleBlocks)
+	{}
+
+	__device__
+	void operator()(thrust::pair<TIndex, ITMVoxel*> block)
+	{
+		const Vector3s blockIdx = block.first.getPosition().toShort();
+		visibleBlocks.insert(blockIdx);
+	}
+
+	stdgpu::unordered_set<ITMIndexXYZ> visibleBlocks;
+};
+
+/**
+ * find all allocated blocks (xyz only), dropping direction component
+ * @tparam TIndex
+ * @param tsdf
+ * @param allBlocksList
+ * @param numberBlocks
+ */
+template<typename TIndex>
+void findAllocatedBlocks(const stdgpu::unordered_map<TIndex, ITMVoxel*> tsdf, ITMIndexXYZ** allBlocksList, size_t& numberBlocks)
+{
+	stdgpu::unordered_set<ITMIndexXYZ> allBlocks = stdgpu::unordered_set<ITMIndexXYZ>::createDeviceObject(
+		tsdf.size()
+	);
+	thrust::for_each(thrust::device, tsdf.device_range().begin(), tsdf.device_range().end(),
+	                 findAllocatedBlocksFunctor<TIndex>(allBlocks));
+
+	ORcudaSafeCall(cudaMalloc(allBlocksList, allBlocks.size() * sizeof(ITMIndexXYZ)));
+	thrust::copy(allBlocks.device_range().begin(), allBlocks.device_range().end(), stdgpu::device_begin(*allBlocksList));
+	numberBlocks = allBlocks.size();
+
+	stdgpu::unordered_set<ITMIndexXYZ>::destroyDeviceObject(allBlocks);
+}
+
 void ITMMeshingEngine_CUDA::MeshScene(ITMMesh *mesh, const Scene *scene)
 {
 	ITMMesh::Triangle *triangles = mesh->triangles->GetData(MEMORYDEVICE_CUDA);
-	const ITMVoxel *localVBA = scene->localVBA.GetVoxelBlocks();
-	const ITMHashEntry *hashTable = scene->index.GetEntries();
 
-	int noMaxTriangles = mesh->noMaxTriangles, noTotalEntries = scene->index.noTotalEntries;
+	int noMaxTriangles = mesh->noMaxTriangles;
 	float factor = scene->sceneParams->voxelSize;
 
 	ORcudaSafeCall(cudaMemset(noTriangles_device, 0, sizeof(unsigned int)));
 	ORcudaSafeCall(cudaMemset(visibleBlockGlobalPos_device, 0, sizeof(Vector4s) * SDF_LOCAL_BLOCK_NUM));
 
-	{ // identify used voxel blocks
-		dim3 cudaBlockSize(256); 
-		dim3 gridSize((int)ceil((float)noTotalEntries / (float)cudaBlockSize.x));
+	ITMIndexXYZ* allBlocksList;
+	size_t numberBlocks;
 
-		findAllocateBlocks<-1><<<gridSize, cudaBlockSize>>>(visibleBlockGlobalPos_device, hashTable, noTotalEntries);
-		ORcudaKernelCheck;
-	}
+	auto tsdf = scene->tsdf->toCUDA()->getMap();
+	findAllocatedBlocks(tsdf, &allBlocksList, numberBlocks);
+	printf("found %zu blocks ... ", numberBlocks);
 
-	{ // mesh used voxel blocks
-		dim3 cudaBlockSize(SDF_BLOCK_SIZE, SDF_BLOCK_SIZE, SDF_BLOCK_SIZE);
-		dim3 gridSize(SDF_LOCAL_BLOCK_NUM / 16, 16);
+	dim3 cudaBlockSize(SDF_BLOCK_SIZE, SDF_BLOCK_SIZE, SDF_BLOCK_SIZE);
+	dim3 gridSize(numberBlocks);
 
-		meshScene_device << <gridSize, cudaBlockSize >> >(triangles, noTriangles_device, factor, noTotalEntries, noMaxTriangles,
-			visibleBlockGlobalPos_device, localVBA, hashTable);
-		ORcudaKernelCheck;
+	meshScene_device << <gridSize, cudaBlockSize >> >(triangles, noTriangles_device, factor, noMaxTriangles,
+		allBlocksList, tsdf);
+	ORcudaKernelCheck;
 
-		ORcudaSafeCall(cudaMemcpy(&mesh->noTotalTriangles, noTriangles_device, sizeof(unsigned int), cudaMemcpyDeviceToHost));
+	ORcudaSafeCall(cudaMemcpy(&mesh->noTotalTriangles, noTriangles_device, sizeof(unsigned int), cudaMemcpyDeviceToHost));
 
-    // meshScene_device made sure up to noMaxTriangles triangles were copied in the output array but,
-    // since the check was performed with atomicAdds, the actual number stored in noTriangles_device
-    // might be greater than noMaxTriangles.
-    // We coerce it to be lesser or equal to that number, not doing it causes a segfault when using the mesh later.
-    mesh->noTotalTriangles = std::min<uint>(mesh->noTotalTriangles, static_cast<uint>(noMaxTriangles));
-  }
+	// meshScene_device made sure up to noMaxTriangles triangles were copied in the output array but,
+	// since the check was performed with atomicAdds, the actual number stored in noTriangles_device
+	// might be greater than noMaxTriangles.
+	// We coerce it to be lesser or equal to that number, not doing it causes a segfault when using the mesh later.
+	mesh->noTotalTriangles = std::min<uint>(mesh->noTotalTriangles, static_cast<uint>(noMaxTriangles));
+
+	ORcudaSafeCall(cudaFree(allBlocksList));
 }
 
-__global__ void meshScene_device(ITMMesh::Triangle *triangles, unsigned int *noTriangles_device, float factor, int noTotalEntries,
-	int noMaxTriangles, const Vector4s *visibleBlockGlobalPos, const ITMVoxel *localVBA, const ITMHashEntry *hashTable)
+template<typename TIndex>
+__global__ void meshScene_device(ITMMesh::Triangle *triangles, unsigned int *noTriangles_device, float factor,
+                                 int noMaxTriangles, const ITMIndexXYZ *blocksList, const stdgpu::unordered_map<TIndex, ITMVoxel*> tsdf)
 {
-	const Vector4s globalPos_4s = visibleBlockGlobalPos[blockIdx.x + gridDim.x * blockIdx.y];
+	const ITMIndexXYZ block = blocksList[blockIdx.x + gridDim.x * blockIdx.y];
 
-	if (globalPos_4s.w == 0) return;
-
-	Vector3i globalPos = Vector3i(globalPos_4s.x, globalPos_4s.y, globalPos_4s.z) * SDF_BLOCK_SIZE;
+	Vector3i globalPos = Vector3i(block.x, block.y, block.z) * SDF_BLOCK_SIZE;
 
 	Vector3f vertList[12];
-	int cubeIndex = buildVertList(vertList, globalPos, Vector3i(threadIdx.x, threadIdx.y, threadIdx.z), localVBA, hashTable);
+	int cubeIndex = buildVertList(vertList, globalPos, Vector3i(threadIdx.x, threadIdx.y, threadIdx.z), tsdf);
 
 	if (cubeIndex < 0) return;
 

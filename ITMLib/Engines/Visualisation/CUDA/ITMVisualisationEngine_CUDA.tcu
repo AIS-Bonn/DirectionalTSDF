@@ -37,7 +37,7 @@ ITMVisualisationEngine_CUDA::ITMVisualisationEngine_CUDA(std::shared_ptr<const I
 
 	if (CombineTSDFForRendering())
 	{
-		renderingTSDF = new TSDF_CUDA<Index<short>, ITMVoxel>(settings->sceneParams.allocationSize / 4);
+		renderingTSDF = new TSDF_CUDA<ITMIndexXYZ, ITMVoxel>(settings->sceneParams.allocationSize / 4);
 //	*combinedTSDF_device = stdgpu::unordered_map<Vector3s, Vector6f*>::createDeviceObject(100000);
 	}
 }
@@ -174,8 +174,8 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeGradient(ITMVoxel* block, ITMVoxel** n
  * @param maxW
  */
 __global__ void
-combineDirectionalTSDFViewPoint2(stdgpu::unordered_map<ITMIndex, ITMVoxel*> renderingTSDF,
-                                 const stdgpu::unordered_map<ITMIndexDirectional, ITMVoxel*> tsdf,
+combineDirectionalTSDFViewPoint2(stdgpu::unordered_map<ITMIndexXYZ, ITMVoxel*> renderingTSDF,
+                                 const stdgpu::unordered_map<ITMIndex, ITMVoxel*> tsdf,
                                  const Vector3s* visibleBlocks, const stdgpu::index_t numVisibleBlocks,
                                  const Matrix4f invM, const float voxelSize, const float mu, const int maxW)
 {
@@ -198,7 +198,7 @@ combineDirectionalTSDFViewPoint2(stdgpu::unordered_map<ITMIndex, ITMVoxel*> rend
 	}
 	if (linearIdx >= 0 and linearIdx < 6)
 	{
-		ITMIndexDirectional index = ITMIndexDirectional(blockPos, TSDFDirection(linearIdx));
+		ITMIndex index = ITMIndex(blockPos, TSDFDirection(linearIdx));
 
 		auto it = tsdf.find(index);
 		if (it == tsdf.end())
@@ -224,7 +224,7 @@ combineDirectionalTSDFViewPoint2(stdgpu::unordered_map<ITMIndex, ITMVoxel*> rend
 				Vector3s(0, 0, 1),
 				Vector3s(0, 0, -1)
 			};
-		ITMIndexDirectional index = ITMIndexDirectional(blockPos + shift[neighborIdx], TSDFDirection(directionIdx));
+		ITMIndex index = ITMIndex(blockPos + shift[neighborIdx], TSDFDirection(directionIdx));
 		auto it = tsdf.find(index);
 		if (it == tsdf.end())
 			neighborBlocks[directionIdx * 6 + neighborIdx] = nullptr;
@@ -364,8 +364,8 @@ combineDirectionalTSDFViewPoint2(stdgpu::unordered_map<ITMIndex, ITMVoxel*> rend
 }
 
 __global__ void
-combineDirectionalTSDFViewPoint(stdgpu::unordered_map<ITMIndex, ITMVoxel*> renderingTSDF,
-                                const stdgpu::unordered_map<ITMIndexDirectional, ITMVoxel*> tsdf,
+combineDirectionalTSDFViewPoint(stdgpu::unordered_map<ITMIndexXYZ, ITMVoxel*> renderingTSDF,
+                                const stdgpu::unordered_map<ITMIndex, ITMVoxel*> tsdf,
 																const Vector3s* visibleBlocks, const stdgpu::index_t numVisibleBlocks,
                                 const Matrix4f invM, const float voxelSize, const float mu, const int maxW)
 {
@@ -583,14 +583,14 @@ void ITMVisualisationEngine_CUDA::ComputeRenderingTSDF(const Scene* scene, const
 	if (N == 0)
 		return;
 
-	TSDF_CUDA<ITMIndex, ITMVoxel>* renderingTSDF_device = (TSDF_CUDA<ITMIndex, ITMVoxel>*) renderingTSDF;
+	TSDF_CUDA<ITMIndexXYZ, ITMVoxel>* renderingTSDF_device = (TSDF_CUDA<ITMIndexXYZ, ITMVoxel>*) renderingTSDF;
 	if (N >= renderingTSDF->allocatedBlocksMax)
 		renderingTSDF->resize(2 * N);
 	else
 		renderingTSDF->clear();
 	renderingTSDF_device->allocate(renderState_vh->GetVisibleBlocks(), N);
 
-	auto tsdf = dynamic_cast<TSDF_CUDA<ITMIndexDirectional, ITMVoxel>*>(scene->tsdf);
+	auto tsdf = dynamic_cast<TSDF_CUDA<ITMIndex, ITMVoxel>*>(scene->tsdf);
 	dim3 gridSize(N, 1);
 	dim3 blockSize(8 * 8 * 8);
 	combineDirectionalTSDFViewPoint2 << < gridSize, blockSize >> > (
@@ -718,10 +718,10 @@ void ITMVisualisationEngine_CUDA::GenericRaycast(const Scene* scene, const Vecto
 			pointClouds.pointCloud[directionIdx] = renderState->raycastResultDirectional[directionIdx]->GetData(
 				MEMORYDEVICE_CUDA);
 
-			genericRaycast_device<ITMIndexDirectional, ITMVoxel> << < gridSize, cudaBlockSize >> > (
+			genericRaycast_device<ITMIndex, ITMVoxel> << < gridSize, cudaBlockSize >> > (
 				pointClouds.pointCloud[directionIdx],
 					renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA),
-					((TSDF_CUDA<ITMIndexDirectional, ITMVoxel>*) scene->tsdf)->getMap(),
+					((TSDF_CUDA<ITMIndex, ITMVoxel>*) scene->tsdf)->getMap(),
 					imgSize,
 					invM,
 					invertProjectionParams(projParams),
@@ -742,13 +742,13 @@ void ITMVisualisationEngine_CUDA::GenericRaycast(const Scene* scene, const Vecto
 			ORcudaKernelCheck;
 		}
 
-//		combineDirectionalPointClouds_device<ITMIndexDirectional, ITMVoxel> << < gridSize, cudaBlockSize >> > (
+//		combineDirectionalPointClouds_device<ITMIndex, ITMVoxel> << < gridSize, cudaBlockSize >> > (
 //			renderState->raycastResult->GetData(MEMORYDEVICE_CUDA),
 //				renderState->raycastNormals->GetData(MEMORYDEVICE_CUDA),
 //				pointClouds,
 //				renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA),
 //				entriesVisibleType,
-//				((TSDF_CUDA<ITMIndexDirectional, ITMVoxel>*) scene->tsdf)->getMap(),
+//				((TSDF_CUDA<ITMIndex, ITMVoxel>*) scene->tsdf)->getMap(),
 //				imgSize,
 //				invM,
 //				invertProjectionParams(projParams),
@@ -786,7 +786,7 @@ void ITMVisualisationEngine_CUDA::GenericRaycast(const Scene* scene, const Vecto
 		genericRaycast_device << < gridSize, cudaBlockSize >> > (
 			renderState->raycastResult->GetData(MEMORYDEVICE_CUDA),
 				renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA),
-				dynamic_cast<TSDF_CUDA<ITMIndex, ITMVoxel>*> (renderingTSDF)->getMap(),
+				dynamic_cast<TSDF_CUDA<ITMIndexXYZ, ITMVoxel>*> (renderingTSDF)->getMap(),
 				imgSize,
 				invM,
 				invertProjectionParams(projParams),
@@ -806,7 +806,7 @@ void ITMVisualisationEngine_CUDA::GenericRaycast(const Scene* scene, const Vecto
 		genericRaycast_device << < gridSize, cudaBlockSize >> > (
 			renderState->raycastResult->GetData(MEMORYDEVICE_CUDA),
 				renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA),
-				((TSDF_CUDA<ITMIndexDirectional, ITMVoxel>*) scene->tsdf)->getMap(),
+				((TSDF_CUDA<ITMIndex, ITMVoxel>*) scene->tsdf)->getMap(),
 				imgSize,
 				invM,
 				invertProjectionParams(projParams),
@@ -864,8 +864,8 @@ void ITMVisualisationEngine_CUDA::RenderImage(const Scene* scene,
 		directionalContribution = renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA);
 	}
 
-	TSDF_CUDA<ITMIndex, ITMVoxel>* renderingTSDF_device = (TSDF_CUDA<ITMIndex, ITMVoxel>*) renderingTSDF;
-	TSDF_CUDA<ITMIndexDirectional , ITMVoxel>* tsdf_device = (TSDF_CUDA<ITMIndexDirectional, ITMVoxel>*) scene->tsdf;
+	TSDF_CUDA<ITMIndexXYZ, ITMVoxel>* renderingTSDF_device = (TSDF_CUDA<ITMIndexXYZ, ITMVoxel>*) renderingTSDF;
+	TSDF_CUDA<ITMIndex , ITMVoxel>* tsdf_device = (TSDF_CUDA<ITMIndex, ITMVoxel>*) scene->tsdf;
 
 	dim3 cudaBlockSize(8, 8);
 	dim3 gridSize((int) ceil((float) imgSize.x / (float) cudaBlockSize.x),
@@ -1066,13 +1066,13 @@ void ITMVisualisationEngine_CUDA::CreatePointCloud(const Scene* scene,
 	if (this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL and DIRECTIONAL_RENDERING_MODE == 1)
 	{
 		renderPointCloud_device << < gridSize, cudaBlockSize >> > (locations, colours, noTotalPoints_device, pointsRay,
-			dynamic_cast<TSDF_CUDA<ITMIndex, ITMVoxel>*>(renderingTSDF)->getMap(),
+			renderingTSDF->toCUDA()->getMap(),
 			skipPoints, scene->sceneParams->voxelSize, imgSize, lightSource);
 	}
 	else
 	{
 		renderPointCloud_device << < gridSize, cudaBlockSize >> > (locations, colours, noTotalPoints_device, pointsRay,
-			dynamic_cast<TSDF_CUDA<ITMIndexDirectional, ITMVoxel>*>(scene->tsdf)->getMap(),
+			renderingTSDF->toCUDA()->getMap(),
 			skipPoints, scene->sceneParams->voxelSize, imgSize, lightSource);
 	}
 	ORcudaKernelCheck;

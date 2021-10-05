@@ -36,20 +36,20 @@ TEST_CASE("GPU readVoxel", "TSDFBase")
 
 template<template<typename...> class Set, typename... Args>
 _CPU_AND_GPU_CODE_
-void inline function(Set<ITMIndexDirectional, Args...> set)
+void inline function(Set<ITMIndex, Args...> set)
 {
-//	set.insert(ITMIndexDirectional(threadIdx.x));
+//	set.insert(ITMIndex(threadIdx.x));
 }
 
 __global__
-void setTest(stdgpu::unordered_set<ITMIndexDirectional> s)
+void setTest(stdgpu::unordered_set<ITMIndex> s)
 {
 	function(s);
 }
 
 TEST_CASE("stdgpu", "TSDFBase")
 {
-	stdgpu::unordered_set<ITMIndexDirectional> s = stdgpu::unordered_set<ITMIndexDirectional>::createDeviceObject(10000);
+	stdgpu::unordered_set<ITMIndex> s = stdgpu::unordered_set<ITMIndex>::createDeviceObject(10000);
 	setTest<<<50, 10>>>(s);
 	REQUIRE(s.size() == 10);
 

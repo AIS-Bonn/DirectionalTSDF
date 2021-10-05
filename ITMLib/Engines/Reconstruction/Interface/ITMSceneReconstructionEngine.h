@@ -86,7 +86,7 @@ public:
 protected:
 	std::shared_ptr<const ITMLibSettings> settings;
 
-	ORUtils::MemoryBlock<ITMIndexDirectional> *allocationBlocksList;
+	ORUtils::MemoryBlock<ITMIndex> *allocationBlocksList;
 
 	ITMReconstructionTimeStats timeStats;
 

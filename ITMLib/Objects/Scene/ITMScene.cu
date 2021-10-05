@@ -8,7 +8,7 @@ namespace ITMLib
 {
 
 template<class TVoxel>
-ITMScene<TVoxel>::ITMScene(const ITMSceneParams* _sceneParams, bool _useSwapping, MemoryDeviceType _memoryType)
+ITMScene<TVoxel>::ITMScene(const ITMSceneParams* _sceneParams, bool _useSwapping, bool _directional, MemoryDeviceType _memoryType)
 	: sceneParams(_sceneParams)
 	, index(_memoryType),
 	  localVBA(_memoryType, 1, 1)//index.getNumAllocatedVoxelBlocks(), index.getVoxelBlockSize())
@@ -18,9 +18,9 @@ ITMScene<TVoxel>::ITMScene(const ITMSceneParams* _sceneParams, bool _useSwapping
 	else globalCache = NULL;
 
 	if (_memoryType == MEMORYDEVICE_CPU)
-		tsdf = new TSDF_CPU<IndexDirectionalShort, TVoxel>(sceneParams->allocationSize);
+		tsdf = new TSDF_CPU<ITMIndex, TVoxel>(sceneParams->allocationSize);
 	else
-		tsdf = new TSDF_CUDA<IndexDirectionalShort, TVoxel>(sceneParams->allocationSize);
+		tsdf = new TSDF_CUDA<ITMIndex, TVoxel>(sceneParams->allocationSize);
 }
 
 template class ITMScene<ITMVoxel>;

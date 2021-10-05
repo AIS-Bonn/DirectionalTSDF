@@ -18,15 +18,13 @@ namespace ITMLib
 	class ITMScene
 	{
 	public:
-		typedef TVoxel VoxelType;
-
 		/** Scene parameters like voxel size etc. */
 		const ITMSceneParams *sceneParams;
 
 		/** Hash table to reference the 8x8x8 blocks */
 		ITMVoxelBlockHash index;
 
-		TSDF<TVoxel>* tsdf;
+		TSDF<IndexDirectionalShort, TVoxel>* tsdf;
 
 		/** Current local content of the 8x8x8 voxel blocks -- stored host or device */
 		ITMLocalVBA<TVoxel> localVBA;
@@ -46,7 +44,7 @@ namespace ITMLib
 			index.LoadFromDirectory(outputDirectory);
 		}
 
-		ITMScene(const ITMSceneParams* _sceneParams, bool _useSwapping, MemoryDeviceType _memoryType);
+		ITMScene(const ITMSceneParams* _sceneParams, bool _useSwapping, bool _directional, MemoryDeviceType _memoryType);
 
 		~ITMScene(void)
 		{

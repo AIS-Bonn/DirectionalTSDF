@@ -26,7 +26,9 @@ ITMBasicEngine::ITMBasicEngine(const std::shared_ptr<const ITMLibSettings>& sett
 	if ((imgSize_d.x == -1) || (imgSize_d.y == -1)) imgSize_d = imgSize_rgb;
 
 	MemoryDeviceType memoryType = settings->GetMemoryType();
-	this->scene = new Scene(&settings->sceneParams, settings->swappingMode == ITMLibSettings::SWAPPINGMODE_ENABLED, memoryType);
+	this->scene = new Scene(&settings->sceneParams, settings->swappingMode == ITMLibSettings::SWAPPINGMODE_ENABLED,
+	                        settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL, memoryType);
+
 
 	const ITMLibSettings::DeviceType deviceType = settings->deviceType;
 

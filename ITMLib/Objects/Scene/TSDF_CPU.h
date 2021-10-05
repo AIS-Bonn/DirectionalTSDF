@@ -76,6 +76,8 @@ public:
 		this->map.clear();
 	}
 
+	MemoryDeviceType deviceType() override { return MemoryDeviceType::MEMORYDEVICE_CUDA; }
+
 	explicit TSDF_CPU(size_t size)
 	{
 		resize(size);

@@ -941,7 +941,7 @@ buildSpaceCarvingVisibleType(HashEntryVisibilityType* entriesVisibleType,
  */
 template<template<typename...> class Set, typename... Args>
 _CPU_AND_GPU_CODE_ inline void
-findAllocationBlocks(Set<ITMIndexDirectional, Args...>& visibleBlocks,
+findAllocationBlocks(Set<ITMIndex, Args...>& visibleBlocks,
                      int x, int y, const float* depth, const Vector4f* depthNormal,
                      const Matrix4f& invM_d, Vector4f projParams_d, float mu, Vector2i imgSize, float voxelSize,
                      float viewFrustum_min, float viewFrustum_max, const ITMFusionParams& fusionParams)
@@ -1003,11 +1003,11 @@ findAllocationBlocks(Set<ITMIndexDirectional, Args...>& visibleBlocks,
 					continue;
 //				if (DirectionWeight(angles[directionIdx]) <= 0)
 //					continue;
-				visibleBlocks.insert(ITMIndexDirectional(blockIdx, TSDFDirection(directionIdx)));
+				visibleBlocks.insert(ITMIndex(blockIdx, TSDFDirection(directionIdx)));
 			}
 		} else
 		{
-			visibleBlocks.insert(ITMIndexDirectional(blockIdx, TSDFDirection::NONE));
+			visibleBlocks.insert(ITMIndex(blockIdx, TSDFDirection::NONE));
 		}
 		lastBlockIdx = blockIdx;
 	}
