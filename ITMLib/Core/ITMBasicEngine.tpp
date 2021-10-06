@@ -103,7 +103,7 @@ void ITMBasicEngine::SaveSceneToMesh(const char *objFileName)
 {
 	if (meshingEngine == NULL) return;
 
-	ITMMesh *mesh = new ITMMesh(settings->GetMemoryType());
+	ITMMesh *mesh = new ITMMesh();
 
 	meshingEngine->MeshScene(mesh, scene);
 	mesh->WriteSTL(objFileName);

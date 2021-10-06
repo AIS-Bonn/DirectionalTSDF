@@ -307,7 +307,7 @@ void ITMMultiEngine::SaveSceneToMesh(const char *modelFileName)
 {
 	if (meshingEngine == NULL) return;
 
-	ITMMesh *mesh = new ITMMesh(settings->GetMemoryType());
+	ITMMesh *mesh = new ITMMesh;
 
 	meshingEngine->MeshScene(mesh, *mapManager);
 	mesh->WriteSTL(modelFileName);

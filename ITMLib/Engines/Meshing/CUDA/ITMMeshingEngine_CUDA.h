@@ -12,6 +12,20 @@ private:
 	unsigned int* noTriangles_device;
 	Vector4s* visibleBlockGlobalPos_device;
 
+	/**
+	 * Generate entire mesh on GPU
+	 * @param mesh
+	 * @param scene
+	 */
+	void MeshSceneDefault(ITMMesh* mesh, const Scene* scene);
+
+	/**
+	 * Alternate between meshing and copying triangles to reduce amount of simultaneously required GPU memory
+	 * @param mesh
+	 * @param scene
+	 */
+	void MeshSceneStreamed(ITMMesh* mesh, const Scene* scene);
+
 public:
 	void MeshScene(ITMMesh* mesh, const Scene* scene);
 

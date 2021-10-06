@@ -3,6 +3,7 @@
 #include "ITMMeshingEngine_CUDA.h"
 
 #include <algorithm>
+#include <atomic>
 #include <ITMLib/ITMLibDefines.h>
 #include <ITMLib/Objects/Scene/TSDF_CUDA.h>
 #include <ITMLib/Utils/ITMCUDAUtils.h>
@@ -16,19 +17,19 @@
 
 using namespace ITMLib;
 
-template <typename TIndex>
-__global__ void meshScene_device(ITMMesh::Triangle *triangles, unsigned int *noTriangles_device, float factor,
-                                 int noMaxTriangles, const ITMIndexXYZ *blocksList, stdgpu::unordered_map<TIndex, ITMVoxel*> tsdf);
+template<typename TIndex>
+__global__ void meshScene_device(ITMMesh::Triangle *triangles, unsigned int *noTriangles_device,
+                                  float factor, int noMaxTriangles, const ITMIndexXYZ *blocksList,
+                                  stdgpu::unordered_map<TIndex, ITMVoxel*> tsdf,
+                                  unsigned int offset = 0, unsigned int lastBlock = 0);
 
 ITMMeshingEngine_CUDA::ITMMeshingEngine_CUDA()
 {
-	ORcudaSafeCall(cudaMalloc((void**)&visibleBlockGlobalPos_device, SDF_LOCAL_BLOCK_NUM * sizeof(Vector4s)));
 	ORcudaSafeCall(cudaMalloc((void**)&noTriangles_device, sizeof(unsigned int)));
 }
 
 ITMMeshingEngine_CUDA::~ITMMeshingEngine_CUDA()
 {
-	ORcudaSafeCall(cudaFree(visibleBlockGlobalPos_device));
 	ORcudaSafeCall(cudaFree(noTriangles_device));
 }
 
@@ -74,13 +75,13 @@ void findAllocatedBlocks(const stdgpu::unordered_map<TIndex, ITMVoxel*> tsdf, IT
 
 void ITMMeshingEngine_CUDA::MeshScene(ITMMesh *mesh, const Scene *scene)
 {
-	ITMMesh::Triangle *triangles = mesh->triangles->GetData(MEMORYDEVICE_CUDA);
+//	MeshSceneDefault(mesh, scene);
+	MeshSceneStreamed(mesh, scene);
+}
 
-	int noMaxTriangles = mesh->noMaxTriangles;
-	float factor = scene->sceneParams->voxelSize;
-
+void ITMMeshingEngine_CUDA::MeshSceneDefault(ITMMesh* mesh, const Scene* scene)
+{
 	ORcudaSafeCall(cudaMemset(noTriangles_device, 0, sizeof(unsigned int)));
-	ORcudaSafeCall(cudaMemset(visibleBlockGlobalPos_device, 0, sizeof(Vector4s) * SDF_LOCAL_BLOCK_NUM));
 
 	ITMIndexXYZ* allBlocksList;
 	size_t numberBlocks;
@@ -92,8 +93,13 @@ void ITMMeshingEngine_CUDA::MeshScene(ITMMesh *mesh, const Scene *scene)
 	dim3 cudaBlockSize(SDF_BLOCK_SIZE, SDF_BLOCK_SIZE, SDF_BLOCK_SIZE);
 	dim3 gridSize(numberBlocks);
 
-	meshScene_device << <gridSize, cudaBlockSize >> >(triangles, noTriangles_device, factor, noMaxTriangles,
-		allBlocksList, tsdf);
+	ITMMesh::Triangle* triangles_device;
+	size_t noMaxTriangles = numberBlocks * SDF_BLOCK_SIZE3 * 4;
+	ORcudaSafeCall(cudaMalloc(&triangles_device, sizeof(ITMMesh::Triangle) * noMaxTriangles));
+
+	meshScene_device << < gridSize, cudaBlockSize >> >(triangles_device, noTriangles_device,
+																										scene->sceneParams->voxelSize, noMaxTriangles,
+																										allBlocksList, tsdf);
 	ORcudaKernelCheck;
 
 	ORcudaSafeCall(cudaMemcpy(&mesh->noTotalTriangles, noTriangles_device, sizeof(unsigned int), cudaMemcpyDeviceToHost));
@@ -103,15 +109,86 @@ void ITMMeshingEngine_CUDA::MeshScene(ITMMesh *mesh, const Scene *scene)
 	// might be greater than noMaxTriangles.
 	// We coerce it to be lesser or equal to that number, not doing it causes a segfault when using the mesh later.
 	mesh->noTotalTriangles = std::min<uint>(mesh->noTotalTriangles, static_cast<uint>(noMaxTriangles));
+	mesh->Resize(mesh->noTotalTriangles);
+
+	ORcudaSafeCall(cudaMemcpy(mesh->triangles->GetData(MEMORYDEVICE_CPU), triangles_device,
+	                          sizeof(ITMMesh::Triangle) * mesh->noTotalTriangles, cudaMemcpyDeviceToHost));
+
+	ORcudaSafeCall(cudaFree(triangles_device));
+	ORcudaSafeCall(cudaFree(allBlocksList));
+}
+
+void ITMMeshingEngine_CUDA::MeshSceneStreamed(ITMMesh* mesh, const Scene* scene)
+{
+	ORcudaSafeCall(cudaMemset(noTriangles_device, 0, sizeof(unsigned int)));
+
+	ITMIndexXYZ* allBlocksList;
+	size_t numberBlocks;
+
+	auto tsdf = scene->tsdf->toCUDA()->getMap();
+	findAllocatedBlocks(tsdf, &allBlocksList, numberBlocks);
+	printf("found %zu blocks ... ", numberBlocks);
+
+	const int blocksPerStream = 128;
+	const int nStreams = 4;
+	const int N = std::ceil(static_cast<float>(numberBlocks) / (blocksPerStream * nStreams));
+	const size_t maxNoTriangles = blocksPerStream * SDF_BLOCK_SIZE3 * 4;
+
+	cudaStream_t stream[nStreams];
+	ITMMesh::Triangle* triangles_device[nStreams];
+	unsigned int* noTriangles_device[nStreams];
+
+	mesh->noTotalTriangles = 0;
+	mesh->Resize(numberBlocks * SDF_BLOCK_SIZE3 * 4);
+
+	for (int i = 0; i < nStreams; i ++)
+	{
+		ORcudaSafeCall(cudaStreamCreate(&stream[i]));
+		ORcudaSafeCall(cudaMalloc(&noTriangles_device[i], sizeof(unsigned int)));
+		ORcudaSafeCall(cudaMalloc(&triangles_device[i], sizeof(ITMMesh::Triangle) * maxNoTriangles));
+	}
+	for (int j = 0; j < N; j++)
+		for (int i = 0; i < nStreams; i++)
+		{
+			ORcudaSafeCall(cudaMemsetAsync(noTriangles_device[i], 0, sizeof(unsigned int), stream[i]));
+
+			int offset = (j * nStreams + i) * blocksPerStream;
+
+			dim3 cudaBlockSize(SDF_BLOCK_SIZE, SDF_BLOCK_SIZE, SDF_BLOCK_SIZE);
+			meshScene_device << < blocksPerStream, cudaBlockSize, 0, stream[i] >> >(
+				triangles_device[i], noTriangles_device[i],
+					scene->sceneParams->voxelSize,
+					maxNoTriangles, allBlocksList, tsdf,
+					offset, numberBlocks);
+
+				unsigned int noTriangles_cpu;
+			ORcudaSafeCall(cudaMemcpyAsync(&noTriangles_cpu, noTriangles_device[i], sizeof(unsigned int), cudaMemcpyDeviceToHost, stream[i]));
+
+			ORcudaSafeCall(cudaMemcpyAsync(&mesh->triangles->GetData(MEMORYDEVICE_CPU)[mesh->noTotalTriangles],
+			                               triangles_device[i], sizeof(ITMMesh::Triangle) * noTriangles_cpu,
+			                               cudaMemcpyDeviceToHost, stream[i]));
+			mesh->noTotalTriangles += noTriangles_cpu;
+		}
+	for (int i = 0; i < nStreams; i ++)
+	{
+		ORcudaSafeCall(cudaFree(triangles_device[i]));
+		ORcudaSafeCall(cudaFree(noTriangles_device[i]));
+		ORcudaSafeCall(cudaStreamDestroy(stream[i]));
+	}
 
 	ORcudaSafeCall(cudaFree(allBlocksList));
 }
 
 template<typename TIndex>
-__global__ void meshScene_device(ITMMesh::Triangle *triangles, unsigned int *noTriangles_device, float factor,
-                                 int noMaxTriangles, const ITMIndexXYZ *blocksList, const stdgpu::unordered_map<TIndex, ITMVoxel*> tsdf)
+__global__ void meshScene_device(ITMMesh::Triangle *triangles, unsigned int *noTriangles_device,
+																	float factor, int noMaxTriangles, const ITMIndexXYZ *blocksList,
+																	const stdgpu::unordered_map<TIndex, ITMVoxel*> tsdf,
+																	unsigned int offset, unsigned int lastBlock)
 {
-	const ITMIndexXYZ block = blocksList[blockIdx.x + gridDim.x * blockIdx.y];
+const ITMIndexXYZ block = blocksList[blockIdx.x + gridDim.x * blockIdx.y + offset];
+
+	if (lastBlock > 0 and blockIdx.x + gridDim.x * blockIdx.y + offset > lastBlock)
+		return;
 
 	Vector3i globalPos = Vector3i(block.x, block.y, block.z) * SDF_BLOCK_SIZE;
 
