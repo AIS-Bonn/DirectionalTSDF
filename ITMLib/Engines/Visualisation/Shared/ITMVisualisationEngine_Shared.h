@@ -221,6 +221,12 @@ computeNormal(const Vector4f* pointsRay, const float& voxelSize, const Vector2i&
 	float weightSum = 0;
 
 	const Vector4f& x_y = pointsRay[x + y * imgSize.x];
+
+	// define maximum threshold of neighboring points for normal computation
+	// use minimum possible distance to points of neighboring pixels as basis (focal length fx=525)
+	const float distToCamera = ORUtils::length(x_y.toVector3());
+	const float distThreshold = 3 * distToCamera / 525;
+
 	for (int i = 1; i < levels + 1; i++)
 	{
 		const Vector4f& xp_y = pointsRay[(x + i) + y * imgSize.x];
@@ -232,7 +238,7 @@ computeNormal(const Vector4f* pointsRay, const float& voxelSize, const Vector2i&
 		{
 			Vector3f diff_x = (xp_y - x_y).toVector3();
 			Vector3f diff_y = (x_yp - x_y).toVector3();
-			if (ORUtils::length(diff_x) < i * 3 and ORUtils::length(diff_y) < i * 3)
+			if (ORUtils::length(diff_x) < distThreshold and ORUtils::length(diff_y) < distThreshold)
 			{
 				weightSum += weights[i - 1];
 				Vector3f normal = -ORUtils::cross(diff_x, diff_y).normalised();
@@ -243,7 +249,7 @@ computeNormal(const Vector4f* pointsRay, const float& voxelSize, const Vector2i&
 		{
 			Vector3f diff_x = (x_y - xm_y).toVector3();
 			Vector3f diff_y = (x_yp - x_y).toVector3();
-			if (ORUtils::length(diff_x) < i * 3 and ORUtils::length(diff_y) < i * 3)
+			if (ORUtils::length(diff_x) < distThreshold and ORUtils::length(diff_y) < distThreshold)
 			{
 				weightSum += weights[i - 1];
 				Vector3f normal = -ORUtils::cross(diff_x, diff_y).normalised();
@@ -254,7 +260,7 @@ computeNormal(const Vector4f* pointsRay, const float& voxelSize, const Vector2i&
 		{
 			Vector3f diff_x = (x_y - xm_y).toVector3();
 			Vector3f diff_y = (x_y - x_ym).toVector3();
-			if (ORUtils::length(diff_x) < i * 3 and ORUtils::length(diff_y) < i * 3)
+			if (ORUtils::length(diff_x) < distThreshold and ORUtils::length(diff_y) < distThreshold)
 			{
 				weightSum += weights[i - 1];
 				Vector3f normal = -ORUtils::cross(diff_x, diff_y).normalised();
@@ -265,7 +271,8 @@ computeNormal(const Vector4f* pointsRay, const float& voxelSize, const Vector2i&
 		{
 			Vector3f diff_x = (xp_y - x_y).toVector3();
 			Vector3f diff_y = (x_y - x_ym).toVector3();
-			if (ORUtils::length(diff_x) < i * 3 and ORUtils::length(diff_y) < i * 3)
+
+			if (ORUtils::length(diff_x) < distThreshold and ORUtils::length(diff_y) < distThreshold)
 			{
 				weightSum += weights[i - 1];
 				Vector3f normal = -ORUtils::cross(diff_x, diff_y).normalised();
@@ -525,9 +532,8 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefaultTSDF(Vector4f& pt_out,
 		return false;
 	}
 
-	distance_out = totalLength / sceneParams.oneOverVoxelSize;
-// multiply by transition: negative transition <=> negative confidence!
-	pt_out = Vector4f(pt_result, confidence);
+	distance_out = totalLength * sceneParams.voxelSize;
+	pt_out = Vector4f(pt_result * sceneParams.voxelSize, confidence);
 
 	return true;
 }
@@ -640,9 +646,9 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefault(DEVICEPTR(Vector4f)& pt_out,
 		return false;
 	}
 
-	distance_out = totalLength / sceneParams.oneOverVoxelSize;
+	distance_out = totalLength * sceneParams.voxelSize;
 	// multiply by transition: negative transition <=> negative confidence!
-	pt_out = Vector4f(pt_result, confidence);
+	pt_out = Vector4f(pt_result * sceneParams.voxelSize, confidence);
 
 	return true;
 }
@@ -814,7 +820,7 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional2(DEVICEPTR(Vector4f)& pt_out, 
 	}
 
 	// multiply by transition: negative transition <=> negative confidence!
-	pt_out = Vector4f(pt_result, confidence);
+	pt_out = Vector4f(pt_result * sceneParams.voxelSize, confidence);
 
 	return true;
 }
@@ -1097,7 +1103,7 @@ _CPU_AND_GPU_CODE_ inline bool castRayDirectional(DEVICEPTR(Vector4f)& pt_out, V
 		}
 	}
 
-	pt_out = Vector4f(pt_result, weightSum);
+	pt_out = Vector4f(pt_result * sceneParams.voxelSize, weightSum);
 	return true;
 }
 
@@ -1129,9 +1135,9 @@ _CPU_AND_GPU_CODE_ inline void processPixelICP(DEVICEPTR(Vector4f)& pointsMap, D
 	if (foundPoint)
 	{
 		Vector4f outPoint4;
-		outPoint4.x = point.x * voxelSize;
-		outPoint4.y = point.y * voxelSize;
-		outPoint4.z = point.z * voxelSize;
+		outPoint4.x = point.x;
+		outPoint4.y = point.y;
+		outPoint4.z = point.z;
 		outPoint4.w = 1.0f;
 		pointsMap = outPoint4;
 
@@ -1443,7 +1449,7 @@ _CPU_AND_GPU_CODE_ inline void processPixelICP(DEVICEPTR(Vector4f)* pointsMap, D
 
 	if (foundPoint)
 	{
-		pointsMap[locId] = Vector4f(point.toVector3() * voxelSize, point.w);
+		pointsMap[locId] = Vector4f(point.toVector3(), point.w);
 		normalsMap[locId] = Vector4f(outNormal, 0);
 	} else
 	{
@@ -1561,7 +1567,7 @@ _CPU_AND_GPU_CODE_ inline void processPixelDepth(
 	DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point, bool foundPoint,
 	const Matrix4f& T_CW, const float voxelSize, const float maxDepth)
 {
-	Vector4f pointCamera = T_CW * Vector4f(point * voxelSize, 1);
+	Vector4f pointCamera = T_CW * Vector4f(point, 1);
 	float depth = pointCamera.z;
 
 	if (not foundPoint or depth <= 0.0f)

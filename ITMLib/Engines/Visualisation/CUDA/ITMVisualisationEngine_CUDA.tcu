@@ -38,7 +38,6 @@ ITMVisualisationEngine_CUDA::ITMVisualisationEngine_CUDA(std::shared_ptr<const I
 	if (CombineTSDFForRendering())
 	{
 		renderingTSDF = new TSDF_CUDA<ITMIndexXYZ, ITMVoxel>(settings->sceneParams.allocationSize / 4);
-//	*combinedTSDF_device = stdgpu::unordered_map<Vector3s, Vector6f*>::createDeviceObject(100000);
 	}
 }
 
@@ -852,7 +851,7 @@ void ITMVisualisationEngine_CUDA::RenderImage(const Scene* scene,
 	}
 	normalsRay = renderState->raycastNormals->GetData(MEMORYDEVICE_CUDA);
 
-	Vector3f lightSource = Vector3f(invM.getColumn(3)) / scene->sceneParams->voxelSize;
+	Vector3f lightSource = Vector3f(invM.getColumn(3));
 
 	Vector4u* outRendering = outputImage->GetData(MEMORYDEVICE_CUDA);
 
@@ -881,14 +880,14 @@ void ITMVisualisationEngine_CUDA::RenderImage(const Scene* scene,
 			if (CombineTSDFForRendering())
 			{
 				renderColour_device << < gridSize, cudaBlockSize >> > (outRendering, pointsRay,
-				  renderingTSDF_device->getMap(),
+				  renderingTSDF_device->getMap(), scene->sceneParams->oneOverVoxelSize,
 					imgSize, lightSource);
 				ORcudaKernelCheck;
 			}
 			else
 			{
 				renderColour_device << < gridSize, cudaBlockSize >> > (outRendering, pointsRay,
-					tsdf_device->getMap(),
+					tsdf_device->getMap(), scene->sceneParams->oneOverVoxelSize,
 					imgSize, lightSource);
 			}
 			break;
@@ -954,8 +953,9 @@ void ITMVisualisationEngine_CUDA::RenderImage(const Scene* scene,
 				ORcudaKernelCheck;
 				renderGrey_device << < gridSize, cudaBlockSize >> > (
 					outRendering, pointsRay,
-					renderingTSDF_device->getMap(),
-					imgSize, lightSource);
+						renderingTSDF_device->getMap(),
+						scene->sceneParams->oneOverVoxelSize,
+						imgSize, lightSource);
 				ORcudaKernelCheck;
 			}
 			else
@@ -964,6 +964,7 @@ void ITMVisualisationEngine_CUDA::RenderImage(const Scene* scene,
 				renderGrey_device << < gridSize, cudaBlockSize >> > (
 					outRendering, pointsRay,
 						tsdf_device->getMap(),
+						scene->sceneParams->oneOverVoxelSize,
 						imgSize, lightSource);
 				ORcudaKernelCheck;
 			}
@@ -1056,7 +1057,7 @@ void ITMVisualisationEngine_CUDA::CreatePointCloud(const Scene* scene,
 
 	ORcudaSafeCall(cudaMemsetAsync(noTotalPoints_device, 0, sizeof(uint)));
 
-	Vector3f lightSource = Vector3f(invM.getColumn(3)) / scene->sceneParams->voxelSize;
+	Vector3f lightSource = Vector3f(invM.getColumn(3));
 	Vector4f* locations = trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CUDA);
 	Vector4f* colours = trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CUDA);
 	Vector4f* pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CUDA);
@@ -1105,7 +1106,7 @@ void ITMVisualisationEngine_CUDA::CreateICPMaps(const Scene* scene,
 	Vector4f* normalsMap = trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CUDA);
 	Vector4f* pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CUDA);
 	Vector4f* normalsRay = renderState->raycastNormals->GetData(MEMORYDEVICE_CUDA);
-	Vector3f lightSource = Vector3f(invM.getColumn(3)) / scene->sceneParams->voxelSize;
+	Vector3f lightSource = Vector3f(invM.getColumn(3));
 
 	dim3 cudaBlockSize(16, 12);
 	dim3 gridSize((int) ceil((float) imgSize.x / (float) cudaBlockSize.x),

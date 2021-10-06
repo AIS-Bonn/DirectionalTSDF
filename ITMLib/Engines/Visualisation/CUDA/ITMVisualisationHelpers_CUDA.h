@@ -367,14 +367,15 @@ __global__ void combineDirectionalPointClouds_device(Vector4f* out_ptsRay, Vecto
 	}
 
 template<class TIndex, class TVoxel, template<typename, typename...> class Map, typename... Args>
-__device__ inline void computeNormalAndAngle(THREADPTR(bool)& foundPoint, const THREADPTR(Vector3f)& point,
-                                                     const Map<TIndex, TVoxel*, Args...>& tsdf,
-                                                     const THREADPTR(Vector3f)& lightSource,
-                                                     THREADPTR(Vector3f)& outNormal, THREADPTR(float)& angle)
+__device__ inline void computeNormalAndAngle(bool& foundPoint, const Vector3f& point,
+                                             const Map<TIndex, TVoxel*, Args...>& tsdf,
+                                             const float oneOverVoxelSize,
+                                             const Vector3f& lightSource,
+                                             Vector3f& outNormal, float& angle)
 {
 	if (!foundPoint) return;
 
-	outNormal = computeSingleNormalFromSDF(tsdf, point).normalised();
+	outNormal = computeSingleNormalFromSDF(tsdf, point * oneOverVoxelSize).normalised();
 
 	Vector3f lightDirection = (lightSource - point).normalised();
 	angle = dot(outNormal, lightDirection);
@@ -384,12 +385,12 @@ __device__ inline void computeNormalAndAngle(THREADPTR(bool)& foundPoint, const 
 template<class TIndex, class TVoxel, template<typename, typename...> class Map, typename... Args>
 __device__ inline void processPixelGrey_SDFNormals(DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point,
                                                            bool foundPoint, const Map<TIndex, TVoxel*, Args...>& tsdf,
-                                                           Vector3f lightSource)
+                                                           float oneOverVoxelSize, Vector3f lightSource)
 {
 	Vector3f outNormal;
 	float angle;
 
-	computeNormalAndAngle(foundPoint, point, tsdf, lightSource, outNormal, angle);
+	computeNormalAndAngle(foundPoint, point, tsdf, oneOverVoxelSize, lightSource, outNormal, angle);
 
 	if (foundPoint) drawPixelGrey(outRendering, angle);
 	else outRendering = Vector4u((uchar) 0);
@@ -397,7 +398,8 @@ __device__ inline void processPixelGrey_SDFNormals(DEVICEPTR(Vector4u)& outRende
 
 template<class TIndex, class TVoxel, template<typename, typename...> class Map, typename... Args>
 __global__ void renderGrey_device(Vector4u *outRendering, const Vector4f *ptsRay,
-                                  const Map<TIndex, TVoxel*, Args...> tsdf, Vector2i imgSize, Vector3f lightSource)
+                                  const Map<TIndex, TVoxel*, Args...> tsdf,
+                                  float oneOverVoxelSize, Vector2i imgSize, Vector3f lightSource)
 {
 	int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
 
@@ -407,7 +409,7 @@ __global__ void renderGrey_device(Vector4u *outRendering, const Vector4f *ptsRay
 
 	Vector4f ptRay = ptsRay[locId];
 
-	processPixelGrey_SDFNormals(outRendering[locId], ptRay.toVector3(), ptRay.w > 0, tsdf, lightSource);
+	processPixelGrey_SDFNormals(outRendering[locId], ptRay.toVector3(), ptRay.w > 0, tsdf, oneOverVoxelSize, lightSource);
 }
 
 
@@ -498,7 +500,7 @@ template<class TVoxel, class TIndex>
 		const Vector4f& pointRay = ptsRay[locId];
 		Vector3f point = pointRay.toVector3();
 		bool foundPoint = pointRay.w > 0;
-		computeNormalAndAngle(foundPoint, point, tsdf, lightSource, outNormal, angle);
+		computeNormalAndAngle(foundPoint, point, tsdf, 1 / voxelSize, lightSource, outNormal, angle);
 
 		if (skipPoints && ((x % 2 == 0) || (y % 2 == 0))) foundPoint = false;
 
@@ -525,7 +527,8 @@ template<class TVoxel, class TIndex>
 
 template<class TIndex, class TVoxel, template<typename, typename...> class Map, typename... Args>
 __device__ inline void processPixelColour(
-	DEVICEPTR(Vector4u)& outRendering, const CONSTPTR(Vector3f)& point, bool foundPoint, const Map<TIndex, TVoxel*, Args...>& tsdf, const Vector3f lightSource)
+	Vector4u& outRendering, const Vector3f& point, bool foundPoint, const Map<TIndex, TVoxel*, Args...>& tsdf,
+	const float oneOverVoxelSize, const Vector3f lightSource)
 {
 	float angle;
 	Vector3f outNormal;
@@ -535,7 +538,7 @@ __device__ inline void processPixelColour(
 
 	if (foundPoint)
 	{
-		Vector4f clr = readFromSDF_color4u_interpolated(tsdf, point);
+		Vector4f clr = readFromSDF_color4u_interpolated(tsdf, point * oneOverVoxelSize);
 		outRendering.x = (uchar) (clr.x * 255.0f);
 		outRendering.y = (uchar) (clr.y * 255.0f);
 		outRendering.z = (uchar) (clr.z * 255.0f);
@@ -546,7 +549,8 @@ __device__ inline void processPixelColour(
 
 template<class TIndex, class TVoxel, template<typename, typename...> class Map, typename... Args>
 __global__ void renderColour_device(Vector4u *outRendering, const Vector4f *ptsRay,
-                                    const Map<TIndex, TVoxel*, Args...> tsdf, Vector2i imgSize, const Vector3f lightSource)
+                                    const Map<TIndex, TVoxel*, Args...> tsdf, const float oneOverVoxelSize,
+                                    Vector2i imgSize, const Vector3f lightSource)
 {
 	int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
 
@@ -556,7 +560,7 @@ __global__ void renderColour_device(Vector4u *outRendering, const Vector4f *ptsR
 
 	Vector4f ptRay = ptsRay[locId];
 
-	processPixelColour(outRendering[locId], ptRay.toVector3(), ptRay.w > 0, tsdf, lightSource);
+	processPixelColour(outRendering[locId], ptRay.toVector3(), ptRay.w > 0, tsdf, oneOverVoxelSize, lightSource);
 }
 
 	template<class TVoxel, class TIndex>

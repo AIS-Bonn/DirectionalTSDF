@@ -590,7 +590,6 @@ void UIEngine::printPixelInformation(int x, int y)
 	}
 
 	const float voxelSize = this->appData->internalSettings->sceneParams.voxelSize;
-	point *= voxelSize;
 	Vector3i voxelIdx = (1 / voxelSize * point.toVector3()).toInt();
 	Vector3i blockIdx;
 	unsigned short offset;
