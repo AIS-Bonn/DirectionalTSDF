@@ -128,7 +128,7 @@ int ITMICPTracker_CUDA::ComputeGandH_Depth(float &f, float *nabla, float *hessia
 	for (int r = 0, counter = 0; r < noPara; r++) for (int c = 0; c <= r; c++, counter++)
 		hessian[r + c * 6] = accu_host->h[counter] * invNoPoints;
 	for (int r = 0; r < noPara; ++r) for (int c = r + 1; c < noPara; c++)
-		hessian[r + c * 6] = hessian[c + r * 6] * invNoPoints;
+		hessian[r + c * 6] = hessian[c + r * 6];
 
 	for (int c = 0; c < noPara; c++)
 		nabla[c] = accu_host->g[c] * invNoPoints;
@@ -198,7 +198,7 @@ int ITMICPTracker_CUDA::ComputeGandH_RGB(float &f, float *nabla, float *hessian,
 	for (int r = 0, counter = 0; r < noPara; r++) for (int c = 0; c <= r; c++, counter++)
 			hessian[r + c * 6] = accu_host->h[counter] * invNoPoints;
 	for (int r = 0; r < noPara; ++r) for (int c = r + 1; c < noPara; c++)
-			hessian[r + c * 6] = hessian[c + r * 6] * invNoPoints;
+			hessian[r + c * 6] = hessian[c + r * 6];
 
 	for (int c = 0; c < noPara; c++)
 		nabla[c] = accu_host->g[c] * invNoPoints;
