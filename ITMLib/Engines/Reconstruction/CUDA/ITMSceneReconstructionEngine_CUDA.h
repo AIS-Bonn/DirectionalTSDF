@@ -6,7 +6,7 @@
 
 namespace ITMLib
 {
-class SummingVoxelMap_CUDA;
+template<typename TIndex, typename TVoxel> class TSDF_CUDA;
 
 class ITMSceneReconstructionEngine_CUDA : public ITMSceneReconstructionEngine
 {
@@ -17,7 +17,7 @@ private:
 	size_t noAllocationBlocks;
 	size_t noFusionBlocks;
 
-	SummingVoxelMap_CUDA* summingVoxelMap;
+	TSDF_CUDA<ITMIndex, SummingVoxel>* summingVoxelMap;
 
 public:
 	void ResetScene(Scene* scene) override;

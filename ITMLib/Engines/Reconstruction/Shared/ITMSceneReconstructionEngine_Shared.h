@@ -561,23 +561,16 @@ SummingVoxel* getSummingVoxel(SummingVoxelMap& summingVoxelMap, const Vector3s& 
 		return it->second + offset;
 }
 
-template<typename SummingVoxelMap>
+template<template<typename, typename...> class Map, typename... Args>
 _CPU_AND_GPU_CODE_
 inline void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* depthNormals,
                               const Matrix4f& invM_d,
                               const Vector4f& invProjParams_d, const Vector4f& invProjParams_rgb,
                               const ITMFusionParams& fusionParams,
                               const ITMSceneParams& sceneParams,
-                              const ITMHashEntry* hashTable,
-                              SummingVoxelMap summingVoxelMap,
-                              ITMVoxel* voxelArray
-)
+                              const Map<ITMIndex, ITMVoxel*, Args...> tsdf,
+                              Map<ITMIndex, SummingVoxel*, Args...> summingVoxelMap)
 {
-	static_assert(std::is_same<typename SummingVoxelMap::key_type, IndexType>::value,
-	              "template parameter SummingVoxelMap requires key type IndexType");
-	static_assert(std::is_same<typename SummingVoxelMap::mapped_type, SummingVoxel*>::value,
-	              "template parameter SummingVoxelMap requires value type SummingVoxel*");
-
 	const float mu = sceneParams.mu;
 	const float viewFrustum_min = sceneParams.viewFrustum_min;
 	const float viewFrustum_max = sceneParams.viewFrustum_max;
@@ -616,9 +609,9 @@ inline void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vect
 	{
 		Vector3i voxelIdx = blockTraversal.GetNextBlock();
 
-		Vector3i blockPos;
-		ushort linearIdx;
-		voxelToBlockPosAndOffset(voxelIdx, blockPos, linearIdx);
+		ITMIndex blockIdx;
+		unsigned short offset;
+		voxelIdxToIndexAndOffset(blockIdx, offset, voxelIdx);
 
 		Vector3f viewRay_camera = reprojectImagePoint(x, y, 1, invProjParams_d).normalised();
 		float weight = 0.01f * weightNormal(normal_camera.toVector3(), viewRay_camera);
@@ -628,52 +621,54 @@ inline void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vect
 		{
 			for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
 			{
-				int foundEntry = false;
-				int index = findVoxel(hashTable, voxelIdx, TSDFDirection(direction), foundEntry, cache[direction]);
-				if (not foundEntry)
+				auto it = summingVoxelMap.find(blockIdx);
+				if (it == summingVoxelMap.end())
 					continue;
+				SummingVoxel& summingVoxel = it->second[offset];
 
-				SummingVoxel* voxel = getSummingVoxel(summingVoxelMap, voxelIdx.toShort(), direction);
-				if (not voxel)
+				auto it_tsdf = tsdf.find(blockIdx);
+				if (it_tsdf == tsdf.end())
 					continue;
+				const ITMVoxel& voxel = it_tsdf->second[offset];
 
 				// skip positive sdf values (because they either mean free space or are values required to estimate the 0-transition)
-				if (voxelArray[index].sdf >= 0 or ITMVoxel::weightToFloat(voxelArray[index].w_depth, sceneParams.maxW) <= 0)
+				if (voxel.sdf >= 0 or ITMVoxel::weightToFloat(voxel.w_depth, sceneParams.maxW) <= 0)
 					continue;
 
 				// Don't carve, when the voxel was updated during fusion of THIS frame
 				// (This prevents accidentally carving voxels with rays passing by close to a surface)
-				if (voxel->weightSum > 0)
+				if (summingVoxel.weightSum > 0)
 					continue;
 
-				voxel->update(1, weight);
+				summingVoxel.update(1, weight);
 			}
 		} else
 		{
-			int foundEntry = false;
-			int index = findVoxel(hashTable, voxelIdx, foundEntry, cache[0]);
-			if (not foundEntry)
+			auto it = summingVoxelMap.find(blockIdx);
+			if (it == summingVoxelMap.end())
 				continue;
+			SummingVoxel& summingVoxel = it->second[offset];
 
-			SummingVoxel* voxel = getSummingVoxel(summingVoxelMap, voxelIdx.toShort());
-			if (not voxel)
+			auto it_tsdf = tsdf.find(blockIdx);
+			if (it_tsdf == tsdf.end())
 				continue;
+			const ITMVoxel& voxel = it_tsdf->second[offset];
 
 			// skip positive sdf values (because they either mean free space or are values required to estimate the 0-transition)
-			if (voxelArray[index].sdf >= 0)
+			if (voxel.sdf >= 0)
 				continue;
 
 			// Don't carve, when the voxel was updated during fusion of THIS frame
 			// (This prevents accidentally carving voxels with rays passing by close to a surface)
-			if (voxel->weightSum > 0)
+			if (summingVoxel.weightSum > 0)
 				continue;
 
-			voxel->update(1, weight);
+			summingVoxel.update(1, weight);
 		}
 	}
 }
 
-template<typename SummingVoxelMap>
+template<template<typename, typename...> class Map, typename... Args>
 _CPU_AND_GPU_CODE_
 inline void rayCastUpdate(int x, int y, Vector2i imgSize_d, Vector2i imgSize_rgb,
                           float* depth, Vector4f* depthNormals, const Vector4u* rgb,
@@ -681,14 +676,9 @@ inline void rayCastUpdate(int x, int y, Vector2i imgSize_d, Vector2i imgSize_rgb
                           const Vector4f& invProjParams_d, const Vector4f& projParams_rgb,
                           const ITMFusionParams& fusionParams,
                           const ITMSceneParams& sceneParams,
-                          SummingVoxelMap summingVoxelMap)
-{
-	static_assert(std::is_same<typename SummingVoxelMap::key_type, IndexType>::value,
-	              "template parameter SummingVoxelMap requires key type IndexType");
-	static_assert(std::is_same<typename SummingVoxelMap::mapped_type, SummingVoxel*>::value,
-	              "template parameter SummingVoxelMap requires value type SummingVoxel*");
-
-	const float mu = sceneParams.mu;
+                          Map<ITMIndex, SummingVoxel*, Args...> summingVoxelMap)
+	{
+		const float mu = sceneParams.mu;
 	const float viewFrustum_min = sceneParams.viewFrustum_min;
 	const float viewFrustum_max = sceneParams.viewFrustum_max;
 	const float voxelSize = sceneParams.voxelSize;
@@ -773,10 +763,6 @@ inline void rayCastUpdate(int x, int y, Vector2i imgSize_d, Vector2i imgSize_rgb
 		float voxelSideLengthCamera = voxelSize / (invProjParams_d.x * depthValue); // in pixels
 
 		/// find and update voxels
-		Vector3i blockPos;
-		ushort linearIdx;
-		voxelToBlockPosAndOffset(voxelIdx, blockPos, linearIdx);
-
 		if (fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL)
 		{
 			for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
@@ -787,9 +773,13 @@ inline void rayCastUpdate(int x, int y, Vector2i imgSize_d, Vector2i imgSize_rgb
 					continue;
 				}
 
-				SummingVoxel* voxel = getSummingVoxel(summingVoxelMap, voxelIdx.toShort(), direction);
-				if (not voxel)
+				ITMIndex blockIdx;
+				unsigned short offset;
+				voxelIdxToIndexAndOffset(blockIdx, offset, voxelIdx, TSDFDirection(direction));
+				auto it = summingVoxelMap.find(blockIdx);
+				if (it == summingVoxelMap.end())
 					continue;
+				SummingVoxel& voxel = it->second[offset];
 
 				if (fusionParams.useWeighting)
 				{
@@ -807,13 +797,17 @@ inline void rayCastUpdate(int x, int y, Vector2i imgSize_d, Vector2i imgSize_rgb
 						weight = 0.1f * weightNormal(normal_camera.toVector3(), viewRay_camera);
 				}
 
-				voxel->update(distance, weight, color.toVector3(), color.w > 0 ? weight : 0);
+				voxel.update(distance, weight, color.toVector3(), color.w > 0 ? weight : 0);
 			}
 		} else
 		{
-			SummingVoxel* voxel = getSummingVoxel(summingVoxelMap, voxelIdx.toShort());
-			if (not voxel)
+			ITMIndex blockIdx;
+			unsigned short offset;
+			voxelIdxToIndexAndOffset(blockIdx, offset, voxelIdx);
+			auto it = summingVoxelMap.find(blockIdx);
+			if (it == summingVoxelMap.end())
 				continue;
+			SummingVoxel& voxel = it->second[offset];
 
 			if (fusionParams.useWeighting)
 			{
@@ -825,7 +819,7 @@ inline void rayCastUpdate(int x, int y, Vector2i imgSize_d, Vector2i imgSize_rgb
 				weight *= 1 / (voxelSideLengthCamera * voxelSideLengthCamera);
 			}
 
-			voxel->update(distance, weight, color.toVector3(), color.w > 0 ? weight : 0);
+			voxel.update(distance, weight, color.toVector3(), color.w > 0 ? weight : 0);
 		}
 	}
 }

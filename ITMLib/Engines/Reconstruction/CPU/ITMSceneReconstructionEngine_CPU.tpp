@@ -78,10 +78,10 @@ void ITMSceneReconstructionEngine_CPU::IntegrateIntoSceneRayCasting(
 	/// 2. Ray trace every pixel, sum up results
 	for (int y = 0; y < view->depth->noDims.y; y++) for (int x = 0; x < view->depth->noDims.x; x++)
 	{
-		rayCastUpdate(x, y, view->depth->noDims, view->rgb->noDims, depth, depthNormals, rgb, invM_d, trackingState->pose_d->GetM(),
-		              invProjParams_d, projParams_rgb,
-		              this->settings->fusionParams, this->settings->sceneParams,
-		              summingVoxelMap->getMap());
+//		rayCastUpdate(x, y, view->depth->noDims, view->rgb->noDims, depth, depthNormals, rgb, invM_d, trackingState->pose_d->GetM(),
+//		              invProjParams_d, projParams_rgb,
+//		              this->settings->fusionParams, this->settings->sceneParams,
+//		              summingVoxelMap->getMap());
 	}
 	this->timeStats.fusion += timer.Tock();
 
@@ -95,10 +95,10 @@ void ITMSceneReconstructionEngine_CPU::IntegrateIntoSceneRayCasting(
 		{
 			for (int y = 0; y < view->depth->noDims.y; y++) for (int x = 0; x < view->depth->noDims.x; x++)
 			{
-				rayCastCarveSpace(x, y, view->depth->noDims, depth, depthNormals, invM_d,
-				                  invProjParams_d, projParams_rgb,
-				                  this->settings->fusionParams, this->settings->sceneParams,
-				                  hashTable, summingVoxelMap->getMap(), localVBA);
+//				rayCastCarveSpace(x, y, view->depth->noDims, depth, depthNormals, invM_d,
+//				                  invProjParams_d, projParams_rgb,
+//				                  this->settings->fusionParams, this->settings->sceneParams,
+//				                  hashTable, summingVoxelMap->getMap(), localVBA);
 			}
 		} else
 		{
@@ -134,11 +134,11 @@ void ITMSceneReconstructionEngine_CPU::IntegrateIntoSceneRayCasting(
 							pt_model.z = (float)(globalPos.z + z) * voxelSize;
 							pt_model.w = 1.0f;
 
-							voxelProjectionCarveSpace(
-								localVoxelBlock[locId], localRayCastingSum[locId], TSDFDirection(currentHashEntry.direction),
-								pt_model, M_d, projParams_d, M_rgb, projParams_rgb,
-								this->settings->fusionParams, this->settings->sceneParams, depth, depthNormals, confidence,
-								depthImgSize, rgb, rgbImgSize);
+//							voxelProjectionCarveSpace(
+//								localVoxelBlock[locId], localRayCastingSum[locId], TSDFDirection(currentHashEntry.direction),
+//								pt_model, M_d, projParams_d, M_rgb, projParams_rgb,
+//								this->settings->fusionParams, this->settings->sceneParams, depth, depthNormals, confidence,
+//								depthImgSize, rgb, rgbImgSize);
 						}
 			}
 		}
@@ -157,7 +157,7 @@ void ITMSceneReconstructionEngine_CPU::IntegrateIntoSceneRayCasting(
 
 		for (int locId = 0; locId < SDF_BLOCK_SIZE3; locId++)
 		{
-			rayCastCombine(localVoxelBlock[locId], rayCastingSum[locId], *(scene->sceneParams));
+//			rayCastCombine(localVoxelBlock[locId], rayCastingSum[locId], *(scene->sceneParams));
 		}
 	}
 	this->timeStats.fusion += timer.Tock();

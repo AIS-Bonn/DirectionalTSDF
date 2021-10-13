@@ -138,7 +138,7 @@ public:
 
 	MemoryDeviceType deviceType() override { return MemoryDeviceType::MEMORYDEVICE_CUDA; }
 
-	explicit TSDF_CUDA(size_t size)
+	explicit TSDF_CUDA(size_t size=1)
 	{
 		resize(size);
 		ORcudaSafeCall(cudaMalloc(&allocationStats_device, sizeof(AllocationStats)));
