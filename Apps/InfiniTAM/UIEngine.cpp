@@ -23,7 +23,6 @@
 
 #include "../../ITMLib/ITMLibDefines.h"
 #include "../../ITMLib/Core/ITMBasicEngine.h"
-#include "../../ITMLib/Core/ITMBasicSurfelEngine.h"
 #include "../../ITMLib/Core/ITMMultiEngine.h"
 
 #include "../../ORUtils/FileUtils.h"
@@ -450,13 +449,6 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 			if (uiEngine->integrationActive) basicEngine->turnOnIntegration();
 			else basicEngine->turnOffIntegration();
 		}
-
-		ITMBasicSurfelEngine<ITMSurfelT> *basicSurfelEngine = dynamic_cast<ITMBasicSurfelEngine<ITMSurfelT>*>(uiEngine->mainEngine);
-		if (basicSurfelEngine != nullptr)
-		{
-			if (uiEngine->integrationActive) basicSurfelEngine->turnOnIntegration();
-			else basicSurfelEngine->turnOffIntegration();
-		}
 	}
 	break;
 	case 'e':
@@ -476,9 +468,6 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 	{
 		ITMBasicEngine *basicEngine = dynamic_cast<ITMBasicEngine*>(uiEngine->mainEngine);
 		if (basicEngine != nullptr) basicEngine->resetAll();
-
-		ITMBasicSurfelEngine<ITMSurfelT> *basicSurfelEngine = dynamic_cast<ITMBasicSurfelEngine<ITMSurfelT>*>(uiEngine->mainEngine);
-		if (basicSurfelEngine != nullptr) basicSurfelEngine->resetAll();
 	}
 	break;
 	case 'k':

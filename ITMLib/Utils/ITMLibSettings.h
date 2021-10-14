@@ -7,7 +7,6 @@
 
 #include "ITMFusionParams.h"
 #include "ITMSceneParams.h"
-#include "ITMSurfelSceneParams.h"
 #include "../../ORUtils/MemoryDeviceType.h"
 
 namespace ITMLib
@@ -39,7 +38,6 @@ namespace ITMLib
 		typedef enum
 		{
 			LIBMODE_BASIC,
-			LIBMODE_BASIC_SURFELS,
 			LIBMODE_LOOPCLOSURE
 		} LibMode;
 
@@ -65,7 +63,6 @@ namespace ITMLib
 
 		/// Further, scene specific parameters such as voxel size
 		ITMSceneParams sceneParams;
-		ITMSurfelSceneParams surfelSceneParams;
 
 		ITMLibSettings();
 		virtual ~ITMLibSettings() = default;

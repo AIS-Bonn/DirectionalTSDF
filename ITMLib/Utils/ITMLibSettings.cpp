@@ -48,18 +48,8 @@ ITMLibSettings::SwappingMode SwappingModeFromString(const std::string& mode)
 	return ITMLibSettings::SWAPPINGMODE_DISABLED;
 }
 
-ITMLibSettings::LibMode LibModeFromString(const std::string& mode, const bool useLoopClosure)
+ITMLibSettings::LibMode getLibMode(const bool useLoopClosure)
 {
-	if (iequals(mode, "voxel"))
-	{
-		if (useLoopClosure)
-			return ITMLibSettings::LIBMODE_LOOPCLOSURE;
-		else
-			return ITMLibSettings::LIBMODE_BASIC;
-	} else if (iequals(mode, "surfel"))
-		return ITMLibSettings::LIBMODE_LOOPCLOSURE;
-
-	printf(R"(ERROR: Unknown lib mode "%s". Using "voxel" instead)", mode.c_str());
 	if (useLoopClosure)
 		return ITMLibSettings::LIBMODE_LOOPCLOSURE;
 	else
@@ -68,9 +58,7 @@ ITMLibSettings::LibMode LibModeFromString(const std::string& mode, const bool us
 
 ITMLibSettings::ITMLibSettings()
 	: fusionParams(),
-	  sceneParams(0.04f, 5000, 0.005f, 0.2f, 6.0f, false),
-	  surfelSceneParams(0.5f, 0.6f, static_cast<float>(20 * M_PI / 180), 0.01f, 0.004f, 3.5f, 25.0f, 4, 1.0f, 5.0f, 20,
-	                    10000000, true, true)
+	  sceneParams(0.04f, 5000, 0.005f, 0.2f, 6.0f, false)
 {
 	// skips every other point when using the colour renderer for creating a point cloud
 	skipPoints = false;
@@ -100,7 +88,6 @@ ITMLibSettings::ITMLibSettings()
 	/// switch between various library modes - basic, with loop closure, etc.
 	libMode = LIBMODE_BASIC;
 //	libMode = LIBMODE_LOOPCLOSURE;
-//	libMode = LIBMODE_BASIC_SURFELS;
 
 	//////////////////////////////////////////////////////////////////////////
 	/// Fusion Params
@@ -153,12 +140,6 @@ ITMLibSettings::ITMLibSettings()
 
 	//trackerConfig = "type=imuicp,levels=tb,minstep=1e-3,outlierC=0.01,outlierF=0.005,numiterC=4,numiterF=2";
 	//trackerConfig = "type=extendedimu,levels=ttb,minstep=5e-4,outlierSpaceC=0.1,outlierSpaceF=0.004,numiterC=20,numiterF=5,tukeyCutOff=8,framesToSkip=20,framesToWeight=50,failureDec=20.0";
-
-	// Surfel tracking
-	if (libMode == LIBMODE_BASIC_SURFELS)
-	{
-		trackerConfig = "extended,levels=rrbb,minstep=1e-4,outlierSpaceC=0.1,outlierSpaceF=0.004,numiterC=20,numiterF=20,tukeyCutOff=8,framesToSkip=0,framesToWeight=1,failureDec=20.0";
-	}
 }
 
 MemoryDeviceType ITMLibSettings::GetMemoryType() const
@@ -176,12 +157,9 @@ ITMLibSettings::ITMLibSettings(const std::string& settingsFile)
 	bool useLoopClosure = false;
 	if (root["useLoopClosure"].IsDefined())
 		useLoopClosure = root["useLoopClosure"].as<bool>();
-	libMode = LibModeFromString(root["libMode"].as<std::string>(), useLoopClosure);
+	libMode = getLibMode(useLoopClosure);
 
-	if (libMode == LIBMODE_BASIC_SURFELS)
-		trackerConfig = root["surfelTrackerConfig"].as<std::string>();
-	else
-		trackerConfig = root["voxelTrackerConfig"].as<std::string>();
+	trackerConfig = root["voxelTrackerConfig"].as<std::string>();
 
 	createMeshingEngine = root["createMeshingEngine"].as<bool>();
 	swappingMode = SwappingModeFromString(root["swappingMode"].as<std::string>());
@@ -208,37 +186,6 @@ ITMLibSettings::ITMLibSettings(const std::string& settingsFile)
 		sceneParams.viewFrustum_max = voxelParamsNode["maxDistance"].as<float>();
 	if (voxelParamsNode["allocationSize"].IsDefined())
 		sceneParams.allocationSize = voxelParamsNode["allocationSize"].as<size_t>();
-
-
-	const YAML::Node& surfelParamsNode = root["surfelSceneParams"];
-	if (surfelParamsNode["deltaRadius"].IsDefined())
-		surfelSceneParams.deltaRadius = surfelParamsNode["deltaRadius"].as<float>();
-	if (surfelParamsNode["gaussianConfidenceSigma"].IsDefined())
-		surfelSceneParams.gaussianConfidenceSigma = surfelParamsNode["gaussianConfidenceSigma"].as<float>();
-	if (surfelParamsNode["maxMergeAngle"].IsDefined())
-		surfelSceneParams.maxMergeAngle = surfelParamsNode["maxMergeAngle"].as<float>();
-	if (surfelParamsNode["maxMergeDist"].IsDefined())
-		surfelSceneParams.maxMergeDist = surfelParamsNode["maxMergeDist"].as<float>();
-	if (surfelParamsNode["maxSurfelRadius"].IsDefined())
-		surfelSceneParams.maxSurfelRadius = surfelParamsNode["maxSurfelRadius"].as<float>();
-	if (surfelParamsNode["minRadiusOverlapFactor"].IsDefined())
-		surfelSceneParams.minRadiusOverlapFactor = surfelParamsNode["minRadiusOverlapFactor"].as<float>();
-	if (surfelParamsNode["stableSurfelConfidence"].IsDefined())
-		surfelSceneParams.stableSurfelConfidence = surfelParamsNode["stableSurfelConfidence"].as<float>();
-	if (surfelParamsNode["supersamplingFactor"].IsDefined())
-		surfelSceneParams.supersamplingFactor = surfelParamsNode["supersamplingFactor"].as<int>();
-	if (surfelParamsNode["trackingSurfelMaxDepth"].IsDefined())
-		surfelSceneParams.trackingSurfelMaxDepth = surfelParamsNode["trackingSurfelMaxDepth"].as<float>();
-	if (surfelParamsNode["trackingSurfelMinConfidence"].IsDefined())
-		surfelSceneParams.trackingSurfelMinConfidence = surfelParamsNode["trackingSurfelMinConfidence"].as<float>();
-	if (surfelParamsNode["unstableSurfelPeriod"].IsDefined())
-		surfelSceneParams.unstableSurfelPeriod = surfelParamsNode["unstableSurfelPeriod"].as<int>();
-	if (surfelParamsNode["unstableSurfelZOffset"].IsDefined())
-		surfelSceneParams.unstableSurfelZOffset = surfelParamsNode["unstableSurfelZOffset"].as<int>();
-	if (surfelParamsNode["useGaussianSampleConfidence"].IsDefined())
-		surfelSceneParams.useGaussianSampleConfidence = surfelParamsNode["useGaussianSampleConfidence"].as<bool>();
-	if (surfelParamsNode["useSurfelMerging"].IsDefined())
-		surfelSceneParams.useSurfelMerging = surfelParamsNode["useSurfelMerging"].as<bool>();
 
 
 	const YAML::Node& fusionParamsNode = root["fusionParams"];

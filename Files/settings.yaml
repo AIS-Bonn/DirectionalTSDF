@@ -50,22 +50,6 @@ voxelSceneParams:
 
   allocationSize: 200000 # number of blocks to allocate for TSDF
 
-surfelSceneParams:
-  deltaRadius: 0.5
-  gaussianConfidenceSigma: 0.6
-  maxMergeAngle: 0.3490658503988659  # 20 * M_PI / 180
-  maxMergeDist: 0.01
-  maxSurfelRadius: 0.004
-  minRadiusOverlapFactor: 3.5
-  stableSurfelConfidence: 25.0
-  supersamplingFactor: 4
-  trackingSurfelMaxDepth: 1.0
-  trackingSurfelMinConfidence: 5.0
-  unstableSurfelPeriod: 20
-  unstableSurfelZOffset: 10000000
-  useGaussianSampleConfidence: true
-  useSurfelMerging: true
-
 fusionParams:
 #  tsdfMode: default  # [directional, default]
   tsdfMode: directional  # [directional, default]
@@ -106,9 +90,3 @@ voxelTrackerConfig: "type=icp,levels=rrbb,useColour=0,colourWeight=0.1,
 #voxelTrackerConfig: "type=extendedimu,levels=ttb,minstep=5e-4,outlierSpaceC=0.1,
 #  outlierSpaceF=0.004,numiterC=20,numiterF=5,tukeyCutOff=8,framesToSkip=20,
 #  framesToWeight=50,failureDec=20.0"
-
-
-surfelTrackerConfig: "extended,levels=rrbb,minstep=1e-4,
-  outlierSpaceC=0.1,outlierSpaceF=0.004,numiterC=20,
-  numiterF=20,tukeyCutOff=8,framesToSkip=0,framesToWeight=1,
-  failureDec=20.0"

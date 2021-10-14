@@ -4,7 +4,6 @@
 
 #include <stdexcept>
 
-#include "ITMLib/Engines/Visualisation/Interface/ITMSurfelVisualisationEngine.h"
 #include "ITMLib/Engines/Visualisation/Interface/ITMVisualisationEngine.h"
 #include "ITMLib/Trackers/Interface/ITMTracker.h"
 #include "ITMLib/Objects/Stats/ITMTrackingTimeStats.h"
@@ -30,45 +29,6 @@ namespace ITMLib
 			timer.Tick();
 			tracker->TrackCamera(trackingState, view);
 			timeStats.tracking = timer.Tock();
-		}
-
-		template <typename TSurfel>
-		void Prepare(ITMTrackingState *trackingState, const ITMSurfelScene<TSurfel> *scene, const ITMView *view,
-			const ITMSurfelVisualisationEngine<TSurfel> *visualisationEngine, ITMSurfelRenderState *renderState)
-		{
-			ITMTimer timer;
-			timer.Tick();
-			if (!tracker->requiresPointCloudRendering())
-				return;
-
-			//render for tracking
-			bool requiresColourRendering = tracker->requiresColourRendering();
-			bool requiresFullRendering = trackingState->TrackerFarFromPointCloud() || !settings->useApproximateRaycast;
-
-			if(requiresColourRendering)
-			{
-				// TODO: This should be implemented at some point.
-				throw std::runtime_error("The surfel engine doesn't yet support colour trackers");
-			}
-			else
-			{
-				const bool useRadii = true;
-				visualisationEngine->FindSurface(scene, trackingState->pose_d, &view->calib.intrinsics_d, useRadii, USR_FAUTEDEMIEUX, renderState);
-				trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
-
-				if(requiresFullRendering)
-				{
-					visualisationEngine->CreateICPMaps(scene, renderState, trackingState);
-					trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
-					if (trackingState->age_pointCloud==-1) trackingState->age_pointCloud=-2;
-					else trackingState->age_pointCloud = 0;
-				}
-				else
-				{
-					trackingState->age_pointCloud++;
-				}
-			}
-			timeStats.rendering = timer.Tock();
 		}
 
 		template <typename TVoxel>

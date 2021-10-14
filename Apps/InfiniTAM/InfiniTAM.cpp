@@ -8,7 +8,6 @@
 
 #include "ITMLib/ITMLibDefines.h"
 #include "ITMLib/Core/ITMBasicEngine.h"
-#include "ITMLib/Core/ITMBasicSurfelEngine.h"
 #include "ITMLib/Core/ITMMultiEngine.h"
 #include "ITMLib/Utils/ITMStringUtils.h"
 
@@ -43,11 +42,6 @@ int main(int argc, char** argv)
 			mainEngine = new ITMBasicEngine(internalSettings, imageSource->getCalib(),
 			                                imageSource->getRGBImageSize(),
 			                                imageSource->getDepthImageSize());
-			break;
-		case ITMLibSettings::LIBMODE_BASIC_SURFELS:
-			mainEngine = new ITMBasicSurfelEngine<ITMSurfelT>(internalSettings, imageSource->getCalib(),
-			                                                  imageSource->getRGBImageSize(),
-			                                                  imageSource->getDepthImageSize());
 			break;
 		case ITMLibSettings::LIBMODE_LOOPCLOSURE:
 			mainEngine = new ITMMultiEngine(internalSettings, imageSource->getCalib(),
