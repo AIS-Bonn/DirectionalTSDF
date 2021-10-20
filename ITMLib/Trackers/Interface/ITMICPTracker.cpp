@@ -111,15 +111,15 @@ void ITMICPTracker::SetEvaluationData(ITMTrackingState *trackingState, const ITM
 	// the image hierarchy allows pointers to external data at level 0
 	viewHierarchy_depth->GetLevel(0)->data = view->depth;
 	sceneHierarchy->GetLevel(0)->pointsMap = trackingState->pointCloud->locations;
-	sceneHierarchy->GetLevel(0)->normalsMap = trackingState->pointCloud->colours;
+	sceneHierarchy->GetLevel(0)->normalsMap = trackingState->pointCloud->normals;
 
 	if (parameters.useColour)
 	{
 		viewHierarchy_intensity->GetLevel(0)->intrinsics = view->calib.intrinsics_rgb.projectionParamsSimple.all;
 
 		// Convert RGB to intensity
+		viewHierarchy_intensity->GetLevel(0)->intensity_prev->SetFrom(viewHierarchy_intensity->GetLevel(0)->intensity_current, ORUtils::MemoryBlock<float>::CUDA_TO_CUDA);
 		lowLevelEngine->ConvertColourToIntensity(viewHierarchy_intensity->GetLevel(0)->intensity_current, view->rgb);
-		lowLevelEngine->ConvertColourToIntensity(viewHierarchy_intensity->GetLevel(0)->intensity_prev, view->rgb_prev);
 
 		// Compute first level gradients
 		lowLevelEngine->GradientXY(viewHierarchy_intensity->GetLevel(0)->gradients,

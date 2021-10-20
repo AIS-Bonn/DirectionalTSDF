@@ -20,44 +20,25 @@ namespace ITMLib
 		/// RGB colour image for the current frame.
 		ITMUChar4Image *rgb = nullptr;
 
-		/// RGB colour image for the previous frame.
-		ITMUChar4Image *rgb_prev = nullptr;
-
 		/// Float valued depth image, if available according to @ref inputImageType.
 		ITMFloatImage *depth = nullptr;
 
 		/// surface normal of depth image
-		// allocated when needed
 		ITMFloat4Image *depthNormal = nullptr;
-
-		/// uncertainty (std) in each pixel of depth value based on sensor noise model
-		/// allocated when needed
-		ITMFloatImage *depthUncertainty = nullptr;
-
-		// confidence based on distance from center
-		ITMFloatImage *depthConfidence = nullptr;
 
 		ITMView(const ITMRGBDCalib& calibration, Vector2i imgSize_rgb, Vector2i imgSize_d, bool useGPU)
 		: calib(calibration)
 		{
 			this->rgb = new ITMUChar4Image(imgSize_rgb, true, useGPU);
-			this->rgb_prev = NULL;
 			this->depth = new ITMFloatImage(imgSize_d, true, useGPU);
-			this->depthNormal = NULL;
-			this->depthUncertainty = NULL;
-			this->depthConfidence = new ITMFloatImage(imgSize_d, true, useGPU);
+			this->depthNormal = new ITMFloat4Image(imgSize_d, true, useGPU);
 		}
 
 		virtual ~ITMView(void)
 		{
 			delete rgb;
-			delete rgb_prev;
-
 			delete depth;
-			delete depthConfidence;
-
 			delete depthNormal;
-			delete depthUncertainty;
 		}
 
 		// Suppress the default copy constructor and assignment operator

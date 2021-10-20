@@ -175,8 +175,9 @@ void ITMExtendedTracker::SetEvaluationData(ITMTrackingState *trackingState, cons
 		viewHierarchy_Intensity->GetLevel(0)->intrinsics = view->calib.intrinsics_rgb.projectionParamsSimple.all;
 
 		// Convert RGB to intensity
+		viewHierarchy_Intensity->GetLevel(0)->intensity_prev->SetFrom(viewHierarchy_Intensity->GetLevel(0)->intensity_current, ORUtils::MemoryBlock<float>::CUDA_TO_CUDA);
+
 		lowLevelEngine->ConvertColourToIntensity(viewHierarchy_Intensity->GetLevel(0)->intensity_current, view->rgb);
-		lowLevelEngine->ConvertColourToIntensity(viewHierarchy_Intensity->GetLevel(0)->intensity_prev, view->rgb_prev);
 
 		// Compute first level gradients
 		lowLevelEngine->GradientXY(viewHierarchy_Intensity->GetLevel(0)->gradients,
@@ -188,7 +189,7 @@ void ITMExtendedTracker::SetEvaluationData(ITMTrackingState *trackingState, cons
 	{
 		sceneHierarchy->GetLevel(0)->intrinsics = view->calib.intrinsics_d.projectionParamsSimple.all;
 		sceneHierarchy->GetLevel(0)->pointsMap = trackingState->pointCloud->locations;
-		sceneHierarchy->GetLevel(0)->normalsMap = trackingState->pointCloud->colours;
+		sceneHierarchy->GetLevel(0)->normalsMap = trackingState->pointCloud->normals;
 	}
 
 	scenePose = trackingState->pose_pointCloud->GetM();

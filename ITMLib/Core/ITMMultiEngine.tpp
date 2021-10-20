@@ -141,13 +141,13 @@ ITMTrackingState::TrackingResult ITMMultiEngine::ProcessFrame(ITMUChar4Image *rg
 	ITMTrackingState::TrackingResult primaryLocalMapTrackingResult;
 
 	// prepare image and turn it into a depth image
-	bool modelSensorNoise = (
+	bool computeNormals = (
 		settings->fusionParams.useWeighting or
 		settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL or
 		settings->fusionParams.fusionMode != FusionMode::FUSIONMODE_VOXEL_PROJECTION or
 		settings->fusionParams.fusionMetric == FusionMetric::FUSIONMETRIC_POINT_TO_PLANE);
-	if (imuMeasurement == NULL) viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, modelSensorNoise);
-	else viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, imuMeasurement, modelSensorNoise);
+	if (imuMeasurement == NULL) viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, computeNormals);
+	else viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, imuMeasurement, computeNormals);
 
 	// find primary data, if available
 	int primaryDataIdx = mActiveDataManager->findPrimaryDataIdx();

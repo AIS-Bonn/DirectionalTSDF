@@ -15,10 +15,10 @@ namespace ITMLib
 
 		void DepthFiltering(ITMFloatImage *image_out, const ITMFloatImage *image_in);
 		void NormalFiltering(ITMFloat4Image *normals_out, const ITMFloat4Image *normals_in);
-		void ComputeNormalAndWeights(ITMFloat4Image *normal_out, ITMFloatImage *sigmaZ_out, const ITMFloatImage *depth_in, Vector4f intrinsic);
+		void ComputeNormalAndWeights(ITMFloat4Image *normal_out, const ITMFloatImage *depth_in, Vector4f intrinsic);
 
-		void UpdateView(ITMView **view, ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, bool useBilateralFilter, bool modelSensorNoise = false, bool storePreviousImage = true);
-		void UpdateView(ITMView **view, ITMUChar4Image *rgbImage, ITMShortImage *depthImage, bool useBilateralFilter, ITMIMUMeasurement *imuMeasurement, bool modelSensorNoise = false, bool storePreviousImage = true);
+		void UpdateView(ITMView **view, ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, bool useBilateralFilter, bool computeNormals = false);
+		void UpdateView(ITMView **view, ITMUChar4Image *rgbImage, ITMShortImage *depthImage, bool useBilateralFilter, ITMIMUMeasurement *imuMeasurement, bool computeNormals = false);
 
 		ITMViewBuilder_CPU(const ITMRGBDCalib& calib);
 		~ITMViewBuilder_CPU(void);

@@ -12,7 +12,7 @@ namespace ITMLib
 	public:
 		uint noTotalPoints;
 
-		ORUtils::Image<Vector4f> *locations, *colours;
+		ORUtils::Image<Vector4f> *locations, *normals, *colours;
 
 		explicit ITMPointCloud(Vector2i imgSize, MemoryDeviceType memoryType)
 		{
@@ -20,24 +20,35 @@ namespace ITMLib
 
 			locations = new ORUtils::Image<Vector4f>(imgSize, memoryType);
 			colours = new ORUtils::Image<Vector4f>(imgSize, memoryType);
+			normals = new ORUtils::Image<Vector4f>(imgSize, memoryType);
+		}
+
+		void Resize(const Vector2i size)
+		{
+			locations->ChangeDims(size);
+			colours->ChangeDims(size);
+			normals->ChangeDims(size);
 		}
 
 		void UpdateHostFromDevice()
 		{
-			this->locations->UpdateHostFromDevice();
-			this->colours->UpdateHostFromDevice();
+			locations->UpdateHostFromDevice();
+			colours->UpdateHostFromDevice();
+			normals->UpdateHostFromDevice();
 		}
 
 		void UpdateDeviceFromHost()
 		{
-			this->locations->UpdateDeviceFromHost();
-			this->colours->UpdateDeviceFromHost();
+			locations->UpdateDeviceFromHost();
+			colours->UpdateDeviceFromHost();
+			normals->UpdateDeviceFromHost();
 		}
 
 		~ITMPointCloud()
 		{
 			delete locations;
 			delete colours;
+			delete normals;
 		}
 
 		// Suppress the default copy constructor and assignment operator

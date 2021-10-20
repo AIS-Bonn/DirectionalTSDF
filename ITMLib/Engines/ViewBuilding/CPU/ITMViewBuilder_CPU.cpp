@@ -12,7 +12,7 @@ using namespace ORUtils;
 ITMViewBuilder_CPU::ITMViewBuilder_CPU(const ITMRGBDCalib& calib):ITMViewBuilder(calib) { }
 ITMViewBuilder_CPU::~ITMViewBuilder_CPU(void) { }
 
-void ITMViewBuilder_CPU::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, bool useBilateralFilter, bool modelSensorNoise, bool storePreviousImage)
+void ITMViewBuilder_CPU::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, bool useBilateralFilter, bool computeNormals)
 {
 	timeStats.Reset();
 	ITMTimer timer;
@@ -27,20 +27,8 @@ void ITMViewBuilder_CPU::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage
 		this->floatImage = new ITMFloatImage(rawDepthImage->noDims, true, false);
 		delete this->normals;
 		this->normals = new ITMFloat4Image(rawDepthImage->noDims, true, false);
-
-		if (modelSensorNoise)
-		{
-			(*view_ptr)->depthNormal = new ITMFloat4Image(rawDepthImage->noDims, true, false);
-			(*view_ptr)->depthUncertainty = new ITMFloatImage(rawDepthImage->noDims, true, false);
-		}
 	}
 	ITMView *view = *view_ptr;
-
-	if (storePreviousImage)
-	{
-		if (!view->rgb_prev) view->rgb_prev = new ITMUChar4Image(rgbImage->noDims, true, false);
-		else view->rgb_prev->SetFrom(view->rgb, MemoryBlock<Vector4u>::CPU_TO_CPU);
-	}
 
 	view->rgb->SetFrom(rgbImage, MemoryBlock<Vector4u>::CPU_TO_CPU);
 	this->shortImage->SetFrom(rawDepthImage, MemoryBlock<short>::CPU_TO_CPU);
@@ -66,16 +54,16 @@ void ITMViewBuilder_CPU::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage
 		view->depth->SetFrom(this->floatImage, MemoryBlock<float>::CPU_TO_CPU);
 	}
 
-	if (modelSensorNoise)
+	if (computeNormals)
 	{
 		timer.Tick();
-		this->ComputeNormalAndWeights(this->normals, view->depthUncertainty, this->floatImage, view->calib.intrinsics_d.projectionParamsSimple.all);
+		this->ComputeNormalAndWeights(this->normals, this->floatImage, view->calib.intrinsics_d.projectionParamsSimple.all);
 		this->NormalFiltering(view->depthNormal, this->normals);
 		timeStats.normalEstimation = timer.Tock();
 	}
 }
 
-void ITMViewBuilder_CPU::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage, ITMShortImage *depthImage, bool useBilateralFilter, ITMIMUMeasurement *imuMeasurement, bool modelSensorNoise, bool storePreviousImage)
+void ITMViewBuilder_CPU::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage, ITMShortImage *depthImage, bool useBilateralFilter, ITMIMUMeasurement *imuMeasurement, bool computeNormals)
 {
 	if (*view_ptr == NULL)
 	{
@@ -84,18 +72,12 @@ void ITMViewBuilder_CPU::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage
 		this->shortImage = new ITMShortImage(depthImage->noDims, true, false);
 		if (this->floatImage != NULL) delete this->floatImage;
 		this->floatImage = new ITMFloatImage(depthImage->noDims, true, false);
-
-		if (modelSensorNoise)
-		{
-			(*view_ptr)->depthNormal = new ITMFloat4Image(depthImage->noDims, true, false);
-			(*view_ptr)->depthUncertainty = new ITMFloatImage(depthImage->noDims, true, false);
-		}
 	}
 
 	ITMViewIMU* imuView = (ITMViewIMU*)(*view_ptr);
 	imuView->imu->SetFrom(imuMeasurement);
 
-	this->UpdateView(view_ptr, rgbImage, depthImage, useBilateralFilter, modelSensorNoise, storePreviousImage);
+	this->UpdateView(view_ptr, rgbImage, depthImage, useBilateralFilter, computeNormals);
 }
 
 void ITMViewBuilder_CPU::ConvertDisparityToDepth(ITMFloatImage *depth_out, const ITMShortImage *depth_in, const ITMIntrinsics *depthIntrinsics,
@@ -136,17 +118,16 @@ void ITMViewBuilder_CPU::DepthFiltering(ITMFloatImage *image_out, const ITMFloat
 		filterDepth(imout, imin, 5.0, 0.025, x, y, imgSize);
 }
 
-void ITMViewBuilder_CPU::ComputeNormalAndWeights(ITMFloat4Image *normal_out, ITMFloatImage *sigmaZ_out, const ITMFloatImage *depth_in, Vector4f intrinsic)
+void ITMViewBuilder_CPU::ComputeNormalAndWeights(ITMFloat4Image *normal_out, const ITMFloatImage *depth_in, Vector4f intrinsic)
 {
 	Vector2i imgDims = depth_in->noDims;
 
 	const float *depthData_in = depth_in->GetData(MEMORYDEVICE_CPU);
 
-	float *sigmaZData_out = sigmaZ_out->GetData(MEMORYDEVICE_CPU);
 	Vector4f *normalData_out = normal_out->GetData(MEMORYDEVICE_CPU);
 
 	for (int y = 0; y < imgDims.y; y++) for (int x = 0; x < imgDims.x; x++)
-		computeNormalAndWeight(depthData_in, normalData_out, sigmaZData_out, x, y, imgDims, intrinsic);
+		computeNormalAndWeight(depthData_in, normalData_out, x, y, imgDims, intrinsic);
 }
 
 void ITMViewBuilder_CPU::NormalFiltering(ITMFloat4Image* normals_out, const ITMFloat4Image* normals_in)

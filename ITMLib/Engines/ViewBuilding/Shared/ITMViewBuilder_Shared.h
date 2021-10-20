@@ -66,7 +66,7 @@ _CPU_AND_GPU_CODE_ inline void filterNormals(Vector4f *normals_out, const Vector
 }
 
 
-_CPU_AND_GPU_CODE_ inline void computeNormalAndWeight(const CONSTPTR(float) *depth_in, DEVICEPTR(Vector4f) *normal_out, DEVICEPTR(float) *sigmaZ_out, int x, int y, Vector2i imgDims, Vector4f intrinparam)
+_CPU_AND_GPU_CODE_ inline void computeNormalAndWeight(const CONSTPTR(float) *depth_in, DEVICEPTR(Vector4f) *normal_out, int x, int y, Vector2i imgDims, Vector4f intrinparam)
 {
 	Vector3f outNormal;
 
@@ -76,7 +76,6 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndWeight(const CONSTPTR(float) *dep
 	if (z < 0.0f)
 	{
 		normal_out[idx] = Vector4f(0, 0, 0, -1.0f);
-		sigmaZ_out[idx] = -1;
 		return;
 	}
 
@@ -143,14 +142,11 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndWeight(const CONSTPTR(float) *dep
 	if (weightSum == 0)
 	{
 		normal_out[idx] = Vector4f(0, 0, 0, -1);
-		sigmaZ_out[idx] = -1;
 		return;
 	}
 	normal_out[idx] = Vector4f((sum / weightSum).normalised(), 1.0f);
 	float theta = acos(outNormal.z);
 	float theta_diff = theta / (PI*0.5f - theta);
-
-	sigmaZ_out[idx] = (0.0012f + 0.0019f * (z - 0.4f) * (z - 0.4f) + 0.0001f / sqrt(z) * theta_diff * theta_diff);
 }
 
 } // namespace ITMLib

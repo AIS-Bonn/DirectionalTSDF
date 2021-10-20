@@ -1103,7 +1103,7 @@ void ITMVisualisationEngine_CUDA::CreateICPMaps(const Scene* scene,
 	trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
 
 	Vector4f* pointsMap = trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CUDA);
-	Vector4f* normalsMap = trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CUDA);
+	Vector4f* normalsMap = trackingState->pointCloud->normals->GetData(MEMORYDEVICE_CUDA);
 	Vector4f* pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CUDA);
 	Vector4f* normalsRay = renderState->raycastNormals->GetData(MEMORYDEVICE_CUDA);
 	Vector3f lightSource = Vector3f(invM.getColumn(3));
@@ -1130,7 +1130,7 @@ void ITMVisualisationEngine_CUDA::RenderTrackingError(ITMUChar4Image* outRenderi
 {
 	Vector4u* data = outRendering->GetData(MEMORYDEVICE_CUDA);
 	const Vector4f* pointsRay = trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CUDA);
-	const Vector4f* normalsRay = trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CUDA);
+	const Vector4f* normalsRay = trackingState->pointCloud->normals->GetData(MEMORYDEVICE_CUDA);
 	const float* depthImage = view->depth->GetData(MEMORYDEVICE_CUDA);
 	const Matrix4f& depthImageInvPose = trackingState->pose_d->GetInvM();
 	const Matrix4f& sceneRenderingPose = trackingState->pose_pointCloud->GetM();

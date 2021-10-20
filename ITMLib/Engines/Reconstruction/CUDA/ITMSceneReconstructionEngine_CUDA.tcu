@@ -75,7 +75,7 @@ __global__
 void rayCastUpdate_device(
 	Vector2i imgSize_d, Vector2i imgSize_rgb, float* depth, Vector4f* depthNormals, Vector4u* rgb,
 	const Matrix4f invM_d, const Matrix4f invM_rgb,
-	const Vector4f invProjParams_d, const Vector4f invProjParams_rgb,
+	const Vector4f invProjParams_d, const Vector4f projParams_rgb,
 	const ITMFusionParams fusionParams,
 	const ITMSceneParams sceneParams,
 	stdgpu::unordered_map<ITMIndex, SummingVoxel*> summingVoxelMap
@@ -87,8 +87,43 @@ void rayCastUpdate_device(
 	if (x >= imgSize_d.x or y >= imgSize_d.y)
 		return;
 
-	rayCastUpdate(x, y, imgSize_d, imgSize_rgb, depth, depthNormals, rgb, invM_d, invM_rgb,
-	              invProjParams_d, invProjParams_rgb, fusionParams, sceneParams, summingVoxelMap);
+	int idx = y * imgSize_d.x + x;
+
+	Vector4f pt_sensor = Vector4f(reprojectImagePoint(x, y, depth[idx], invProjParams_d), 1);
+	Vector4f normal_sensor = depthNormals[idx];
+
+	Vector4f pt_world = invM_d * pt_sensor;
+	Vector4f pt_rgb_camera = invM_rgb * pt_world;
+	Vector2f cameraCoordsRGB = project(pt_rgb_camera.toVector3(), projParams_rgb);
+	Vector4f color(0, 0, 0, 0);
+	if ((cameraCoordsRGB.x >= 1) and (cameraCoordsRGB.x <= imgSize_rgb.x - 2)
+	    and (cameraCoordsRGB.y >= 1) and (cameraCoordsRGB.y <= imgSize_rgb.y - 2))
+		color = interpolateBilinear(rgb, cameraCoordsRGB, imgSize_rgb);
+
+	rayCastUpdate(x, y, imgSize_d, imgSize_rgb, pt_sensor, normal_sensor, color, invM_d,
+	              invProjParams_d, fusionParams, sceneParams, summingVoxelMap);
+}
+
+__global__
+void rayCastUpdateFromCloud_device(
+	Vector2i imgSize_d, Vector2i imgSize_rgb, Vector4f* points, Vector4f* normals, Vector4f* colors,
+	const Matrix4f invM_d, const Matrix4f invM_rgb,
+	const Vector4f invProjParams_d, const Vector4f projParams_rgb,
+	const ITMFusionParams fusionParams,
+	const ITMSceneParams sceneParams,
+	stdgpu::unordered_map<ITMIndex, SummingVoxel*> summingVoxelMap
+)
+{
+	int x = threadIdx.x + blockIdx.x * blockDim.x;
+	int y = threadIdx.y + blockIdx.y * blockDim.y;
+
+	if (x >= imgSize_d.x or y >= imgSize_d.y)
+		return;
+
+	int idx = y * imgSize_d.x + x;
+
+	rayCastUpdate(x, y, imgSize_d, imgSize_rgb, points[idx], normals[idx], colors[idx], invM_d,
+	              invProjParams_d, fusionParams, sceneParams, summingVoxelMap);
 }
 
 __global__
@@ -118,7 +153,7 @@ __global__ void voxelProjectionCarveSpace_device(
 	stdgpu::unordered_map<ITMIndex, SummingVoxel*> summingVoxels,
 	const ITMIndex* visibleBlocksList, const size_t noVisibleBlocks,
 	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, const Vector4f *depthNormals,
-	const float *confidence, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d,
+	Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d,
 	Vector4f projParams_rgb, const ITMFusionParams fusionParams,
 	const ITMSceneParams sceneParams)
 {
@@ -153,14 +188,14 @@ __global__ void voxelProjectionCarveSpace_device(
 		voxel, summingVoxel,
 		blockIdx.getDirection(),
 		pt_model, M_d, projParams_d, M_rgb, projParams_rgb,
-		fusionParams, sceneParams, depth, depthNormals, confidence,
+		fusionParams, sceneParams, depth, depthNormals,
 		depthImgSize, rgb, rgbImgSize);
 }
 
 template<bool stopMaxW>
 __global__ void integrateIntoScene_device(stdgpu::unordered_map<ITMIndex, ITMVoxel*> tsdf, ITMIndex* visibleEntries,
                                           const Vector4u* rgb, Vector2i rgbImgSize, const float* depth,
-                                          const Vector4f* depthNormals, const float* confidence, Vector2i depthImgSize,
+                                          const Vector4f* depthNormals, Vector2i depthImgSize,
                                           Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d, Vector4f projParams_rgb,
                                           float _voxelSize, const ITMFusionParams fusionParams,
                                           const ITMSceneParams sceneParams)
@@ -182,13 +217,13 @@ __global__ void integrateIntoScene_device(stdgpu::unordered_map<ITMIndex, ITMVox
 
 	std::conditional<ITMVoxel::hasColorInformation, ComputeUpdatedVoxelInfo<true, ITMVoxel>, ComputeUpdatedVoxelInfo<false, ITMVoxel>>::type::compute(
 		localVoxelBlock[locId], index.getDirection(),
-		pt_model, M_d, projParams_d, M_rgb, projParams_rgb, fusionParams, sceneParams, depth, depthNormals, confidence,
+		pt_model, M_d, projParams_d, M_rgb, projParams_rgb, fusionParams, sceneParams, depth, depthNormals,
 		depthImgSize, rgb, rgbImgSize);
 }
 
 template<bool stopMaxW>
 __global__ void integrateIntoScene_device(ITMVoxel *localVBA, const ITMHashEntry *hashTable, int *visibleEntryIDs,
-	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, const Vector4f *depthNormals, const float *confidence, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d,
+	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, const Vector4f *depthNormals, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d,
 	Vector4f projParams_rgb, float _voxelSize, const ITMFusionParams fusionParams, const ITMSceneParams sceneParams)
 {
 	Vector3i globalPos;
@@ -215,7 +250,7 @@ __global__ void integrateIntoScene_device(ITMVoxel *localVBA, const ITMHashEntry
 
 		std::conditional<ITMVoxel::hasColorInformation, ComputeUpdatedVoxelInfo<true, ITMVoxel>, ComputeUpdatedVoxelInfo<false, ITMVoxel>>::type::compute(
 			localVoxelBlock[locId], TSDFDirection(currentHashEntry.direction),
-		pt_model, M_d, projParams_d, M_rgb, projParams_rgb, fusionParams, sceneParams, depth, depthNormals, confidence,
+		pt_model, M_d, projParams_d, M_rgb, projParams_rgb, fusionParams, sceneParams, depth, depthNormals,
 		depthImgSize, rgb, rgbImgSize);
 }
 
@@ -230,33 +265,6 @@ __global__ void findAllocationBlocks_device(Set<ITMIndex, Args...> visibleBlocks
 
 	findAllocationBlocks<Set, Args...>(visibleBlocks, x, y, depth, depthNormal, invM_d, projParams_d, mu, imgSize, voxelSize,
 	                        viewFrustum_min, viewFrustum_max, fusionParams);
-}
-
-__global__ void buildHashAllocAndVisibleType_device(HashEntryAllocType *entriesAllocType, HashEntryVisibilityType *entriesVisibleType,
-	                                                  Vector4s *blockCoords, TSDFDirection *blockDirections, const float *depth,
-	                                                  const Vector4f *depthNormal, Matrix4f invM_d, Vector4f projParams_d, float mu, Vector2i _imgSize,
-	                                                  float _voxelSize, ITMHashEntry *hashTable, float viewFrustum_min, float viewFrustum_max,
-	                                                  const ITMFusionParams fusionParams)
-{
-	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
-
-	if (x > _imgSize.x - 1 || y > _imgSize.y - 1) return;
-
-	if (fusionParams.useSpaceCarving)
-		buildSpaceCarvingVisibleType(entriesVisibleType, x, y, blockCoords, blockDirections,
-		                             depth, depthNormal, invM_d, projParams_d, mu, _imgSize, _voxelSize, hashTable,
-		                             viewFrustum_min, viewFrustum_max, fusionParams);
-
-	buildHashAllocAndVisibleType(entriesAllocType, entriesVisibleType, x, y, blockCoords, blockDirections,
-		depth, depthNormal, invM_d, projParams_d, mu, _imgSize, _voxelSize, hashTable, viewFrustum_min,
-		viewFrustum_max, fusionParams);
-}
-
-__global__ void setToType3(HashEntryVisibilityType *entriesVisibleType, int *visibleEntryIDs, int noVisibleEntries)
-{
-	int entryId = threadIdx.x + blockIdx.x * blockDim.x;
-	if (entryId > noVisibleEntries - 1) return;
-	entriesVisibleType[visibleEntryIDs[entryId]] = PREVIOUSLY_VISIBLE;
 }
 
 }
@@ -290,7 +298,6 @@ ITMSceneReconstructionEngine_CUDA::IntegrateIntoSceneRayCasting(
 
 	float* depth = view->depth->GetData(MEMORYDEVICE_CUDA);
 	Vector4f* depthNormals = view->depthNormal->GetData(MEMORYDEVICE_CUDA);
-	float* confidence = view->depthConfidence->GetData(MEMORYDEVICE_CUDA);
 	Vector4u* rgb = view->rgb->GetData(MEMORYDEVICE_CUDA);
 	ITMVoxel* localVBA = scene->localVBA.GetVoxelBlocks();
 	ITMHashEntry* hashTable = scene->index.GetEntries();
@@ -341,7 +348,7 @@ ITMSceneReconstructionEngine_CUDA::IntegrateIntoSceneRayCasting(
 					allocationBlocksList->GetData(MEMORYDEVICE_CUDA),
 					noAllocationBlocks,
 					rgb, rgbImgSize, depth, depthNormals,
-					confidence, depthImgSize, M_d, M_rgb, projParams_d,
+					depthImgSize, M_d, M_rgb, projParams_d,
 					projParams_rgb, this->settings->fusionParams,
 					this->settings->sceneParams);
 			ORcudaKernelCheck;
@@ -376,11 +383,6 @@ void ITMSceneReconstructionEngine_CUDA::ResetScene(Scene* scene)
 {
 	scene->tsdf->clear();
 }
-
-struct copyIndexPosition
-{
-	__host__ __device__ const ITMIndexXYZ &operator()(const ITMIndex &x) const {return ITMIndexXYZ(x.getPosition().toShort());}
-};
 
 void ITMSceneReconstructionEngine_CUDA::AllocateSceneFromDepth(Scene* scene,
                                                                const ITMView* view,
@@ -485,7 +487,6 @@ void ITMSceneReconstructionEngine_CUDA::IntegrateIntoSceneVoxelProjection(
 	if (this->settings->fusionParams.useWeighting or
 	    this->settings->fusionParams.fusionMetric == FUSIONMETRIC_POINT_TO_PLANE)
 		depthNormals = view->depthNormal->GetData(MEMORYDEVICE_CUDA);
-	float* confidence = view->depthConfidence->GetData(MEMORYDEVICE_CUDA);
 	Vector4u* rgb = view->rgb->GetData(MEMORYDEVICE_CUDA);
 	ITMVoxel* localVBA = scene->localVBA.GetVoxelBlocks();
 	ITMHashEntry* hashTable = scene->index.GetEntries();
@@ -499,13 +500,13 @@ void ITMSceneReconstructionEngine_CUDA::IntegrateIntoSceneVoxelProjection(
 	if (scene->sceneParams->stopIntegratingAtMaxW)
 	{
 		integrateIntoScene_device<true> << < gridSize, cudaBlockSize >> > (tsdf, allocationBlocksList->GetData(MEMORYDEVICE_CUDA),
-			rgb, rgbImgSize, depth, depthNormals, confidence, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize,
+			rgb, rgbImgSize, depth, depthNormals, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize,
 			this->settings->fusionParams, this->settings->sceneParams);
 		ORcudaKernelCheck;
 	} else
 	{
 		integrateIntoScene_device<false> << < gridSize, cudaBlockSize >> > (tsdf, allocationBlocksList->GetData(MEMORYDEVICE_CUDA),
-			rgb, rgbImgSize, depth, depthNormals, confidence, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize,
+			rgb, rgbImgSize, depth, depthNormals, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize,
 			this->settings->fusionParams, this->settings->sceneParams);
 		ORcudaKernelCheck;
 	}

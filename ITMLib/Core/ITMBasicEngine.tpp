@@ -250,15 +250,15 @@ ITMTrackingState::TrackingResult ITMBasicEngine::ProcessFrame(ITMUChar4Image *rg
 	this->timeStats.Reset();
 	ITMTimer timer;
 
-	bool modelSensorNoise = true;
+	bool computeNormals = true;
 //	(
 //		settings->fusionParams.useWeighting or
 //		settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL or
 //		settings->fusionParams.fusionMode != FusionMode::FUSIONMODE_VOXEL_PROJECTION or
 //		settings->fusionParams.fusionMetric == FusionMetric::FUSIONMETRIC_POINT_TO_PLANE);
 	// prepare image and turn it into a depth image
-	if (imuMeasurement == NULL) viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, modelSensorNoise);
-	else viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, imuMeasurement, modelSensorNoise);
+	if (imuMeasurement == NULL) viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, computeNormals);
+	else viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, imuMeasurement, computeNormals);
 
 	if (!mainProcessingActive) return ITMTrackingState::TRACKING_FAILED;
 
@@ -307,9 +307,6 @@ ITMTrackingState::TrackingResult ITMBasicEngine::ProcessFrame(ITMUChar4Image *rg
 		if (!hasAddedKeyframe && trackerResult == ITMTrackingState::TRACKING_FAILED && trackingInitialised)
 		{
 			relocalisationCount = 10;
-
-			// Reset previous rgb frame since the rgb image is likely different than the one acquired when setting the keyframe
-			view->rgb_prev->Clear();
 
 			const FernRelocLib::PoseDatabase::PoseInScene & keyframe = relocaliser->RetrievePose(NN);
 			trackingState->pose_d->SetFrom(&keyframe.pose);
@@ -410,20 +407,20 @@ ITMRenderError ITMBasicEngine::ComputeICPError()
 
 	view->depth->UpdateHostFromDevice();
 	ORUtils::Image<ORUtils::Vector4<float>> locations(trackingState->pointCloud->locations->noDims, true, false);
-	ORUtils::Image<ORUtils::Vector4<float>> colours(trackingState->pointCloud->locations->noDims, true, false);
+	ORUtils::Image<ORUtils::Vector4<float>> normals(trackingState->pointCloud->locations->noDims, true, false);
 
 	ORcudaSafeCall(cudaMemcpy(locations.GetData(MEMORYDEVICE_CPU), trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CUDA),
 													 locations.dataSize * sizeof(Vector4f), cudaMemcpyDeviceToHost));
-	ORcudaSafeCall(cudaMemcpy(colours.GetData(MEMORYDEVICE_CPU), trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CUDA),
-	                          colours.dataSize * sizeof(Vector4f), cudaMemcpyDeviceToHost));
+	ORcudaSafeCall(cudaMemcpy(normals.GetData(MEMORYDEVICE_CPU), trackingState->pointCloud->normals->GetData(MEMORYDEVICE_CUDA),
+	                          normals.dataSize * sizeof(Vector4f), cudaMemcpyDeviceToHost));
 
 	trackingState->pointCloud->locations->UpdateHostFromDevice();
-	trackingState->pointCloud->colours->UpdateHostFromDevice();
+	trackingState->pointCloud->normals->UpdateHostFromDevice();
 
 	float* depth = view->depth->GetData(MEMORYDEVICE_CPU);
 
 	const Vector4f* pointsRay = locations.GetData(MEMORYDEVICE_CPU);
-	const Vector4f* normalsRay = colours.GetData(MEMORYDEVICE_CPU);
+	const Vector4f* normalsRay = normals.GetData(MEMORYDEVICE_CPU);
 	const float* depthImage = view->depth->GetData(MEMORYDEVICE_CUDA);
 	const Matrix4f& depthImageInvPose = trackingState->pose_d->GetInvM();
 	const Matrix4f& sceneRenderingPose = trackingState->pose_pointCloud->GetM();

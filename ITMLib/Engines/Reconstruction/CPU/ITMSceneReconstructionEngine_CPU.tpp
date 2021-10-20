@@ -64,7 +64,6 @@ void ITMSceneReconstructionEngine_CPU::IntegrateIntoSceneRayCasting(
 
 	float *depth = view->depth->GetData(MEMORYDEVICE_CPU);
 	Vector4f *depthNormals = view->depthNormal->GetData(MEMORYDEVICE_CPU);
-	float *confidence = view->depthConfidence->GetData(MEMORYDEVICE_CPU);
 	Vector4u *rgb = view->rgb->GetData(MEMORYDEVICE_CPU);
 	ITMVoxel *localVBA = scene->localVBA.GetVoxelBlocks();
 	ITMHashEntry *hashTable = scene->index.GetEntries();
@@ -137,7 +136,7 @@ void ITMSceneReconstructionEngine_CPU::IntegrateIntoSceneRayCasting(
 //							voxelProjectionCarveSpace(
 //								localVoxelBlock[locId], localRayCastingSum[locId], TSDFDirection(currentHashEntry.direction),
 //								pt_model, M_d, projParams_d, M_rgb, projParams_rgb,
-//								this->settings->fusionParams, this->settings->sceneParams, depth, depthNormals, confidence,
+//								this->settings->fusionParams, this->settings->sceneParams, depth, depthNormals,
 //								depthImgSize, rgb, rgbImgSize);
 						}
 			}
@@ -191,7 +190,6 @@ void ITMSceneReconstructionEngine_CPU::IntegrateIntoSceneVoxelProjection(
 	Vector4f *depthNormals = nullptr;
 	if (this->settings->fusionParams.useWeighting or this->settings->fusionParams.fusionMetric == FUSIONMETRIC_POINT_TO_PLANE)
 		depthNormals = view->depthNormal->GetData(MEMORYDEVICE_CPU);
-	float *confidence = view->depthConfidence->GetData(MEMORYDEVICE_CPU);
 	Vector4u *rgb = view->rgb->GetData(MEMORYDEVICE_CPU);
 	ITMVoxel *localVBA = scene->localVBA.GetVoxelBlocks();
 	ITMHashEntry *hashTable = scene->index.GetEntries();
@@ -232,7 +230,7 @@ void ITMSceneReconstructionEngine_CPU::IntegrateIntoSceneVoxelProjection(
 			std::conditional<ITMVoxel::hasColorInformation, ComputeUpdatedVoxelInfo<true, ITMVoxel>, ComputeUpdatedVoxelInfo<false, ITMVoxel>>::type::compute(
 				localVoxelBlock[locId], TSDFDirection(currentHashEntry.direction), pt_model, M_d,
 				projParams_d, M_rgb, projParams_rgb, this->settings->fusionParams, this->settings->sceneParams,
-				depth, depthNormals, confidence, depthImgSize, rgb, rgbImgSize);
+				depth, depthNormals, depthImgSize, rgb, rgbImgSize);
 		}
 	}
 	this->timeStats.fusion += timer.Tock();
