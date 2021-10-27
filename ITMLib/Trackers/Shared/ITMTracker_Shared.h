@@ -32,11 +32,11 @@ _CPU_AND_GPU_CODE_ inline void computeDepthPointAndColour(
 	float* out_rgb,
 	const float* in_rgb,
 	const float* in_depths,
-	const Vector2i &imageSize_rgb,
-	const Vector2i &imageSize_depth,
-	const Vector4f &intrinsics_rgb,
-	const Vector4f &intrinsics_depth,
-	const Matrix4f &T_depthToRGB)
+	const Vector2i& imageSize_rgb,
+	const Vector2i& imageSize_depth,
+	const Vector4f& intrinsics_rgb,
+	const Vector4f& intrinsics_depth,
+	const Matrix4f& T_depthToRGB)
 {
 	if (x >= imageSize_depth.x || y >= imageSize_depth.y) return;
 

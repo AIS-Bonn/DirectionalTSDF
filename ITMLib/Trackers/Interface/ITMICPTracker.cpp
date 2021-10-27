@@ -8,13 +8,17 @@
 using namespace ITMLib;
 
 ITMICPTracker::ITMICPTracker(Vector2i imgSize, Vector2i imgSize_rgb, const Parameters& parameters,
-                             const ITMLowLevelEngine *lowLevelEngine, MemoryDeviceType memoryType)
+                             const ITMLowLevelEngine* lowLevelEngine, MemoryDeviceType memoryType)
 	: parameters(parameters)
 {
 	int noHierarchyLevels = parameters.levels.size();
 
-	viewHierarchy_depth = new ITMImageHierarchy<ITMTemplatedHierarchyLevel<ITMFloatImage> >(imgSize, &(parameters.levels[0]), noHierarchyLevels, memoryType, true);
-	sceneHierarchy = new ITMImageHierarchy<ITMSceneHierarchyLevel>(imgSize, &(parameters.levels[0]), noHierarchyLevels, memoryType, true);
+	viewHierarchy_depth = new ITMImageHierarchy<ITMTemplatedHierarchyLevel<ITMFloatImage> >(imgSize,
+	                                                                                        &(parameters.levels[0]),
+	                                                                                        noHierarchyLevels, memoryType,
+	                                                                                        true);
+	sceneHierarchy = new ITMImageHierarchy<ITMSceneHierarchyLevel>(imgSize, &(parameters.levels[0]), noHierarchyLevels,
+	                                                               memoryType, true);
 
 	if (parameters.useColour)
 	{
@@ -40,10 +44,26 @@ ITMICPTracker::ITMICPTracker(Vector2i imgSize, Vector2i imgSize_rgb, const Param
 
 	//all below obtained from dataset in matlab
 	float w[20];
-	w[0] = -3.15813f; w[1] = -2.38038f; w[2] = 1.93359f; w[3] = 1.56642f; w[4] = 1.76306f;
-	w[5] = -0.747641f; w[6] = 4.41852f; w[7] = 1.72048f; w[8] = -0.482545f; w[9] = -5.07793f;
-	w[10] = 1.98676f; w[11] = -0.45688f; w[12] = 2.53969f; w[13] = -3.50527f; w[14] = -1.68725f;
-	w[15] = 2.31608f; w[16] = 5.14778f; w[17] = 2.31334f; w[18] = -14.128f; w[19] = 6.76423f;
+	w[0] = -3.15813f;
+	w[1] = -2.38038f;
+	w[2] = 1.93359f;
+	w[3] = 1.56642f;
+	w[4] = 1.76306f;
+	w[5] = -0.747641f;
+	w[6] = 4.41852f;
+	w[7] = 1.72048f;
+	w[8] = -0.482545f;
+	w[9] = -5.07793f;
+	w[10] = 1.98676f;
+	w[11] = -0.45688f;
+	w[12] = 2.53969f;
+	w[13] = -3.50527f;
+	w[14] = -1.68725f;
+	w[15] = 2.31608f;
+	w[16] = 5.14778f;
+	w[17] = 2.31334f;
+	w[18] = -14.128f;
+	w[19] = 6.76423f;
 
 	float b = 9.334260e-01f + parameters.failureDetectorThreshold;
 
@@ -72,35 +92,43 @@ void ITMICPTracker::SetupLevels()
 {
 	int noHierarchyLevels = viewHierarchy_depth->GetNoLevels();
 
-	if ((parameters.numIterationsCoarse != -1) && (parameters.numIterationsFine != -1)) {
-		float step = (float)(parameters.numIterationsCoarse - parameters.numIterationsFine) / (float)(noHierarchyLevels - 1);
-		float val = (float)parameters.numIterationsCoarse;
-		for (int levelId = noHierarchyLevels - 1; levelId >= 0; levelId--) {
-			this->noIterationsPerLevel[levelId] = (int)round(val);
+	if ((parameters.numIterationsCoarse != -1) && (parameters.numIterationsFine != -1))
+	{
+		float step =
+			(float) (parameters.numIterationsCoarse - parameters.numIterationsFine) / (float) (noHierarchyLevels - 1);
+		float val = (float) parameters.numIterationsCoarse;
+		for (int levelId = noHierarchyLevels - 1; levelId >= 0; levelId--)
+		{
+			this->noIterationsPerLevel[levelId] = (int) round(val);
 			val -= step;
 		}
 	}
-	if ((parameters.outlierDistanceCoarse >= 0.0f) && (parameters.outlierDistanceFine >= 0.0f)) {
+	if ((parameters.outlierDistanceCoarse >= 0.0f) && (parameters.outlierDistanceFine >= 0.0f))
+	{
 		parameters.outlierDistanceCoarse = MAX(parameters.outlierDistanceCoarse, parameters.outlierDistanceFine);
-		float step = (parameters.outlierDistanceCoarse - parameters.outlierDistanceFine) / (float)(noHierarchyLevels - 1);
+		float step = (parameters.outlierDistanceCoarse - parameters.outlierDistanceFine) / (float) (noHierarchyLevels - 1);
 		float val = parameters.outlierDistanceCoarse;
-		for (int levelId = noHierarchyLevels - 1; levelId >= 0; levelId--) {
+		for (int levelId = noHierarchyLevels - 1; levelId >= 0; levelId--)
+		{
 			this->distThresh[levelId] = val;
 			val -= step;
 		}
 	}
-	if (parameters.outlierColourCoarse >= 0.0f && parameters.outlierColourFine >= 0.0f) {
+	if (parameters.outlierColourCoarse >= 0.0f && parameters.outlierColourFine >= 0.0f)
+	{
 		parameters.outlierColourCoarse = MAX(parameters.outlierColourCoarse, parameters.outlierColourFine);
-		float step = (float)(parameters.outlierColourCoarse - parameters.outlierColourFine) / (float)(noHierarchyLevels - 1);
+		float step =
+			(float) (parameters.outlierColourCoarse - parameters.outlierColourFine) / (float) (noHierarchyLevels - 1);
 		float val = parameters.outlierColourCoarse;
-		for (int levelId = noHierarchyLevels - 1; levelId >= 0; levelId--) {
+		for (int levelId = noHierarchyLevels - 1; levelId >= 0; levelId--)
+		{
 			this->colourThresh[levelId] = val;
 			val -= step;
 		}
 	}
 }
 
-void ITMICPTracker::SetEvaluationData(ITMTrackingState *trackingState, const ITMView *view)
+void ITMICPTracker::SetEvaluationData(ITMTrackingState* trackingState, const ITMView* view)
 {
 	this->trackingState = trackingState;
 	this->view = view;
@@ -118,7 +146,8 @@ void ITMICPTracker::SetEvaluationData(ITMTrackingState *trackingState, const ITM
 		viewHierarchy_intensity->GetLevel(0)->intrinsics = view->calib.intrinsics_rgb.projectionParamsSimple.all;
 
 		// Convert RGB to intensity
-		viewHierarchy_intensity->GetLevel(0)->intensity_prev->SetFrom(viewHierarchy_intensity->GetLevel(0)->intensity_current, ORUtils::MemoryBlock<float>::CUDA_TO_CUDA);
+		viewHierarchy_intensity->GetLevel(0)->intensity_prev->SetFrom(
+			viewHierarchy_intensity->GetLevel(0)->intensity_current, ORUtils::MemoryBlock<float>::CUDA_TO_CUDA);
 		lowLevelEngine->ConvertColourToIntensity(viewHierarchy_intensity->GetLevel(0)->intensity_current, view->rgb);
 
 		// Compute first level gradients
@@ -136,13 +165,13 @@ void ITMICPTracker::PrepareForEvaluation()
 	// Create depth pyramid
 	for (int i = 1; i < viewHierarchy_depth->GetNoLevels(); i++)
 	{
-		ITMTemplatedHierarchyLevel<ITMFloatImage> *currentLevelView = viewHierarchy_depth->GetLevel(i);
-		ITMTemplatedHierarchyLevel<ITMFloatImage> *previousLevelView = viewHierarchy_depth->GetLevel(i - 1);
+		ITMTemplatedHierarchyLevel<ITMFloatImage>* currentLevelView = viewHierarchy_depth->GetLevel(i);
+		ITMTemplatedHierarchyLevel<ITMFloatImage>* previousLevelView = viewHierarchy_depth->GetLevel(i - 1);
 		lowLevelEngine->FilterSubsampleWithHoles(currentLevelView->data, previousLevelView->data);
 		currentLevelView->intrinsics = previousLevelView->intrinsics * 0.5f;
 
-		ITMSceneHierarchyLevel *currentLevelScene = sceneHierarchy->GetLevel(i);
-		ITMSceneHierarchyLevel *previousLevelScene = sceneHierarchy->GetLevel(i - 1);
+		ITMSceneHierarchyLevel* currentLevelScene = sceneHierarchy->GetLevel(i);
+		ITMSceneHierarchyLevel* previousLevelScene = sceneHierarchy->GetLevel(i - 1);
 		//lowLevelEngine->FilterSubsampleWithHoles(currentLevelScene->pointsMap, previousLevelScene->pointsMap);
 		//lowLevelEngine->FilterSubsampleWithHoles(currentLevelScene->normalsMap, previousLevelScene->normalsMap);
 		currentLevelScene->intrinsics = previousLevelScene->intrinsics * 0.5f;
@@ -152,8 +181,8 @@ void ITMICPTracker::PrepareForEvaluation()
 	{
 		for (int i = 1; i < viewHierarchy_intensity->GetNoLevels(); i++)
 		{
-			ITMIntensityHierarchyLevel *currentLevel = viewHierarchy_intensity->GetLevel(i);
-			ITMIntensityHierarchyLevel *previousLevel = viewHierarchy_intensity->GetLevel(i - 1);
+			ITMIntensityHierarchyLevel* currentLevel = viewHierarchy_intensity->GetLevel(i);
+			ITMIntensityHierarchyLevel* previousLevel = viewHierarchy_intensity->GetLevel(i - 1);
 
 			lowLevelEngine->FilterSubsample(currentLevel->intensity_current, previousLevel->intensity_current);
 			lowLevelEngine->FilterSubsample(currentLevel->intensity_prev, previousLevel->intensity_prev);
@@ -164,11 +193,11 @@ void ITMICPTracker::PrepareForEvaluation()
 		// Project RGB image according to the depth->rgb transform and cache it to speed up the energy computation
 		for (int i = 0; i < viewHierarchy_intensity->GetNoLevels(); ++i)
 		{
-			ITMTemplatedHierarchyLevel<ITMFloat4Image> *pointsOut = reprojectedPointsHierarchy->GetLevel(i);
-			ITMTemplatedHierarchyLevel<ITMFloatImage> *intensityOut = projectedIntensityHierarchy->GetLevel(i);
+			ITMTemplatedHierarchyLevel<ITMFloat4Image>* pointsOut = reprojectedPointsHierarchy->GetLevel(i);
+			ITMTemplatedHierarchyLevel<ITMFloatImage>* intensityOut = projectedIntensityHierarchy->GetLevel(i);
 
-			const ITMIntensityHierarchyLevel *intensityIn = viewHierarchy_intensity->GetLevel(i);
-			const ITMTemplatedHierarchyLevel<ITMFloatImage> *depthIn = viewHierarchy_depth->GetLevel(i);
+			const ITMIntensityHierarchyLevel* intensityIn = viewHierarchy_intensity->GetLevel(i);
+			const ITMTemplatedHierarchyLevel<ITMFloatImage>* depthIn = viewHierarchy_depth->GetLevel(i);
 
 			Vector4f intrinsics_rgb = intensityIn->intrinsics;
 			Vector4f intrinsics_depth = depthIn->intrinsics;
@@ -187,7 +216,7 @@ void ITMICPTracker::SetEvaluationParams(int levelId)
 	this->iterationType = viewHierarchy_depth->GetLevel(levelId)->iterationType;
 }
 
-void ITMICPTracker::ComputeDelta(float *step, float *nabla, float *hessian, bool shortIteration) const
+void ITMICPTracker::ComputeDelta(float* step, float* nabla, float* hessian, bool shortIteration) const
 {
 	for (int i = 0; i < 6; i++) step[i] = 0;
 
@@ -198,15 +227,14 @@ void ITMICPTracker::ComputeDelta(float *step, float *nabla, float *hessian, bool
 
 		ORUtils::Cholesky cholA(smallHessian, 3);
 		cholA.Backsub(step, nabla);
-	}
-	else
+	} else
 	{
 		ORUtils::Cholesky cholA(hessian, 6);
 		cholA.Backsub(step, nabla);
 	}
 }
 
-bool ITMICPTracker::HasConverged(float *step) const
+bool ITMICPTracker::HasConverged(float* step) const
 {
 	float stepLength = 0.0f;
 	for (int i = 0; i < 6; i++) stepLength += step[i] * step[i];
@@ -216,55 +244,81 @@ bool ITMICPTracker::HasConverged(float *step) const
 	return false;
 }
 
-void ITMICPTracker::ApplyDelta(const Matrix4f & para_old, const float *delta, Matrix4f & para_new) const
+void ITMICPTracker::ApplyDelta(const Matrix4f& para_old, const float* delta, Matrix4f& para_new) const
 {
 	float step[6];
 
 	switch (iterationType)
 	{
-	case TRACKER_ITERATION_ROTATION:
-		step[0] = (float)(delta[0]); step[1] = (float)(delta[1]); step[2] = (float)(delta[2]);
-		step[3] = 0.0f; step[4] = 0.0f; step[5] = 0.0f;
-		break;
-	case TRACKER_ITERATION_TRANSLATION:
-		step[0] = 0.0f; step[1] = 0.0f; step[2] = 0.0f;
-		step[3] = (float)(delta[0]); step[4] = (float)(delta[1]); step[5] = (float)(delta[2]);
-		break;
-	default:
-	case TRACKER_ITERATION_BOTH:
-		step[0] = (float)(delta[0]); step[1] = (float)(delta[1]); step[2] = (float)(delta[2]);
-		step[3] = (float)(delta[3]); step[4] = (float)(delta[4]); step[5] = (float)(delta[5]);
-		break;
+		case TRACKER_ITERATION_ROTATION:
+			step[0] = (float) (delta[0]);
+			step[1] = (float) (delta[1]);
+			step[2] = (float) (delta[2]);
+			step[3] = 0.0f;
+			step[4] = 0.0f;
+			step[5] = 0.0f;
+			break;
+		case TRACKER_ITERATION_TRANSLATION:
+			step[0] = 0.0f;
+			step[1] = 0.0f;
+			step[2] = 0.0f;
+			step[3] = (float) (delta[0]);
+			step[4] = (float) (delta[1]);
+			step[5] = (float) (delta[2]);
+			break;
+		default:
+		case TRACKER_ITERATION_BOTH:
+			step[0] = (float) (delta[0]);
+			step[1] = (float) (delta[1]);
+			step[2] = (float) (delta[2]);
+			step[3] = (float) (delta[3]);
+			step[4] = (float) (delta[4]);
+			step[5] = (float) (delta[5]);
+			break;
 	}
 
 	Matrix4f Tinc;
 
-	Tinc.m00 = 1.0f;		Tinc.m10 = step[2];		Tinc.m20 = -step[1];	Tinc.m30 = step[3];
-	Tinc.m01 = -step[2];	Tinc.m11 = 1.0f;		Tinc.m21 = step[0];		Tinc.m31 = step[4];
-	Tinc.m02 = step[1];		Tinc.m12 = -step[0];	Tinc.m22 = 1.0f;		Tinc.m32 = step[5];
-	Tinc.m03 = 0.0f;		Tinc.m13 = 0.0f;		Tinc.m23 = 0.0f;		Tinc.m33 = 1.0f;
+	Tinc.m00 = 1.0f;
+	Tinc.m10 = step[2];
+	Tinc.m20 = -step[1];
+	Tinc.m30 = step[3];
+	Tinc.m01 = -step[2];
+	Tinc.m11 = 1.0f;
+	Tinc.m21 = step[0];
+	Tinc.m31 = step[4];
+	Tinc.m02 = step[1];
+	Tinc.m12 = -step[0];
+	Tinc.m22 = 1.0f;
+	Tinc.m32 = step[5];
+	Tinc.m03 = 0.0f;
+	Tinc.m13 = 0.0f;
+	Tinc.m23 = 0.0f;
+	Tinc.m33 = 1.0f;
 
 	para_new = Tinc * para_old;
 }
 
-void ITMICPTracker::UpdatePoseQuality(int noValidPoints_old, float *hessian_good, float f_old)
+void ITMICPTracker::UpdatePoseQuality(int noValidPoints_old, float* hessian_good, float f_old)
 {
 	size_t noTotalPoints = viewHierarchy_depth->GetLevel(0)->data->dataSize;
 
 	int noValidPointsMax = lowLevelEngine->CountValidDepths(view->depth);
 
-	float normFactor_v1 = (float)noValidPoints_old / (float)noTotalPoints;
-	float normFactor_v2 = (float)noValidPoints_old / (float)noValidPointsMax;
+	float normFactor_v1 = (float) noValidPoints_old / (float) noTotalPoints;
+	float normFactor_v2 = (float) noValidPoints_old / (float) noValidPointsMax;
 
 	float det = 0.0f;
-	if (iterationType == TRACKER_ITERATION_BOTH) {
+	if (iterationType == TRACKER_ITERATION_BOTH)
+	{
 		ORUtils::Cholesky cholA(hessian_good, 6);
 		det = cholA.Determinant();
 		if (std::isnan(det)) det = 0.0f;
 	}
 
 	float det_norm_v1 = 0.0f;
-	if (iterationType == TRACKER_ITERATION_BOTH) {
+	if (iterationType == TRACKER_ITERATION_BOTH)
+	{
 		float h[6 * 6];
 		for (int i = 0; i < 6 * 6; ++i) h[i] = hessian_good[i] * normFactor_v1;
 		ORUtils::Cholesky cholA(h, 6);
@@ -273,7 +327,8 @@ void ITMICPTracker::UpdatePoseQuality(int noValidPoints_old, float *hessian_good
 	}
 
 	float det_norm_v2 = 0.0f;
-	if (iterationType == TRACKER_ITERATION_BOTH) {
+	if (iterationType == TRACKER_ITERATION_BOTH)
+	{
 		float h[6 * 6];
 		for (int i = 0; i < 6 * 6; ++i) h[i] = hessian_good[i] * normFactor_v2;
 		ORUtils::Cholesky cholA(h, 6);
@@ -281,13 +336,16 @@ void ITMICPTracker::UpdatePoseQuality(int noValidPoints_old, float *hessian_good
 		if (std::isnan(det_norm_v2)) det_norm_v2 = 0.0f;
 	}
 
-	float finalResidual_v2 = sqrt(((float)noValidPoints_old * f_old + (float)(noValidPointsMax - noValidPoints_old) * distThresh[0]) / (float)noValidPointsMax);
-	float percentageInliers_v2 = (float)noValidPoints_old / (float)noValidPointsMax;
+	float finalResidual_v2 = sqrt(
+		((float) noValidPoints_old * f_old + (float) (noValidPointsMax - noValidPoints_old) * distThresh[0]) /
+		(float) noValidPointsMax);
+	float percentageInliers_v2 = (float) noValidPoints_old / (float) noValidPointsMax;
 
 	trackingState->trackerResult = ITMTrackingState::TRACKING_FAILED;
 	trackingState->trackerScore = finalResidual_v2;
 
-	if (noValidPointsMax != 0 && noTotalPoints != 0 && det_norm_v1 > 0 && det_norm_v2 > 0) {
+	if (noValidPointsMax != 0 && noTotalPoints != 0 && det_norm_v1 > 0 && det_norm_v2 > 0)
+	{
 		Vector4f inputVector(log(det_norm_v1), log(det_norm_v2), finalResidual_v2, percentageInliers_v2);
 
 		Vector4f normalisedVector = (inputVector - mu) / sigma;
@@ -302,7 +360,7 @@ void ITMICPTracker::UpdatePoseQuality(int noValidPoints_old, float *hessian_good
 	}
 }
 
-void ITMICPTracker::TrackCamera(ITMTrackingState *trackingState, const ITMView *view)
+void ITMICPTracker::TrackCamera(ITMTrackingState* trackingState, const ITMView* view)
 {
 	if (!trackingState->HasValidPointCloud()) return;
 
@@ -363,12 +421,13 @@ void ITMICPTracker::TrackCamera(ITMTrackingState *trackingState, const ITMView *
 			}
 
 			// check if error increased. If so, revert
-			if ((noValidPoints_depth <= 0) || (parameters.useColour && noValidPoints_RGB <= 0) || (f_new > f_old)) {
+			if ((noValidPoints_depth <= 0) || (parameters.useColour && noValidPoints_RGB <= 0) || (f_new > f_old))
+			{
 				trackingState->pose_d->SetFrom(&lastKnownGoodPose);
 				approxInvPose = trackingState->pose_d->GetInvM();
 				lambda *= 10.0f;
-			}
-			else {
+			} else
+			{
 				lastKnownGoodPose.SetFrom(trackingState->pose_d);
 				f_old = f_new;
 				noValidPoints_old = noValidPoints_depth + noValidPoints_RGB;

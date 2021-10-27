@@ -3,8 +3,11 @@
 #include "ITMLowLevelEngineFactory.h"
 
 #include "CPU/ITMLowLevelEngine_CPU.h"
+
 #ifndef COMPILE_WITHOUT_CUDA
+
 #include "CUDA/ITMLowLevelEngine_CUDA.h"
+
 #endif
 
 namespace ITMLib
@@ -12,23 +15,23 @@ namespace ITMLib
 
 //#################### PUBLIC STATIC MEMBER FUNCTIONS ####################
 
-ITMLowLevelEngine *ITMLowLevelEngineFactory::MakeLowLevelEngine(ITMLibSettings::DeviceType deviceType)
+ITMLowLevelEngine* ITMLowLevelEngineFactory::MakeLowLevelEngine(ITMLibSettings::DeviceType deviceType)
 {
-  ITMLowLevelEngine *lowLevelEngine = NULL;
+	ITMLowLevelEngine* lowLevelEngine = nullptr;
 
-  switch(deviceType)
-  {
-    case ITMLibSettings::DEVICE_CPU:
-      lowLevelEngine = new ITMLowLevelEngine_CPU();
-      break;
-    case ITMLibSettings::DEVICE_CUDA:
+	switch (deviceType)
+	{
+		case ITMLibSettings::DEVICE_CPU:
+			lowLevelEngine = new ITMLowLevelEngine_CPU();
+			break;
+		case ITMLibSettings::DEVICE_CUDA:
 #ifndef COMPILE_WITHOUT_CUDA
-      lowLevelEngine = new ITMLowLevelEngine_CUDA();
+			lowLevelEngine = new ITMLowLevelEngine_CUDA();
 #endif
-      break;
-  }
+			break;
+	}
 
-  return lowLevelEngine;
+	return lowLevelEngine;
 }
 
 }

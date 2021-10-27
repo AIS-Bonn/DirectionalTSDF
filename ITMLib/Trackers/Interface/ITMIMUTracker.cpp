@@ -3,9 +3,10 @@
 #include "ITMIMUTracker.h"
 
 #include "../../Objects/Views/ITMViewIMU.h"
+
 using namespace ITMLib;
 
-ITMIMUTracker::ITMIMUTracker(ITMIMUCalibrator *calibrator)
+ITMIMUTracker::ITMIMUTracker(ITMIMUCalibrator* calibrator)
 {
 	this->calibrator = calibrator;
 }
@@ -14,9 +15,9 @@ ITMIMUTracker::~ITMIMUTracker(void)
 {
 }
 
-void ITMIMUTracker::TrackCamera(ITMTrackingState *trackingState, const ITMView *view)
+void ITMIMUTracker::TrackCamera(ITMTrackingState* trackingState, const ITMView* view)
 {
-	calibrator->RegisterMeasurement(((ITMViewIMU*)view)->imu->R);
+	calibrator->RegisterMeasurement(((ITMViewIMU*) view)->imu->R);
 
 	trackingState->pose_d->SetR(calibrator->GetDifferentialRotationChange() * trackingState->pose_d->GetR());
 }

@@ -7,6 +7,8 @@
 #include "../ITMLib/Objects/Camera/ITMRGBDCalib.h"
 #include "../ITMLib/Utils/ITMImageTypes.h"
 
+using namespace ITMLib;
+
 namespace InputSource {
 
 	class ImageSourceEngine

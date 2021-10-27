@@ -4,9 +4,10 @@
 
 #pragma once
 
+#include <ORUtils/MemoryDeviceType.h>
 #include <ITMLib/Utils/ITMMath.h>
+#include <ITMLib/Utils/ITMGeometry.h>
 #include "ITMDirectional.h"
-#include "ITMMultiSceneAccess.h"
 
 namespace ITMLib
 {
@@ -18,16 +19,21 @@ public:
 	_CPU_AND_GPU_CODE_ Index() : ORUtils::Vector3<T>()
 	{}
 
-	_CPU_AND_GPU_CODE_ Index(const ORUtils::Vector3<T>& u)
+	_CPU_AND_GPU_CODE_ explicit Index(const ORUtils::Vector3<T>& u)
 		: ORUtils::Vector3<T>(u)
 	{}
 
-	_CPU_AND_GPU_CODE_ inline ORUtils::Vector3<int> getPosition() const
+	/** Constructure with direction dummy parameter */
+	_CPU_AND_GPU_CODE_ Index(const ORUtils::Vector3<T>& u, TSDFDirection direction)
+		: Index(u)
+	{}
+
+	_CPU_AND_GPU_CODE_ [[nodiscard]] inline ORUtils::Vector3<T> getPosition() const
 	{
-		return this->toInt();
+		return *this;
 	}
 
-	_CPU_AND_GPU_CODE_ inline TSDFDirection getDirection() const
+	_CPU_AND_GPU_CODE_ [[nodiscard]] inline TSDFDirection getDirection() const
 	{
 		return TSDFDirection::NONE;
 	}
@@ -40,16 +46,16 @@ public:
 	_CPU_AND_GPU_CODE_ IndexDirectional() : ORUtils::Vector4<T>()
 	{}
 
-	_CPU_AND_GPU_CODE_ IndexDirectional(const ORUtils::Vector3_<T>& u, TSDFDirection direction)
+	_CPU_AND_GPU_CODE_ IndexDirectional(const ORUtils::Vector3_<T>& u, TSDFDirection direction = TSDFDirection::NONE)
 		: ORUtils::Vector4<T>(u, TSDFDirection_type(direction))
 	{}
 
-	_CPU_AND_GPU_CODE_ inline ORUtils::Vector3<int> getPosition() const
+	_CPU_AND_GPU_CODE_ [[nodiscard]] inline ORUtils::Vector3<T> getPosition() const
 	{
-		return this->toVector3().toInt();
+		return this->toVector3();
 	}
 
-	_CPU_AND_GPU_CODE_ inline TSDFDirection getDirection() const
+	_CPU_AND_GPU_CODE_ [[nodiscard]] inline TSDFDirection getDirection() const
 	{
 		return TSDFDirection(this->w);
 	}
@@ -58,7 +64,7 @@ public:
 typedef class IndexDirectional<short> IndexDirectionalShort;
 typedef class Index<short> IndexShort;
 
-template <typename T>
+template<typename T>
 _CPU_AND_GPU_CODE_ inline void voxelIdxToIndexAndOffset(
 	Index<T>& index, unsigned short& offset, const Vector3i& voxelIdx,
 	const TSDFDirection direction = TSDFDirection::NONE)
@@ -68,7 +74,7 @@ _CPU_AND_GPU_CODE_ inline void voxelIdxToIndexAndOffset(
 	index = Index<T>(blockIdx.toShort());
 }
 
-template <typename T>
+template<typename T>
 _CPU_AND_GPU_CODE_ inline void voxelIdxToIndexAndOffset(
 	IndexDirectional<T>& index, unsigned short& offset, const Vector3i& voxelIdx,
 	const TSDFDirection direction = TSDFDirection::NONE)
@@ -80,7 +86,7 @@ _CPU_AND_GPU_CODE_ inline void voxelIdxToIndexAndOffset(
 
 struct AllocationStats
 {
-	unsigned int noAllocationsPerDirection[N_DIRECTIONS];
+	unsigned int noAllocationsPerDirection[N_DIRECTIONS]{};
 	unsigned long long noAllocations;
 
 	AllocationStats()
@@ -92,6 +98,7 @@ struct AllocationStats
 
 template<typename TIndex, typename TVoxel>
 class TSDF_CUDA;
+
 template<typename TIndex, typename TVoxel>
 class TSDF_CPU;
 
@@ -99,6 +106,8 @@ template<typename TIndex, typename TVoxel>
 class TSDF
 {
 public:
+	virtual ~TSDF() = default;
+
 	virtual void resize(size_t newSize) = 0;
 
 	virtual void clear() = 0;
@@ -115,7 +124,7 @@ public:
 		return dynamic_cast<TSDF_CPU<TIndex, TVoxel>*>(this);
 	}
 
-	virtual  MemoryDeviceType deviceType() = 0;
+	virtual MemoryDeviceType deviceType() = 0;
 
 	size_t allocatedBlocksMax = 0;
 	TVoxel* voxels = nullptr;
@@ -137,13 +146,13 @@ public:
 
 	virtual void allocate(const TIndex* blocks, size_t N) = 0;
 
-	void clear() override
+	void clear() final
 	{
 		this->allocationStats.noAllocations = 0;
 		map.clear();
 	}
 
-	size_t size() override
+	size_t size() final
 	{
 		return map.size();
 	}
@@ -426,7 +435,7 @@ _CPU_AND_GPU_CODE_ inline Vector4f readFromSDF_color4u_interpolated(
 	return Vector4f(color / 255.0f, 255.0f);
 }
 
-#define ReadVoxelSDFDiscardZero(dst, pos) voxel = readVoxel(found, tsdf, pos, direction); if (voxel.w_depth == 0) return Vector3f(0, 0, 0); dst = voxel.sdf;
+#define ReadVoxelDiscardZero(dst, pos) voxel = readVoxel(found, tsdf, pos, direction); if (voxel.w_depth == 0) return Vector3f(0, 0, 0); dst = voxel.sdf;
 
 /**
  * Computes raw (unnormalized) gradient from neighboring voxels
@@ -447,14 +456,14 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeGradientFromSDF(
 
 	// all 8 values are going to be reused several times
 	Vector4f front, back;
-	ReadVoxelSDFDiscardZero(front.x, pos + Vector3i(0, 0, 0));
-	ReadVoxelSDFDiscardZero(front.y, pos + Vector3i(1, 0, 0));
-	ReadVoxelSDFDiscardZero(front.z, pos + Vector3i(0, 1, 0));
-	ReadVoxelSDFDiscardZero(front.w, pos + Vector3i(1, 1, 0));
-	ReadVoxelSDFDiscardZero(back.x, pos + Vector3i(0, 0, 1));
-	ReadVoxelSDFDiscardZero(back.y, pos + Vector3i(1, 0, 1));
-	ReadVoxelSDFDiscardZero(back.z, pos + Vector3i(0, 1, 1));
-	ReadVoxelSDFDiscardZero(back.w, pos + Vector3i(1, 1, 1));
+	ReadVoxelDiscardZero(front.x, pos + Vector3i(0, 0, 0));
+	ReadVoxelDiscardZero(front.y, pos + Vector3i(1, 0, 0));
+	ReadVoxelDiscardZero(front.z, pos + Vector3i(0, 1, 0));
+	ReadVoxelDiscardZero(front.w, pos + Vector3i(1, 1, 0));
+	ReadVoxelDiscardZero(back.x, pos + Vector3i(0, 0, 1));
+	ReadVoxelDiscardZero(back.y, pos + Vector3i(1, 0, 1));
+	ReadVoxelDiscardZero(back.z, pos + Vector3i(0, 1, 1));
+	ReadVoxelDiscardZero(back.w, pos + Vector3i(1, 1, 1));
 
 	Vector4f tmp;
 	float p1, p2, v1;
@@ -463,10 +472,10 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeGradientFromSDF(
 	     front.z * coeff.y * ncoeff.z +
 	     back.x * ncoeff.y * coeff.z +
 	     back.z * coeff.y * coeff.z;
-	ReadVoxelSDFDiscardZero(tmp.x, pos + Vector3i(-1, 0, 0));
-	ReadVoxelSDFDiscardZero(tmp.y, pos + Vector3i(-1, 1, 0));
-	ReadVoxelSDFDiscardZero(tmp.z, pos + Vector3i(-1, 0, 1));
-	ReadVoxelSDFDiscardZero(tmp.w, pos + Vector3i(-1, 1, 1));
+	ReadVoxelDiscardZero(tmp.x, pos + Vector3i(-1, 0, 0));
+	ReadVoxelDiscardZero(tmp.y, pos + Vector3i(-1, 1, 0));
+	ReadVoxelDiscardZero(tmp.z, pos + Vector3i(-1, 0, 1));
+	ReadVoxelDiscardZero(tmp.w, pos + Vector3i(-1, 1, 1));
 	p2 = tmp.x * ncoeff.y * ncoeff.z +
 	     tmp.y * coeff.y * ncoeff.z +
 	     tmp.z * ncoeff.y * coeff.z +
@@ -477,10 +486,10 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeGradientFromSDF(
 	     front.w * coeff.y * ncoeff.z +
 	     back.y * ncoeff.y * coeff.z +
 	     back.w * coeff.y * coeff.z;
-	ReadVoxelSDFDiscardZero(tmp.x, pos + Vector3i(2, 0, 0));
-	ReadVoxelSDFDiscardZero(tmp.y, pos + Vector3i(2, 1, 0));
-	ReadVoxelSDFDiscardZero(tmp.z, pos + Vector3i(2, 0, 1));
-	ReadVoxelSDFDiscardZero(tmp.w, pos + Vector3i(2, 1, 1));
+	ReadVoxelDiscardZero(tmp.x, pos + Vector3i(2, 0, 0));
+	ReadVoxelDiscardZero(tmp.y, pos + Vector3i(2, 1, 0));
+	ReadVoxelDiscardZero(tmp.z, pos + Vector3i(2, 0, 1));
+	ReadVoxelDiscardZero(tmp.w, pos + Vector3i(2, 1, 1));
 	p2 = tmp.x * ncoeff.y * ncoeff.z +
 	     tmp.y * coeff.y * ncoeff.z +
 	     tmp.z * ncoeff.y * coeff.z +
@@ -493,10 +502,10 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeGradientFromSDF(
 	     front.y * coeff.x * ncoeff.z +
 	     back.x * ncoeff.x * coeff.z +
 	     back.y * coeff.x * coeff.z;
-	ReadVoxelSDFDiscardZero(tmp.x, pos + Vector3i(0, -1, 0));
-	ReadVoxelSDFDiscardZero(tmp.y, pos + Vector3i(1, -1, 0));
-	ReadVoxelSDFDiscardZero(tmp.z, pos + Vector3i(0, -1, 1));
-	ReadVoxelSDFDiscardZero(tmp.w, pos + Vector3i(1, -1, 1));
+	ReadVoxelDiscardZero(tmp.x, pos + Vector3i(0, -1, 0));
+	ReadVoxelDiscardZero(tmp.y, pos + Vector3i(1, -1, 0));
+	ReadVoxelDiscardZero(tmp.z, pos + Vector3i(0, -1, 1));
+	ReadVoxelDiscardZero(tmp.w, pos + Vector3i(1, -1, 1));
 	p2 = tmp.x * ncoeff.x * ncoeff.z +
 	     tmp.y * coeff.x * ncoeff.z +
 	     tmp.z * ncoeff.x * coeff.z +
@@ -507,10 +516,10 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeGradientFromSDF(
 	     front.w * coeff.x * ncoeff.z +
 	     back.z * ncoeff.x * coeff.z +
 	     back.w * coeff.x * coeff.z;
-	ReadVoxelSDFDiscardZero(tmp.x, pos + Vector3i(0, 2, 0));
-	ReadVoxelSDFDiscardZero(tmp.y, pos + Vector3i(1, 2, 0));
-	ReadVoxelSDFDiscardZero(tmp.z, pos + Vector3i(0, 2, 1));
-	ReadVoxelSDFDiscardZero(tmp.w, pos + Vector3i(1, 2, 1));
+	ReadVoxelDiscardZero(tmp.x, pos + Vector3i(0, 2, 0));
+	ReadVoxelDiscardZero(tmp.y, pos + Vector3i(1, 2, 0));
+	ReadVoxelDiscardZero(tmp.z, pos + Vector3i(0, 2, 1));
+	ReadVoxelDiscardZero(tmp.w, pos + Vector3i(1, 2, 1));
 	p2 = tmp.x * ncoeff.x * ncoeff.z +
 	     tmp.y * coeff.x * ncoeff.z +
 	     tmp.z * ncoeff.x * coeff.z +
@@ -523,10 +532,10 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeGradientFromSDF(
 	     front.y * coeff.x * ncoeff.y +
 	     front.z * ncoeff.x * coeff.y +
 	     front.w * coeff.x * coeff.y;
-	ReadVoxelSDFDiscardZero(tmp.x, pos + Vector3i(0, 0, -1));
-	ReadVoxelSDFDiscardZero(tmp.y, pos + Vector3i(1, 0, -1));
-	ReadVoxelSDFDiscardZero(tmp.z, pos + Vector3i(0, 1, -1));
-	ReadVoxelSDFDiscardZero(tmp.w, pos + Vector3i(1, 1, -1));
+	ReadVoxelDiscardZero(tmp.x, pos + Vector3i(0, 0, -1));
+	ReadVoxelDiscardZero(tmp.y, pos + Vector3i(1, 0, -1));
+	ReadVoxelDiscardZero(tmp.z, pos + Vector3i(0, 1, -1));
+	ReadVoxelDiscardZero(tmp.w, pos + Vector3i(1, 1, -1));
 	p2 = tmp.x * ncoeff.x * ncoeff.y +
 	     tmp.y * coeff.x * ncoeff.y +
 	     tmp.z * ncoeff.x * coeff.y +
@@ -537,10 +546,10 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeGradientFromSDF(
 	     back.y * coeff.x * ncoeff.y +
 	     back.z * ncoeff.x * coeff.y +
 	     back.w * coeff.x * coeff.y;
-	ReadVoxelSDFDiscardZero(tmp.x, pos + Vector3i(0, 0, 2));
-	ReadVoxelSDFDiscardZero(tmp.y, pos + Vector3i(1, 0, 2));
-	ReadVoxelSDFDiscardZero(tmp.z, pos + Vector3i(0, 1, 2));
-	ReadVoxelSDFDiscardZero(tmp.w, pos + Vector3i(1, 1, 2));
+	ReadVoxelDiscardZero(tmp.x, pos + Vector3i(0, 0, 2));
+	ReadVoxelDiscardZero(tmp.y, pos + Vector3i(1, 0, 2));
+	ReadVoxelDiscardZero(tmp.z, pos + Vector3i(0, 1, 2));
+	ReadVoxelDiscardZero(tmp.w, pos + Vector3i(1, 1, 2));
 	p2 = tmp.x * ncoeff.x * ncoeff.y +
 	     tmp.y * coeff.x * ncoeff.y +
 	     tmp.z * ncoeff.x * coeff.y +
@@ -563,18 +572,18 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeGradientFromSDF(
 	float p1, p2;
 
 	// gradient x
-	ReadVoxelSDFDiscardZero(p1, pos + Vector3i(1, 0, 0));
-	ReadVoxelSDFDiscardZero(p2, pos + Vector3i(-1, 0, 0));
+	ReadVoxelDiscardZero(p1, pos + Vector3i(1, 0, 0));
+	ReadVoxelDiscardZero(p2, pos + Vector3i(-1, 0, 0));
 	ret.x = TVoxel::valueToFloat(p1 - p2);
 
 	// gradient y
-	ReadVoxelSDFDiscardZero(p1, pos + Vector3i(0, 1, 0));
-	ReadVoxelSDFDiscardZero(p2, pos + Vector3i(0, -1, 0));
+	ReadVoxelDiscardZero(p1, pos + Vector3i(0, 1, 0));
+	ReadVoxelDiscardZero(p2, pos + Vector3i(0, -1, 0));
 	ret.y = TVoxel::valueToFloat(p1 - p2);
 
 	// gradient z
-	ReadVoxelSDFDiscardZero(p1, pos + Vector3i(0, 0, 1));
-	ReadVoxelSDFDiscardZero(p2, pos + Vector3i(0, 0, -1));
+	ReadVoxelDiscardZero(p1, pos + Vector3i(0, 0, 1));
+	ReadVoxelDiscardZero(p2, pos + Vector3i(0, 0, -1));
 	ret.z = TVoxel::valueToFloat(p1 - p2);
 
 	return ret;
@@ -586,7 +595,7 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeGradientFromSDF(
  */
 template<typename T, typename TIndex, typename TVoxel, template<typename, typename...> class Map, typename... Args>
 _CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(
-	const Map<TIndex, TVoxel*, Args...> tsdf, const ORUtils::Vector3<T>& point,
+	const Map<TIndex, TVoxel*, Args...>& tsdf, const ORUtils::Vector3<T>& point,
 	const TSDFDirection direction = TSDFDirection::NONE, const float tau = 0.0)
 {
 	Vector3f gradient = computeGradientFromSDF(tsdf, point, direction);
@@ -597,7 +606,7 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(
 	if (tau > 0)
 	{
 		// Check each direction maximum 2 * truncationDistance / voxelSize + margin
-		if (abs(gradient.x) > 2.4 * tau or abs(gradient.y) > 2.4 * tau or abs(gradient.z) > 2.4 * tau)
+		if (std::abs(gradient.x) > 2.4 * tau or std::abs(gradient.y) > 2.4 * tau or std::abs(gradient.z) > 2.4 * tau)
 			return Vector3f(0, 0, 0);
 		// Check, if gradient too unreliable (very close values in neighboring voxels). minimum expected length: (2 * tau)^2
 		if (ORUtils::dot(gradient, gradient) < 2 * (tau * tau)) return Vector3f(0, 0, 0);
@@ -607,11 +616,11 @@ _CPU_AND_GPU_CODE_ inline Vector3f computeSingleNormalFromSDF(
 }
 
 template<typename TIndex, typename TVoxel, template<typename, typename...> class Map, typename... Args>
-_CPU_AND_GPU_CODE_ inline Vector4f readFromSDF_color4u_interpolated(const Map<TIndex, TVoxel*, Args...> tsdf, const Vector3f& point)
+_CPU_AND_GPU_CODE_ inline Vector4f
+readFromSDF_color4u_interpolated(const Map<TIndex, TVoxel*, Args...>& tsdf, const Vector3f& point)
 {
 	TVoxel voxel;
 	Vector3f color(0.0f);
-	float w_color = 0;
 	Vector3f coeff;
 	Vector3i pos;
 	TO_INT_FLOOR3(pos, coeff, point);
@@ -643,27 +652,5 @@ _CPU_AND_GPU_CODE_ inline Vector4f readFromSDF_color4u_interpolated(const Map<TI
 
 	return Vector4f(color / 255.0f, 255.0f);
 }
-
-//template<bool hasColor, typename TIndex, typename TVoxel, template<typename, typename...> class Map, typename... Args>
-//struct VoxelColorReader;
-//
-//template<typename TVoxel, typename TIndex, template<typename, typename...> class Map, typename... Args>
-//struct VoxelColorReader<false, TVoxel, TIndex, Map, Args> {
-//	_CPU_AND_GPU_CODE_ static Vector4f interpolate(const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(typename TIndex::IndexData) *voxelIndex,
-//	                                               const THREADPTR(Vector3f) & point, const TSDFDirection direction)
-//	{
-//		return Vector4f(0.0f, 0.0f, 0.0f, 0.0f);
-//	}
-//};
-//
-//template<typename TIndex, typename TVoxel, template<typename, typename...> class Map, typename... Args>
-//struct VoxelColorReader<true, TVoxel, TIndex, Map, Args> {
-//	_CPU_AND_GPU_CODE_ static Vector4f interpolate(const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(typename TIndex::IndexData) *voxelIndex,
-//	                                               const THREADPTR(Vector3f) & point, const TSDFDirection direction)
-//	{
-//		typename TIndex::IndexCache cache;
-//		return readFromSDF_color4u_interpolated(voxelData, voxelIndex, point, direction, cache);
-//	}
-//};
 
 } // namespace ITMlib

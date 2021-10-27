@@ -10,14 +10,16 @@
 using namespace ITMLib;
 
 static int RenderPointCloud(Vector4f* locations, Vector4f* colours, const Vector4f* ptsRay,
-                            const Vector6f* directionalContribution,
-                            const ITMVoxel* voxelData, const typename ITMVoxelIndex::IndexData* voxelIndex,
+                            const std::unordered_map<ITMIndex, ITMVoxel*>& tsdf,
                             bool skipPoints,
-                            float voxelSize,
+                            float oneOverVoxelSize,
                             Vector2i imgSize, Vector3f lightSource)
 {
 	int noTotalPoints = 0;
 
+#ifdef WITH_OPENMP
+#pragma omp parallel for
+#endif
 	for (int y = 0, locId = 0; y < imgSize.y; y++)
 		for (int x = 0; x < imgSize.x; x++, locId++)
 		{
@@ -25,50 +27,16 @@ static int RenderPointCloud(Vector4f* locations, Vector4f* colours, const Vector
 			float angle;
 			const Vector4f& pointRay = ptsRay[locId];
 			const Vector3f& point = pointRay.toVector3();
-			const Vector6f* directional = directionalContribution ? &directionalContribution[locId] : nullptr;
 			bool foundPoint = pointRay.w > 0;
 
-			computeNormalAndAngle<ITMVoxel, ITMVoxelIndex>(foundPoint, point, directional, voxelData, voxelIndex, lightSource,
-			                                               outNormal, angle);
+			computeNormalAndAngleTSDF(foundPoint, point, tsdf, oneOverVoxelSize, lightSource, outNormal, angle);
 
 			if (skipPoints && ((x % 2 == 0) || (y % 2 == 0))) foundPoint = false;
 
 			if (foundPoint)
 			{
-				Vector4f tmp(0, 0, 0, 0);
-				if (directionalContribution)
-				{
-					for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
-					{
-						tmp += directional->v[direction] *
-						       VoxelColorReader<ITMVoxel::hasColorInformation, ITMVoxel, ITMVoxelIndex>::interpolate(voxelData,
-						                                                                                             voxelIndex,
-						                                                                                             point,
-						                                                                                             ITMLib::TSDFDirection(
-							                                                                                             direction));
-					}
-				} else
-				{
-					tmp = VoxelColorReader<ITMVoxel::hasColorInformation, ITMVoxel, ITMVoxelIndex>::interpolate(voxelData,
-					                                                                                            voxelIndex,
-					                                                                                            point,
-					                                                                                            ITMLib::TSDFDirection::NONE);
-				}
-				if (tmp.w > 0.0f)
-				{
-					tmp.x /= tmp.w;
-					tmp.y /= tmp.w;
-					tmp.z /= tmp.w;
-					tmp.w = 1.0f;
-				}
-				colours[noTotalPoints] = tmp;
-
-				Vector4f pt_ray_out;
-				pt_ray_out.x = point.x * voxelSize;
-				pt_ray_out.y = point.y * voxelSize;
-				pt_ray_out.z = point.z * voxelSize;
-				pt_ray_out.w = 1.0f;
-				locations[noTotalPoints] = pt_ray_out;
+				colours[noTotalPoints] = readFromSDF_color4u_interpolated(tsdf, point);
+				locations[noTotalPoints] = Vector4f(point, 1.0);
 
 				noTotalPoints++;
 			}
@@ -77,78 +45,44 @@ static int RenderPointCloud(Vector4f* locations, Vector4f* colours, const Vector
 	return noTotalPoints;
 }
 
-//ITMRenderState* ITMVisualisationEngine_CPU<ITMVoxel, ITMVoxelIndex>::CreateRenderState(const Scene *scene, const Vector2i & imgSize) const
-//{
-//	return new ITMRenderState(
-//		imgSize, scene->sceneParams->viewFrustum_min, scene->sceneParams->viewFrustum_max, MEMORYDEVICE_CPU
-//	);
-//}
-
-ITMRenderState_VH* ITMVisualisationEngine_CPU::CreateRenderState(const Scene* scene,
-                                                                 const Vector2i& imgSize) const
+ITMRenderState* ITMVisualisationEngine_CPU::CreateRenderState(const Scene* scene,
+                                                              const Vector2i& imgSize) const
 {
-	return new ITMRenderState_VH(
-		ITMVoxelBlockHash::noTotalEntries, imgSize, scene->sceneParams->viewFrustum_min,
+	return new ITMRenderState(
+		imgSize, scene->sceneParams->viewFrustum_min,
 		scene->sceneParams->viewFrustum_max, MEMORYDEVICE_CPU
 	);
-}
-
-int ITMVisualisationEngine_CPU::CountVisibleBlocks(const Scene* scene,
-                                                   const ITMRenderState* renderState, int minBlockId,
-                                                   int maxBlockId) const
-{
-	const ITMRenderState_VH* renderState_vh = (const ITMRenderState_VH*) renderState;
-
-	int noVisibleEntries = renderState_vh->noVisibleEntries;
-	const int* visibleEntryIDs = renderState_vh->GetVisibleEntryIDs();
-
-	int ret = 0;
-	for (int i = 0; i < noVisibleEntries; ++i)
-	{
-		int blockID = scene->index.GetEntries()[visibleEntryIDs[i]].ptr;
-		if ((blockID >= minBlockId) && (blockID <= maxBlockId)) ++ret;
-	}
-
-	return ret;
 }
 
 void ITMVisualisationEngine_CPU::CreateExpectedDepths(const Scene* scene,
                                                       const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
                                                       ITMRenderState* renderState)
 {
+	ComputeRenderingTSDF(scene, pose, intrinsics, renderState);
+
 	Vector2i imgSize = renderState->renderingRangeImage->noDims;
 	Vector2f* minmaxData = renderState->renderingRangeImage->GetData(MEMORYDEVICE_CPU);
 
-	for (int locId = 0; locId < imgSize.x * imgSize.y; ++locId)
-	{
-		Vector2f& pixel = minmaxData[locId];
-		pixel.x = FAR_AWAY;
-		pixel.y = VERY_CLOSE;
-	}
+	std::fill_n(minmaxData, imgSize.x * imgSize.y, Vector2f(FAR_AWAY, VERY_CLOSE));
 
 	float voxelSize = scene->sceneParams->voxelSize;
 
 	std::vector<RenderingBlock> renderingBlocks(MAX_RENDERING_BLOCKS);
 	int numRenderingBlocks = 0;
 
-	ITMRenderState_VH* renderState_vh = (ITMRenderState_VH*) renderState;
-
-	const int* visibleEntryIDs = renderState_vh->GetVisibleEntryIDs();
-	int noVisibleEntries = renderState_vh->noVisibleEntries;
+	int noVisibleEntries = renderState->noVisibleEntries;
+	ITMIndex* visibleBlocks = renderState->GetVisibleBlocks();
 
 	//go through list of visible 8x8x8 blocks
-	for (int blockNo = 0; blockNo < noVisibleEntries; ++blockNo)
+	for (int idx = 0; idx < noVisibleEntries; ++idx)
 	{
-		const ITMHashEntry& blockData(scene->index.GetEntries()[visibleEntryIDs[blockNo]]);
+		Vector3s blockIdx = visibleBlocks[idx].getPosition().toShort();
 
 		Vector2i upperLeft, lowerRight;
 		Vector2f zRange;
-		bool validProjection = false;
-		if (blockData.ptr >= 0)
-		{
-			validProjection = ProjectSingleBlock(blockData.pos, pose->GetM(), intrinsics->projectionParamsSimple.all, imgSize,
-			                                     voxelSize, upperLeft, lowerRight, zRange);
-		}
+		bool validProjection;
+		validProjection = ProjectSingleBlock(blockIdx, pose->GetM(), intrinsics->projectionParamsSimple.all, imgSize,
+		                                     voxelSize, upperLeft, lowerRight, zRange);
 		if (!validProjection) continue;
 
 		Vector2i requiredRenderingBlocks(
@@ -181,6 +115,15 @@ void ITMVisualisationEngine_CPU::CreateExpectedDepths(const Scene* scene,
 	}
 }
 
+ITMVisualisationEngine_CPU::ITMVisualisationEngine_CPU(const std::shared_ptr<const ITMLibSettings>& settings)
+	: ITMVisualisationEngine(settings)
+{
+	if (settings->Directional())
+	{
+		this->renderingTSDF = new TSDF_CPU<ITMIndex, ITMVoxel>(settings->sceneParams.allocationSize / 4);
+	}
+}
+
 void ITMVisualisationEngine_CPU::RenderImage(const Scene* scene,
                                              const ORUtils::SE3Pose* pose,
                                              const ITMIntrinsics* intrinsics,
@@ -191,8 +134,6 @@ void ITMVisualisationEngine_CPU::RenderImage(const Scene* scene,
 {
 	Vector2i imgSize = outputImage->noDims;
 	Matrix4f invM = pose->GetInvM();
-
-	bool useDirectial = this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL;
 
 	Vector4f* pointsRay, * normalsRay;
 	if (raycastType == IITMVisualisationEngine::RENDER_FROM_OLD_RAYCAST)
@@ -213,149 +154,92 @@ void ITMVisualisationEngine_CPU::RenderImage(const Scene* scene,
 
 	Vector3f lightSource = Vector3f(invM.getColumn(3)) / scene->sceneParams->voxelSize;
 	Vector4u* outRendering = outputImage->GetData(MEMORYDEVICE_CPU);
-	Vector6f* directionalContribution = renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CPU);
-	const ITMVoxel* voxelData = scene->localVBA.GetVoxelBlocks();
-	const typename ITMVoxelIndex::IndexData* voxelIndex = scene->index.getIndexData();
 
-	if ((type == IITMVisualisationEngine::RENDER_COLOUR_FROM_VOLUME) &&
-	    (!ITMVoxel::hasColorInformation))
-		type = IITMVisualisationEngine::RENDER_SHADED_GREYSCALE;
+	TSDF_CPU<ITMIndex, ITMVoxel>* tsdf = GetRenderingTSDF(scene)->toCPU();
 
 	switch (type)
 	{
-		case IITMVisualisationEngine::RENDER_COLOUR_FROM_VOLUME:
+		case IITMVisualisationEngine::RENDER_COLOUR:
 #ifdef WITH_OPENMP
 #pragma omp parallel for
 #endif
 			for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
 			{
-				Vector4f ptRay = pointsRay[locId];
-				processPixelColour<ITMVoxel, ITMVoxelIndex>(outRendering[locId], ptRay.toVector3(),
-				                                            useDirectial ? &directionalContribution[locId] : nullptr,
-				                                            ptRay.w > 0,
-				                                            voxelData, voxelIndex, lightSource);
+				processPixelColour(outRendering[locId], pointsRay[locId],
+				                   tsdf->getMap(), scene->sceneParams->oneOverVoxelSize, lightSource);
 			}
 			break;
-		case IITMVisualisationEngine::RENDER_COLOUR_FROM_SDFNORMAL:
+		case IITMVisualisationEngine::RENDER_NORMAL_SDFNORMAL:
 #ifdef WITH_OPENMP
 #pragma omp parallel for
 #endif
 			for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
 			{
-				Vector4f ptRay = pointsRay[locId];
-				processPixelNormal_SDFNormals<ITMVoxel, ITMVoxelIndex>(outRendering[locId], ptRay.toVector3(),
-				                                                       useDirectial ? &directionalContribution[locId] : nullptr,
-				                                                       ptRay.w > 0, voxelData, voxelIndex, lightSource);
+				processPixelNormal_SDFNormals(outRendering[locId], pointsRay[locId], tsdf->getMap(),
+				                              scene->sceneParams->oneOverVoxelSize, lightSource);
 			}
 			break;
-		case IITMVisualisationEngine::RENDER_COLOUR_FROM_IMAGENORMAL:
-			if (intrinsics->FocalLengthSignsDiffer())
-			{
+		case IITMVisualisationEngine::RENDER_NORMAL_IMAGENORMAL:
 #ifdef WITH_OPENMP
 #pragma omp parallel for
 #endif
-				for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
+			for (int y = 0; y < imgSize.y; y++)
+				for (int x = 0; x < imgSize.x; x++)
 				{
-					int y = locId / imgSize.x, x = locId - y * imgSize.x;
-					processPixelNormals_ImageNormals<true, true>(outRendering, pointsRay, normalsRay, imgSize, x, y,
-					                                             scene->sceneParams->voxelSize, lightSource);
+					processPixelNormals_ImageNormals<true>(outRendering, pointsRay, normalsRay, imgSize, x, y,
+					                                       scene->sceneParams->voxelSize, lightSource);
 				}
-			} else
-			{
-#ifdef WITH_OPENMP
-#pragma omp parallel for
-#endif
-				for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
-				{
-					int y = locId / imgSize.x, x = locId - y * imgSize.x;
-					processPixelNormals_ImageNormals<true, false>(outRendering, pointsRay, normalsRay, imgSize, x, y,
-					                                              scene->sceneParams->voxelSize, lightSource);
-				}
-			}
 			break;
-		case IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE_SDFNORMAL:
+		case IITMVisualisationEngine::RENDER_CONFIDENCE_SDFNORMAL:
 #ifdef WITH_OPENMP
 #pragma omp parallel for
 #endif
 			for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
 			{
-				Vector4f ptRay = pointsRay[locId];
-				processPixelConfidence_SDFNormals<ITMVoxel, ITMVoxelIndex>(outRendering[locId], ptRay,
-				                                                           useDirectial ? &directionalContribution[locId]
-				                                                                        : nullptr,
-				                                                           ptRay.w > 0, voxelData, voxelIndex,
-				                                                           *(scene->sceneParams),
-				                                                           lightSource);
+				processPixelConfidence_SDFNormals(outRendering[locId], pointsRay[locId], tsdf->getMap(),
+				                                  *(scene->sceneParams), lightSource);
 			}
 			break;
-		case IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE_IMAGENORMAL:
-			if (intrinsics->FocalLengthSignsDiffer())
-			{
+		case IITMVisualisationEngine::RENDER_CONFIDENCE_IMAGENORMAL:
 #ifdef WITH_OPENMP
 #pragma omp parallel for
 #endif
-				for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
+			for (int y = 0; y < imgSize.y; y++)
+				for (int x = 0; x < imgSize.x; x++)
 				{
-					int y = locId / imgSize.x, x = locId - y * imgSize.x;
-					processPixelConfidence_ImageNormals<true, true>(outRendering, pointsRay, normalsRay, imgSize, x, y,
-					                                                *(scene->sceneParams), lightSource);
+					processPixelConfidence_ImageNormals<true>(outRendering, pointsRay, normalsRay, imgSize, x, y,
+					                                          *(scene->sceneParams), lightSource);
 				}
-			} else
-			{
-#ifdef WITH_OPENMP
-#pragma omp parallel for
-#endif
-				for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
-				{
-					int y = locId / imgSize.x, x = locId - y * imgSize.x;
-					processPixelConfidence_ImageNormals<true, false>(outRendering, pointsRay, normalsRay, imgSize, x, y,
-					                                                 *(scene->sceneParams), lightSource);
-				}
-			}
 			break;
-		case IITMVisualisationEngine::RENDER_COLOUR_FROM_DEPTH:
+		case IITMVisualisationEngine::RENDER_DEPTH_COLOUR:
 #ifdef WITH_OPENMP
 #pragma omp parallel for
 #endif
 			for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
 			{
-				processPixelDepth<ITMVoxel, ITMVoxelIndex>(outRendering[locId], pointsRay[locId].toVector3(),
-				                                           pointsRay[locId].w > 0,
-				                                           pose->GetM(), scene->sceneParams->voxelSize,
-				                                           scene->sceneParams->viewFrustum_max);
+				processPixelDepthColour<ITMVoxel>(outRendering[locId], pointsRay[locId],
+				                                  pose->GetM(), scene->sceneParams->viewFrustum_max);
 			}
 			break;
-		case IITMVisualisationEngine::RENDER_SHADED_GREYSCALE_IMAGENORMALS:
+		case IITMVisualisationEngine::RENDER_DEPTH_IMAGENORMAL:
 #ifdef WITH_OPENMP
 #pragma omp parallel for
 #endif
-			for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
-			{
-				int y = locId / imgSize.x;
-				int x = locId - y * imgSize.x;
-
-				if (intrinsics->FocalLengthSignsDiffer())
+			for (int y = 0; y < imgSize.y; y++)
+				for (int x = 0; x < imgSize.x; x++)
 				{
-					processPixelGrey_ImageNormals<true, true>(outRendering, pointsRay, normalsRay, imgSize, x, y,
-					                                          scene->sceneParams->voxelSize, lightSource);
-				} else
-				{
-					processPixelGrey_ImageNormals<true, false>(outRendering, pointsRay, normalsRay, imgSize, x, y,
-					                                           scene->sceneParams->voxelSize, lightSource);
+					processPixelDepthShaded_ImageNormals<true>(outRendering, pointsRay, normalsRay, imgSize, x, y, lightSource);
 				}
-			}
 			break;
-		case IITMVisualisationEngine::RENDER_SHADED_GREYSCALE:
+		case IITMVisualisationEngine::RENDER_DEPTH_SDFNORMAL:
 		default:
 #ifdef WITH_OPENMP
 #pragma omp parallel for
 #endif
 			for (int locId = 0; locId < imgSize.x * imgSize.y; locId++)
 			{
-				Vector4f ptRay = pointsRay[locId];
-				processPixelGrey_SDFNormals<ITMVoxel, ITMVoxelIndex>(outRendering[locId], ptRay.toVector3(),
-				                                                     useDirectial ? &directionalContribution[locId] : nullptr,
-				                                                     ptRay.w > 0, voxelData, voxelIndex, lightSource);
+				processPixelDepthShaded_SDFNormals(outRendering[locId], pointsRay[locId],
+				                                   tsdf->getMap(), scene->sceneParams->oneOverVoxelSize, lightSource);
 			}
 	}
 }
@@ -368,8 +252,6 @@ void ITMVisualisationEngine_CPU::CreatePointCloud(const Scene* scene,
 	Vector2i imgSize = renderState->raycastResult->noDims;
 	Matrix4f invM = trackingState->pose_d->GetInvM() * view->calib.trafo_rgb_to_depth.calib;
 
-	bool useDirectioal = this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL;
-
 	// this one is generally done for the colour tracker, so yes, update
 	// the list of visible blocks if possible
 	GenericRaycast(scene, imgSize, invM, view->calib.intrinsics_rgb.projectionParamsSimple.all, renderState, true);
@@ -379,13 +261,11 @@ void ITMVisualisationEngine_CPU::CreatePointCloud(const Scene* scene,
 		trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CPU),
 		trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CPU),
 		renderState->raycastResult->GetData(MEMORYDEVICE_CPU),
-		useDirectioal ? renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CPU) : nullptr,
-		scene->localVBA.GetVoxelBlocks(),
-		scene->index.getIndexData(),
+		GetRenderingTSDF(scene)->toCPU()->getMap(),
 		skipPoints,
-		scene->sceneParams->voxelSize,
+		scene->sceneParams->oneOverVoxelSize,
 		imgSize,
-		-Vector3f(invM.getColumn(2))
+		Vector3f(invM.getColumn(3))
 	);
 }
 
@@ -416,16 +296,7 @@ void ITMVisualisationEngine_CPU::CreateICPMaps(const Scene* scene,
 	for (int y = 0; y < imgSize.y; y++)
 		for (int x = 0; x < imgSize.x; x++)
 		{
-			if (view->calib.intrinsics_d.FocalLengthSignsDiffer())
-			{
-				processPixelICP<true, true>(pointsMap, normalsMap, pointsRay, normalsRay, imgSize, x, y, voxelSize,
-				                            lightSource);
-			} else
-			{
-				processPixelICP<true, false>(pointsMap, normalsMap, pointsRay, normalsRay, imgSize, x, y, voxelSize,
-				                             lightSource);
-			}
-
+			processPixelICP<true>(pointsMap, normalsMap, pointsRay, normalsRay, imgSize, x, y, voxelSize, lightSource);
 		}
 }
 
@@ -445,11 +316,12 @@ void ITMVisualisationEngine_CPU::ForwardRender(const Scene* scene,
 	int* fwdProjMissingPoints = renderState->fwdProjMissingPoints->GetData(MEMORYDEVICE_CPU);
 	const Vector2f* minmaximg = renderState->renderingRangeImage->GetData(MEMORYDEVICE_CPU);
 	float voxelSize = scene->sceneParams->voxelSize;
-	const ITMVoxel* voxelData = scene->localVBA.GetVoxelBlocks();
-	const typename ITMVoxelIndex::IndexData* voxelIndex = scene->index.getIndexData();
 
 	renderState->forwardProjection->Clear();
 
+#ifdef WITH_OPENMP
+#pragma omp parallel for
+#endif
 	for (int y = 0; y < imgSize.y; y++)
 		for (int x = 0; x < imgSize.x; x++)
 		{
@@ -461,6 +333,9 @@ void ITMVisualisationEngine_CPU::ForwardRender(const Scene* scene,
 		}
 
 	int noMissingPoints = 0;
+#ifdef WITH_OPENMP
+#pragma omp parallel for
+#endif
 	for (int y = 0; y < imgSize.y; y++)
 		for (int x = 0; x < imgSize.x; x++)
 		{
@@ -484,6 +359,9 @@ void ITMVisualisationEngine_CPU::ForwardRender(const Scene* scene,
 	renderState->noFwdProjMissingPoints = noMissingPoints;
 	const Vector4f invProjParams = invertProjectionParams(projParams);
 
+#ifdef WITH_OPENMP
+#pragma omp parallel for
+#endif
 	for (int pointId = 0; pointId < noMissingPoints; pointId++)
 	{
 		int locId = fwdProjMissingPoints[pointId];
@@ -491,139 +369,56 @@ void ITMVisualisationEngine_CPU::ForwardRender(const Scene* scene,
 		int locId2 =
 			(int) floor((float) x / minmaximg_subsample) + (int) floor((float) y / minmaximg_subsample) * imgSize.x;
 
-		castRay<ITMIndex, ITMVoxel>(forwardProjection[locId], nullptr, x, y,
-		                            ((TSDF_CPU<ITMIndex, ITMVoxel>*) scene->tsdf)->getMap(),
-		                            invM, invProjParams,
-		                            *(scene->sceneParams), minmaximg[locId2],
-		                                 this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL
-		);
+		castRay(forwardProjection[locId], x, y,
+		        scene->tsdf->toCPU()->getMap(),
+		        invM, invProjParams, *(scene->sceneParams), minmaximg[locId2]);
 	}
 }
 
-void ITMVisualisationEngine_CPU::GenericRaycast(const Scene* scene,
-                                                const Vector2i& imgSize, const Matrix4f& invM,
-                                                const Vector4f& projParams,
-                                                const ITMRenderState* renderState,
+void ITMVisualisationEngine_CPU::GenericRaycast(const Scene* scene, const Vector2i& imgSize, const Matrix4f& invM,
+                                                const Vector4f& projParams, const ITMRenderState* renderState,
                                                 bool updateVisibleList) const
 {
-	const Vector2f* minmaximg = renderState->renderingRangeImage->GetData(MEMORYDEVICE_CPU);
 	Vector4f* pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CPU);
-	Vector4f* normalsRay = renderState->raycastNormals->GetData(MEMORYDEVICE_CPU);
-	Vector6f* directionalContribution = renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CPU);
-	const ITMVoxel* voxelData = scene->localVBA.GetVoxelBlocks();
-	const typename ITMVoxelBlockHash::IndexData* voxelIndex = scene->index.getIndexData();
-	HashEntryVisibilityType* entriesVisibleType = NULL;
-	if (updateVisibleList && (dynamic_cast<const ITMRenderState_VH*>(renderState) != NULL))
-	{
-		entriesVisibleType = ((ITMRenderState_VH*) renderState)->GetEntriesVisibleType();
-	}
-
+	const Vector2f* minmaximg = renderState->renderingRangeImage->GetData(MEMORYDEVICE_CPU);
 	Vector4f invProjParams = invertProjectionParams(projParams);
+
+	auto tsdf = GetRenderingTSDF(scene)->toCPU();
+
 #ifdef WITH_OPENMP
 #pragma omp parallel for
 #endif
-	if (this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL and DIRECTIONAL_RENDERING_MODE == 1)
-	{
-		InputPointClouds pointClouds;
-		for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
+	for (int y = 0; y < imgSize.y; y++)
+		for (int x = 0; x < imgSize.x; x++)
 		{
-			pointClouds.pointCloud[directionIdx] = renderState->raycastResultDirectional[directionIdx]->GetData(
-				MEMORYDEVICE_CPU);
-			for (int locId = 0; locId < imgSize.x * imgSize.y; ++locId)
-			{
-				int y = locId / imgSize.x;
-				int x = locId - y * imgSize.x;
-				int locId2 =
-					(int) floor((float) x / minmaximg_subsample) + (int) floor((float) y / minmaximg_subsample) * imgSize.x;
-
-				float distance;
-				castRayDefault<ITMVoxel, ITMVoxelIndex>(
-					pointClouds.pointCloud[directionIdx][locId],
-					distance,
-					entriesVisibleType,
-					x, y,
-					voxelData,
-					voxelIndex,
-					invM,
-					invProjParams,
-					*(scene->sceneParams),
-					minmaximg[locId2],
-					TSDFDirection(directionIdx)
-				);
-			}
-
-			pointClouds.pointCloudNormals[directionIdx] = renderState->raycastNormalsDirectional[directionIdx]->GetData(
-				MEMORYDEVICE_CPU);
-			Vector4f* normals = pointClouds.pointCloudNormals[directionIdx];
-			for (int locId = 0; locId < imgSize.x * imgSize.y; ++locId)
-			{
-				int y = locId / imgSize.x;
-				int x = locId - y * imgSize.x;
-
-				bool foundPoint = true;
-				Vector3f normal;
-				computeNormal<false, false>(pointClouds.pointCloud[directionIdx], scene->sceneParams->voxelSize, imgSize, x, y,
-				                            foundPoint, normal);
-
-				if (not foundPoint)
-				{
-					normals[x + y * imgSize.x] = Vector4f(0, 0, 0, -1);
-					continue;
-				}
-
-				normals[x + y * imgSize.x] = Vector4f(normal, 1);
-			}
-		}
-
-		for (int locId = 0; locId < imgSize.x * imgSize.y; ++locId)
-		{
-			int y = locId / imgSize.x;
-			int x = locId - y * imgSize.x;
-
-			combineDirectionalPointClouds<true, false>(pointsRay, normalsRay, pointClouds, directionalContribution, imgSize,
-			                                           invM, invProjParams, x, y, scene->sceneParams->voxelSize);
-		}
-	} else
-	{
-		for (int locId = 0; locId < imgSize.x * imgSize.y; ++locId)
-		{
-			int y = locId / imgSize.x;
-			int x = locId - y * imgSize.x;
+			int locId = x + y * imgSize.x;
 			int locId2 =
 				(int) floor((float) x / minmaximg_subsample) + (int) floor((float) y / minmaximg_subsample) * imgSize.x;
 
-				castRay<ITMIndex, ITMVoxel>(
-				pointsRay[locId],
-				&directionalContribution[locId],
-				x, y,
-				((TSDF_CPU<ITMIndex, ITMVoxel>*) scene->tsdf)->getMap(),
-				invM,
-				invProjParams,
-				*(scene->sceneParams),
-				minmaximg[locId2],
-				this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL
-			);
+			float distance;
+			castRayDefaultTSDF(pointsRay[locId], distance, x, y, tsdf->getMap(), invM, invProjParams,
+			                   *(scene->sceneParams), minmaximg[locId2]);
 		}
 
-		Vector4f* normals = renderState->raycastNormals->GetData(MEMORYDEVICE_CPU);
-		for (int locId = 0; locId < imgSize.x * imgSize.y; ++locId)
+	Vector4f* normals = renderState->raycastNormals->GetData(MEMORYDEVICE_CPU);
+#ifdef WITH_OPENMP
+#pragma omp parallel for
+#endif
+	for (int y = 0; y < imgSize.y; y++)
+		for (int x = 0; x < imgSize.x; x++)
 		{
-			int y = locId / imgSize.x;
-			int x = locId - y * imgSize.x;
-
+			int locId = x + y * imgSize.x;
 			bool foundPoint = true;
 			Vector3f normal;
-			computeNormal<false, false>(pointsRay, scene->sceneParams->voxelSize, imgSize, x, y, foundPoint, normal);
+			computeNormal<false>(pointsRay, scene->sceneParams->voxelSize, imgSize, x, y, foundPoint, normal);
 
 			if (not foundPoint)
 			{
-				normals[x + y * imgSize.x] = Vector4f(0, 0, 0, -1);
+				normals[locId] = Vector4f(0, 0, 0, -1);
 				continue;
 			}
-
-			normals[x + y * imgSize.x] = Vector4f(normal, 1);
+			normals[locId] = Vector4f(normal, 1);
 		}
-	}
 }
 
 void ITMVisualisationEngine_CPU::FindSurface(const Scene* scene,
@@ -656,9 +451,48 @@ void ITMVisualisationEngine_CPU::RenderTrackingError(ITMUChar4Image* outRenderin
 		}
 }
 
-void ITMVisualisationEngine_CPU::ComputeRenderingTSDF(const Scene* scene, const ORUtils::SE3Pose* pose,
-                                                      const ITMIntrinsics* intrinsics,
-                                                      ITMRenderState* renderState)
+void ITMVisualisationEngine_CPU::ComputeRenderingTSDFImpl(const Scene* scene, const ORUtils::SE3Pose* pose,
+                                                          const ITMIntrinsics* intrinsics,
+                                                          ITMRenderState* renderState)
 {
+	float voxelSize = scene->sceneParams->voxelSize;
 
+	size_t N = renderState->noVisibleEntries;
+
+	if (N == 0)
+		return;
+
+	auto renderingTSDF = this->renderingTSDF->toCPU();
+	if (N >= renderingTSDF->allocatedBlocksMax)
+		renderingTSDF->resize(2 * N);
+	else
+		renderingTSDF->clear();
+	renderingTSDF->allocate(renderState->GetVisibleBlocks(), N);
+
+	auto& renderingTSDF_map = renderingTSDF->getMap();
+	auto& tsdf = scene->tsdfDirectional->toCPU()->getMap();
+	const Matrix4f invM_d = pose->GetInvM();
+
+	for (size_t i = 0; i < N; i++)
+	{
+		const ITMIndex& blockPos = renderState->GetVisibleBlocks()[i];
+		auto it = renderingTSDF_map.find(blockPos);
+		if (it == renderingTSDF_map.end())
+			continue;
+		ITMVoxel* block = it->second;
+
+		Vector3i voxelPosIdx = blockToVoxelPos(Vector3i(blockPos.x, blockPos.y, blockPos.z));
+
+#ifdef WITH_OPENMP
+#pragma omp parallel for
+#endif
+		for (int linearIdx = 0; linearIdx < SDF_BLOCK_SIZE3; linearIdx++)
+		{
+			ITMVoxel& voxel = block[linearIdx];
+			Vector3f voxelPos = (voxelPosIdx + voxelOffsetToCoordinate(linearIdx)).toFloat();
+
+			voxel = combineDirectionalTSDFViewPoint(voxelPos, tsdf, invM_d, voxelSize,
+			                                        scene->sceneParams->mu, scene->sceneParams->maxW);
+		}
+	}
 }

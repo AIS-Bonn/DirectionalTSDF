@@ -1,47 +1,98 @@
 // Copyright 2014-2017 Oxford University Innovation Limited and the authors of InfiniTAM
 
+#include <unordered_set>
+#include <thrust/execution_policy.h>
+#include <thrust/for_each.h>
+#include <ITMLibDefines.h>
 #include "ITMMeshingEngine_CPU.h"
 #include "../Shared/ITMMeshingEngine_Shared.h"
 
 using namespace ITMLib;
 
-void ITMMeshingEngine_CPU::MeshScene(ITMMesh *mesh, const Scene *scene)
+template<typename TIndex>
+struct findAllocatedBlocksFunctor
 {
-	ITMMesh::Triangle *triangles = mesh->triangles->GetData(MEMORYDEVICE_CPU);
-	const ITMVoxel *localVBA = scene->localVBA.GetVoxelBlocks();
-	const ITMHashEntry *hashTable = scene->index.GetEntries();
+	explicit findAllocatedBlocksFunctor(std::unordered_set<ITMIndex>& visibleBlocks)
+		: visibleBlocks(visibleBlocks)
+	{}
 
-	int noTriangles = 0, noMaxTriangles = mesh->noMaxTriangles, noTotalEntries = scene->index.noTotalEntries;
-	float factor = scene->sceneParams->voxelSize;
-
-	mesh->triangles->Clear();
-
-	for (int entryId = 0; entryId < noTotalEntries; entryId++)
+	void operator()(thrust::pair<TIndex, ITMVoxel*> block)
 	{
-		Vector3i globalPos;
-		const ITMHashEntry &currentHashEntry = hashTable[entryId];
-
-		if (currentHashEntry.ptr < 0) continue;
-
-		globalPos = currentHashEntry.pos.toInt() * SDF_BLOCK_SIZE;
-
-		for (int z = 0; z < SDF_BLOCK_SIZE; z++) for (int y = 0; y < SDF_BLOCK_SIZE; y++) for (int x = 0; x < SDF_BLOCK_SIZE; x++)
-		{
-			Vector3f vertList[12];
-			int cubeIndex = buildVertList(vertList, globalPos, Vector3i(x, y, z), scene->tsdf->toCPU()->getMap());
-			
-			if (cubeIndex < 0) continue;
-
-			for (int i = 0; triangleTable[cubeIndex][i] != -1; i += 3)
-			{
-				triangles[noTriangles].p0 = vertList[triangleTable[cubeIndex][i]] * factor;
-				triangles[noTriangles].p1 = vertList[triangleTable[cubeIndex][i + 1]] * factor;
-				triangles[noTriangles].p2 = vertList[triangleTable[cubeIndex][i + 2]] * factor;
-
-				if (noTriangles < noMaxTriangles - 1) noTriangles++;
-			}
-		}
+		visibleBlocks.insert(ITMIndex(block.first.getPosition()));
 	}
 
-	mesh->noTotalTriangles = noTriangles;
+	std::unordered_set<ITMIndex>& visibleBlocks;
+};
+
+/**
+ * find all allocated blocks (xyz only), dropping direction component
+ * @tparam TIndex
+ * @param tsdf
+ * @param allBlocksList
+ * @param numberBlocks
+ */
+template<typename TIndex>
+void
+findAllocatedBlocks(const std::unordered_map<TIndex, ITMVoxel*>& tsdf, ITMIndex** allBlocksList, size_t& numberBlocks)
+{
+	std::unordered_set<ITMIndex> allBlocks;
+	allBlocks.reserve(tsdf.size());
+
+	findAllocatedBlocksFunctor<TIndex> functor(allBlocks);
+	thrust::for_each(thrust::host, tsdf.begin(), tsdf.end(),
+	                 findAllocatedBlocksFunctor<TIndex>(allBlocks));
+
+	*allBlocksList = (ITMIndex*) malloc(allBlocks.size() * sizeof(ITMIndex));
+	thrust::copy(allBlocks.begin(), allBlocks.end(), *allBlocksList);
+	numberBlocks = allBlocks.size();
+}
+
+void ITMMeshingEngine_CPU::MeshScene(ITMMesh* mesh, const Scene* scene)
+{
+	ITMIndex* allBlocksList;
+	size_t numberBlocks;
+
+	auto tsdf = scene->tsdf->toCPU()->getMap();
+	findAllocatedBlocks(tsdf, &allBlocksList, numberBlocks);
+	printf("found %zu blocks ... ", numberBlocks);
+
+
+	size_t noTriangles = 0;
+	mesh->Resize(numberBlocks * SDF_BLOCK_SIZE3 * 4);
+	ITMMesh::Triangle* triangles = mesh->triangles->GetData(MEMORYDEVICE_CPU);
+	float factor = scene->sceneParams->voxelSize;
+
+	for (size_t entryId = 0; entryId < numberBlocks; entryId++)
+	{
+		ITMIndex block = allBlocksList[entryId];
+
+		Vector3i globalPos = Vector3i(block.x, block.y, block.z) * SDF_BLOCK_SIZE;
+
+		Vector3f vertList[12];
+		for (int x = 0; x < SDF_BLOCK_SIZE; x++)
+			for (int y = 0; y < SDF_BLOCK_SIZE; y++)
+				for (int z = 0; z < SDF_BLOCK_SIZE; z++)
+				{
+					int cubeIndex = buildVertList(vertList, globalPos, Vector3i(x, y, z), tsdf);
+
+					if (cubeIndex < 0) continue;
+
+					for (int i = 0; triangleTable[cubeIndex][i] != -1; i += 3)
+					{
+#ifdef WITH_OPENMP
+#pragma omp atomic capture
+#endif
+						size_t triangleId = noTriangles++;
+
+						if (triangleId < mesh->noMaxTriangles - 1)
+						{
+							triangles[triangleId].p0 = vertList[triangleTable[cubeIndex][i]] * factor;
+							triangles[triangleId].p1 = vertList[triangleTable[cubeIndex][i + 1]] * factor;
+							triangles[triangleId].p2 = vertList[triangleTable[cubeIndex][i + 2]] * factor;
+						}
+					}
+				}
+	}
+
+	mesh->noTotalTriangles = MIN(mesh->noMaxTriangles, noTriangles);
 }

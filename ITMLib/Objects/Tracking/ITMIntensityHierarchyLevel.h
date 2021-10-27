@@ -9,61 +9,62 @@
 
 namespace ITMLib
 {
-	class ITMIntensityHierarchyLevel : public ITMHierarchyLevel
+class ITMIntensityHierarchyLevel : public ITMHierarchyLevel
+{
+public:
+	ORUtils::Image<float>* intensity_current = nullptr;
+	ORUtils::Image<float>* intensity_prev = nullptr;
+
+	/** Gradient of intensity_prev used for computing the Jacobian */
+	ORUtils::Image<Vector2f>* gradients = nullptr;
+
+	ITMIntensityHierarchyLevel(Vector2i imgSize, int levelId, TrackerIterationType iterationType,
+	                           MemoryDeviceType memoryType, bool skipAllocation = false)
+		: ITMHierarchyLevel(levelId, iterationType, skipAllocation)
 	{
-	public:
-		ORUtils::Image<float> *intensity_current = nullptr;
-		ORUtils::Image<float> *intensity_prev = nullptr;
-
-		/** Gradient of intensity_prev used for computing the Jacobian */
-		ORUtils::Image<Vector2f> *gradients = nullptr;
-
-		ITMIntensityHierarchyLevel(Vector2i imgSize, int levelId, TrackerIterationType iterationType,
-			MemoryDeviceType memoryType, bool skipAllocation = false)
-			: ITMHierarchyLevel(levelId, iterationType, skipAllocation)
+		if (!skipAllocation)
 		{
-			if (!skipAllocation)
-			{
-				this->intensity_current = new ORUtils::Image<float>(imgSize, memoryType);
-				this->intensity_prev = new ORUtils::Image<float>(imgSize, memoryType);
-			}
-
-			this->gradients = new ORUtils::Image<Vector2f>(imgSize, memoryType);
+			this->intensity_current = new ORUtils::Image<float>(imgSize, memoryType);
+			this->intensity_prev = new ORUtils::Image<float>(imgSize, memoryType);
 		}
 
-		void UpdateHostFromDevice() override
-		{ 
-			if (!this->intensity_current || !this->intensity_prev)
-				throw std::runtime_error("ITMIntensityHierarchyLevel: did not set intensity images.");
+		this->gradients = new ORUtils::Image<Vector2f>(imgSize, memoryType);
+	}
 
-			this->intensity_current->UpdateHostFromDevice();
-			this->intensity_prev->UpdateHostFromDevice();
-			this->gradients->UpdateHostFromDevice();
-		}
+	void UpdateHostFromDevice() override
+	{
+		if (!this->intensity_current || !this->intensity_prev)
+			throw std::runtime_error("ITMIntensityHierarchyLevel: did not set intensity images.");
 
-		void UpdateDeviceFromHost() override
-		{ 
-			if (!this->intensity_current || !this->intensity_prev)
-				throw std::runtime_error("ITMIntensityHierarchyLevel: did not set intensity images.");
+		this->intensity_current->UpdateHostFromDevice();
+		this->intensity_prev->UpdateHostFromDevice();
+		this->gradients->UpdateHostFromDevice();
+	}
 
-			this->intensity_current->UpdateDeviceFromHost();
-			this->intensity_prev->UpdateDeviceFromHost();
-			this->gradients->UpdateDeviceFromHost();
-		}
+	void UpdateDeviceFromHost() override
+	{
+		if (!this->intensity_current || !this->intensity_prev)
+			throw std::runtime_error("ITMIntensityHierarchyLevel: did not set intensity images.");
 
-		~ITMIntensityHierarchyLevel(void)
+		this->intensity_current->UpdateDeviceFromHost();
+		this->intensity_prev->UpdateDeviceFromHost();
+		this->gradients->UpdateDeviceFromHost();
+	}
+
+	~ITMIntensityHierarchyLevel(void)
+	{
+		if (manageData)
 		{
-			if (manageData)
-			{
-				delete intensity_current;
-				delete intensity_prev;
-			}
-
-			delete gradients;
+			delete intensity_current;
+			delete intensity_prev;
 		}
 
-		// Suppress the default copy constructor and assignment operator
-		ITMIntensityHierarchyLevel(const ITMIntensityHierarchyLevel&);
-		ITMIntensityHierarchyLevel& operator=(const ITMIntensityHierarchyLevel&);
-	};
+		delete gradients;
+	}
+
+	// Suppress the default copy constructor and assignment operator
+	ITMIntensityHierarchyLevel(const ITMIntensityHierarchyLevel&);
+
+	ITMIntensityHierarchyLevel& operator=(const ITMIntensityHierarchyLevel&);
+};
 }

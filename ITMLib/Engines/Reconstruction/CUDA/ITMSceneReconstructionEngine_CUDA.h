@@ -6,40 +6,33 @@
 
 namespace ITMLib
 {
-template<typename TIndex, typename TVoxel> class TSDF_CUDA;
-
-class ITMSceneReconstructionEngine_CUDA : public ITMSceneReconstructionEngine
+template<typename TIndex>
+class ITMSceneReconstructionEngine_CUDA : public ITMSceneReconstructionEngine<TIndex>
 {
 private:
-	HashEntryAllocType *entriesAllocType_device;
-	Vector4s *blockCoords_device;
-	TSDFDirection *blockDirections_device;
-	size_t noAllocationBlocks;
-	size_t noFusionBlocks;
+	TSDF_CUDA<TIndex, SummingVoxel>* summingVoxelMap = nullptr;
 
-	TSDF_CUDA<ITMIndex, SummingVoxel>* summingVoxelMap;
+	/** Wrapper to make automatically getting tsdf/directionTSDF from scene object easier. */
+	TSDF_CUDA<TIndex, ITMVoxel>* GetTSDF(const Scene* scene);
 
 public:
 	void ResetScene(Scene* scene) override;
 
 	void AllocateSceneFromDepth(Scene* scene, const ITMView* view,
-	                            const ITMTrackingState* trackingState,
-	                            const ITMRenderState* renderState, bool onlyUpdateVisibleList = false,
-	                            bool resetVisibleList = false) override;
+	                            const ITMTrackingState* trackingState) override;
 
 	void FindVisibleBlocks(const Scene* scene, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
 	                       ITMRenderState* renderState) override;
 
 	explicit ITMSceneReconstructionEngine_CUDA(const std::shared_ptr<const ITMLibSettings>& settings);
 
-	~ITMSceneReconstructionEngine_CUDA();
+	~ITMSceneReconstructionEngine_CUDA() override;
 
 protected:
-	void IntegrateIntoSceneVoxelProjection(Scene* scene,
-	                                       const ITMView* view, const ITMTrackingState* trackingState,
-	                                       const ITMRenderState* renderState) override;
+	void IntegrateIntoSceneVoxelProjection(Scene* scene, const ITMView* view,
+	                                       const ITMTrackingState* trackingState) override;
 
 	void IntegrateIntoSceneRayCasting(Scene* scene, const ITMView* view,
-	                                  const ITMTrackingState* trackingState, const ITMRenderState* renderState) override;
+	                                  const ITMTrackingState* trackingState) override;
 };
 }

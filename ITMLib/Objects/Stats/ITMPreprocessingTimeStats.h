@@ -28,12 +28,12 @@ struct ITMPreprocessingTimeStats : public ITMTimeStatsBase
 		return copyImages + bilateralFilter + normalEstimation;
 	}
 
-	void Print(std::ostream &stream) const override
+	void Print(std::ostream& stream) const override
 	{
 		stream << copyImages << " " << bilateralFilter << " " << normalEstimation;
 	}
 
-	void PrintHeader(std::ostream &stream) const override
+	void PrintHeader(std::ostream& stream) const override
 	{
 		stream << "copyImages" << " " << "bilateralFilter" << " " << "normalEstimation";
 	}

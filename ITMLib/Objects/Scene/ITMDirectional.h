@@ -30,7 +30,7 @@ typedef std::underlying_type<TSDFDirection>::type TSDFDirection_type;
 struct TSDFDirectionColor_
 {
 	_CPU_AND_GPU_CODE_
-	Vector3f operator [] (size_t i) const
+	Vector3f operator[](size_t i) const
 	{
 		const Vector3f directionColor[6] = {
 			Vector3f(1, 0, 0),
@@ -43,13 +43,14 @@ struct TSDFDirectionColor_
 		return directionColor[i];
 	}
 };
+
 _CPU_AND_GPU_CODE_
 const static TSDFDirectionColor_ TSDFDirectionColor; // instantiate to allow operator usage
 
 struct TSDFDirectionVector_
 {
 	_CPU_AND_GPU_CODE_
-	Vector3f operator [] (size_t i) const
+	Vector3f operator[](size_t i) const
 	{
 		const Vector3f directionVectors[N_DIRECTIONS] = {
 			Vector3f(1, 0, 0),
@@ -62,6 +63,7 @@ struct TSDFDirectionVector_
 		return directionVectors[i];
 	}
 };
+
 _CPU_AND_GPU_CODE_
 const static TSDFDirectionVector_ TSDFDirectionVector;
 
@@ -111,7 +113,7 @@ inline float DirectionAngle(const Vector3f& normal, TSDFDirection direction)
  * @param angles
  */
 _CPU_AND_GPU_CODE_
-inline void ComputeDirectionAngle(const Vector3f& normal, float * angles)
+inline void ComputeDirectionAngle(const Vector3f& normal, float* angles)
 {
 	for (size_t i = 0; i < 3; i++)
 	{

@@ -12,66 +12,72 @@
 namespace ITMLib
 {
 
-	class ITMLibSettings
+class ITMLibSettings
+{
+public:
+	/// The device used to run the DeviceAgnostic code
+	typedef enum
 	{
-	public:
-		/// The device used to run the DeviceAgnostic code
-		typedef enum {
-			DEVICE_CPU,
-			DEVICE_CUDA,
-		} DeviceType;
+		DEVICE_CPU,
+		DEVICE_CUDA,
+	} DeviceType;
 
-		typedef enum
-		{
-			FAILUREMODE_RELOCALISE,
-			FAILUREMODE_IGNORE,
-			FAILUREMODE_STOP_INTEGRATION
-		} FailureMode;
-        
-		typedef enum
-		{
-			SWAPPINGMODE_DISABLED,
-			SWAPPINGMODE_ENABLED,
-			SWAPPINGMODE_DELETE
-		} SwappingMode;
+	typedef enum
+	{
+		FAILUREMODE_RELOCALISE,
+		FAILUREMODE_IGNORE,
+		FAILUREMODE_STOP_INTEGRATION
+	} FailureMode;
 
-		typedef enum
-		{
-			LIBMODE_BASIC,
-			LIBMODE_LOOPCLOSURE
-		} LibMode;
+	typedef enum
+	{
+		SWAPPINGMODE_DISABLED,
+		SWAPPINGMODE_ENABLED,
+		SWAPPINGMODE_DELETE
+	} SwappingMode;
 
-		/// Select the type of device to use
-		DeviceType deviceType;
+	typedef enum
+	{
+		LIBMODE_BASIC,
+		LIBMODE_LOOPCLOSURE
+	} LibMode;
 
-		bool useApproximateRaycast;
+	/// Select the type of device to use
+	DeviceType deviceType;
 
-		bool useBilateralFilter;
+	bool useApproximateRaycast;
 
-		/// For ITMColorTracker: skip every other point in energy function evaluation.
-		bool skipPoints;
+	bool useBilateralFilter;
 
-		bool createMeshingEngine;
+	/// For ITMColorTracker: skip every other point in energy function evaluation.
+	bool skipPoints;
 
-		FailureMode behaviourOnFailure;
-		SwappingMode swappingMode;
-		LibMode libMode;
+	bool createMeshingEngine;
 
-		std::string trackerConfig;
+	FailureMode behaviourOnFailure;
+	SwappingMode swappingMode;
+	LibMode libMode;
 
-		ITMFusionParams fusionParams;
+	std::string trackerConfig;
 
-		/// Further, scene specific parameters such as voxel size
-		ITMSceneParams sceneParams;
+	ITMFusionParams fusionParams;
 
-		ITMLibSettings();
-		virtual ~ITMLibSettings() = default;
-		explicit ITMLibSettings(const std::string &settingsFile);
+	/// Further, scene specific parameters such as voxel size
+	ITMSceneParams sceneParams;
 
-		// Suppress the default copy constructor and assignment operator
-		ITMLibSettings(const ITMLibSettings&);
-		ITMLibSettings& operator=(const ITMLibSettings&);
+	ITMLibSettings();
 
-		MemoryDeviceType GetMemoryType() const;
-	};
+	virtual ~ITMLibSettings() = default;
+
+	explicit ITMLibSettings(const std::string& settingsFile);
+
+	// Suppress the default copy constructor and assignment operator
+	ITMLibSettings(const ITMLibSettings&);
+
+	ITMLibSettings& operator=(const ITMLibSettings&);
+
+	[[nodiscard]] MemoryDeviceType GetMemoryType() const;
+
+	[[nodiscard]] bool Directional() const;
+};
 }

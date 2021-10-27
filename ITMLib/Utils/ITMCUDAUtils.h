@@ -4,43 +4,10 @@
 
 #include "ITMMath.h"
 #include <stdgpu/functional.h>
-#include <ITMLib/Objects/Scene/ITMVoxelBlockHash.h>
-
-namespace stdgpu {
-
-template <typename T>
-struct hash<ORUtils::Vector3<T>>
-{
-	inline STDGPU_HOST_DEVICE
-	stdgpu::index_t operator()(const ORUtils::Vector3<T>& k) const
-	{
-//		return ((stdgpu::hash<T>()(k.x) // significantly slower
-//		         ^ (stdgpu::hash<T>()(k.y) << 1)) >> 1)
-//		       ^ (stdgpu::hash<T>()(k.z) << 1);
-		return ITMLib::hash(11536487, k.x)
-		       + ITMLib::hash(14606887, k.y)
-		       + ITMLib::hash(28491781, k.z);
-	}
-};
-
-template <typename T>
-struct hash<ORUtils::Vector4<T>>
-{
-	inline STDGPU_HOST_DEVICE
-	stdgpu::index_t operator()(const ORUtils::Vector4<T>& k) const
-	{
-		return ITMLib::hash(11536487, k.x)
-		       + ITMLib::hash(14606887, k.y)
-		       + ITMLib::hash(28491781, k.z)
-		       + ITMLib::hash(83492791, k.w);
-	}
-};
-
-}
-
 
 template<class T>
-inline __device__ void warpReduce(volatile T* sdata, int tid) {
+inline __device__ void warpReduce(volatile T* sdata, int tid)
+{
 	sdata[tid] += sdata[tid + 32];
 	sdata[tid] += sdata[tid + 16];
 	sdata[tid] += sdata[tid + 8];
@@ -49,29 +16,30 @@ inline __device__ void warpReduce(volatile T* sdata, int tid) {
 	sdata[tid] += sdata[tid + 1];
 }
 
-inline __device__ void warpReduce3(volatile float* sdata, int tid) {
-	sdata[3*tid+0] += sdata[3*(tid + 32)+0];
-	sdata[3*tid+1] += sdata[3*(tid + 32)+1];
-	sdata[3*tid+2] += sdata[3*(tid + 32)+2];
-	sdata[3*tid+0] += sdata[3*(tid + 16)+0];
-	sdata[3*tid+1] += sdata[3*(tid + 16)+1];
-	sdata[3*tid+2] += sdata[3*(tid + 16)+2];
-	sdata[3*tid+0] += sdata[3*(tid + 8)+0];
-	sdata[3*tid+1] += sdata[3*(tid + 8)+1];
-	sdata[3*tid+2] += sdata[3*(tid + 8)+2];
-	sdata[3*tid+0] += sdata[3*(tid + 4)+0];
-	sdata[3*tid+1] += sdata[3*(tid + 4)+1];
-	sdata[3*tid+2] += sdata[3*(tid + 4)+2];
-	sdata[3*tid+0] += sdata[3*(tid + 2)+0];
-	sdata[3*tid+1] += sdata[3*(tid + 2)+1];
-	sdata[3*tid+2] += sdata[3*(tid + 2)+2];
-	sdata[3*tid+0] += sdata[3*(tid + 1)+0];
-	sdata[3*tid+1] += sdata[3*(tid + 1)+1];
-	sdata[3*tid+2] += sdata[3*(tid + 1)+2];
+inline __device__ void warpReduce3(volatile float* sdata, int tid)
+{
+	sdata[3 * tid + 0] += sdata[3 * (tid + 32) + 0];
+	sdata[3 * tid + 1] += sdata[3 * (tid + 32) + 1];
+	sdata[3 * tid + 2] += sdata[3 * (tid + 32) + 2];
+	sdata[3 * tid + 0] += sdata[3 * (tid + 16) + 0];
+	sdata[3 * tid + 1] += sdata[3 * (tid + 16) + 1];
+	sdata[3 * tid + 2] += sdata[3 * (tid + 16) + 2];
+	sdata[3 * tid + 0] += sdata[3 * (tid + 8) + 0];
+	sdata[3 * tid + 1] += sdata[3 * (tid + 8) + 1];
+	sdata[3 * tid + 2] += sdata[3 * (tid + 8) + 2];
+	sdata[3 * tid + 0] += sdata[3 * (tid + 4) + 0];
+	sdata[3 * tid + 1] += sdata[3 * (tid + 4) + 1];
+	sdata[3 * tid + 2] += sdata[3 * (tid + 4) + 2];
+	sdata[3 * tid + 0] += sdata[3 * (tid + 2) + 0];
+	sdata[3 * tid + 1] += sdata[3 * (tid + 2) + 1];
+	sdata[3 * tid + 2] += sdata[3 * (tid + 2) + 2];
+	sdata[3 * tid + 0] += sdata[3 * (tid + 1) + 0];
+	sdata[3 * tid + 1] += sdata[3 * (tid + 1) + 1];
+	sdata[3 * tid + 2] += sdata[3 * (tid + 1) + 2];
 }
 
-template <typename T> 
-__device__ int computePrefixSum_device(uint element, T *sum, int localSize, int localId)
+template<typename T>
+__device__ int computePrefixSum_device(uint element, T* sum, int localSize, int localId)
 {
 	// TODO: should be localSize...
 	__shared__ uint prefixBuffer[16 * 16];
@@ -99,12 +67,14 @@ __device__ int computePrefixSum_device(uint element, T *sum, int localSize, int 
 	__syncthreads();
 
 	int offset;// = groupOffset + prefixBuffer[localId] - 1;
-	if (localId == 0) {
+	if (localId == 0)
+	{
 		if (prefixBuffer[localId] == 0) offset = -1;
 		else offset = groupOffset;
-	} else {
+	} else
+	{
 		if (prefixBuffer[localId] == prefixBuffer[localId - 1]) offset = -1;
-		else offset = groupOffset + prefixBuffer[localId-1];
+		else offset = groupOffset + prefixBuffer[localId - 1];
 	}
 
 	return offset;
@@ -133,7 +103,7 @@ __device__ int computePrefixSum_device(uint element, T *sum, int localSize, int 
 //}
 
 template<typename T>
-__global__ void memsetKernel_device(T *devPtr, const T val, size_t nwords)
+__global__ void memsetKernel_device(T* devPtr, const T val, size_t nwords)
 {
 	size_t offset = threadIdx.x + blockDim.x * blockIdx.x;
 	if (offset >= nwords) return;
@@ -141,7 +111,7 @@ __global__ void memsetKernel_device(T *devPtr, const T val, size_t nwords)
 }
 
 template<typename T>
-__global__ void memsetKernelLarge_device(T *devPtr, const T val, size_t nwords)
+__global__ void memsetKernelLarge_device(T* devPtr, const T val, size_t nwords)
 {
 	size_t offset = threadIdx.x + blockDim.x * (blockIdx.x + blockIdx.y * gridDim.x);
 	if (offset >= nwords) return;
@@ -149,23 +119,25 @@ __global__ void memsetKernelLarge_device(T *devPtr, const T val, size_t nwords)
 }
 
 template<typename T>
-inline void memsetKernel(T *devPtr, const T val, size_t nwords)
+inline void memsetKernel(T* devPtr, const T val, size_t nwords)
 {
 	dim3 blockSize(256);
-	dim3 gridSize((int)ceil((float)nwords / (float)blockSize.x));
-	if (gridSize.x <= 65535) {
-		memsetKernel_device<T> <<<gridSize,blockSize>>>(devPtr, val, nwords);
+	dim3 gridSize((int) ceil((float) nwords / (float) blockSize.x));
+	if (gridSize.x <= 65535)
+	{
+		memsetKernel_device<T> <<<gridSize, blockSize>>>(devPtr, val, nwords);
 		ORcudaKernelCheck;
-	} else {
-		gridSize.x = (int)ceil(sqrt((float)gridSize.x));
-		gridSize.y = (int)ceil((float)nwords / (float)(blockSize.x * gridSize.x));
-		memsetKernelLarge_device<T> <<<gridSize,blockSize>>>(devPtr, val, nwords);
+	} else
+	{
+		gridSize.x = (int) ceil(sqrt((float) gridSize.x));
+		gridSize.y = (int) ceil((float) nwords / (float) (blockSize.x * gridSize.x));
+		memsetKernelLarge_device<T> <<<gridSize, blockSize>>>(devPtr, val, nwords);
 		ORcudaKernelCheck;
 	}
 }
 
 template<typename T>
-__global__ void fillArrayKernel_device(T *devPtr, size_t nwords)
+__global__ void fillArrayKernel_device(T* devPtr, size_t nwords)
 {
 	size_t offset = threadIdx.x + blockDim.x * blockIdx.x;
 	if (offset >= nwords) return;
@@ -173,11 +145,11 @@ __global__ void fillArrayKernel_device(T *devPtr, size_t nwords)
 }
 
 template<typename T>
-inline void fillArrayKernel(T *devPtr, size_t nwords)
+inline void fillArrayKernel(T* devPtr, size_t nwords)
 {
 	dim3 blockSize(256);
-	dim3 gridSize((int)ceil((float)nwords / (float)blockSize.x));
-	fillArrayKernel_device<T> <<<gridSize,blockSize>>>(devPtr, nwords);
+	dim3 gridSize((int) ceil((float) nwords / (float) blockSize.x));
+	fillArrayKernel_device<T> <<<gridSize, blockSize>>>(devPtr, nwords);
 	ORcudaKernelCheck;
 }
 

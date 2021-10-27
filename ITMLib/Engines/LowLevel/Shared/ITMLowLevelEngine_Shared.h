@@ -4,8 +4,11 @@
 
 #include "../../../Utils/ITMMath.h"
 
-_CPU_AND_GPU_CODE_ inline void convertColourToIntensity(DEVICEPTR(float) *imageData_out, int x, int y, Vector2i dims,
-		const CONSTPTR(Vector4u) *imageData_in)
+namespace ITMLib
+{
+
+_CPU_AND_GPU_CODE_ inline void convertColourToIntensity(float* imageData_out, int x, int y, Vector2i dims,
+                                                        const Vector4u* imageData_in)
 {
 	const int linear_pos = y * dims.x + x;
 	const Vector4u colour = imageData_in[linear_pos];
@@ -13,8 +16,8 @@ _CPU_AND_GPU_CODE_ inline void convertColourToIntensity(DEVICEPTR(float) *imageD
 	imageData_out[linear_pos] = (0.299f * colour.x + 0.587f * colour.y + 0.114f * colour.z) / 255.f;
 }
 
-_CPU_AND_GPU_CODE_ inline void filterSubsample(DEVICEPTR(Vector4u) *imageData_out, int x, int y, Vector2i newDims, 
-	const CONSTPTR(Vector4u) *imageData_in, Vector2i oldDims)
+_CPU_AND_GPU_CODE_ inline void filterSubsample(Vector4u* imageData_out, int x, int y, Vector2i newDims,
+                                               const Vector4u* imageData_in, Vector2i oldDims)
 {
 	int src_pos_x = x * 2, src_pos_y = y * 2;
 	Vector4u pixel_out, pixels_in[4];
@@ -32,8 +35,8 @@ _CPU_AND_GPU_CODE_ inline void filterSubsample(DEVICEPTR(Vector4u) *imageData_ou
 	imageData_out[x + y * newDims.x] = pixel_out;
 }
 
-_CPU_AND_GPU_CODE_ inline void boxFilter2x2(DEVICEPTR(float) *imageData_out, int x_out, int y_out, Vector2i newDims,
-	const CONSTPTR(float) *imageData_in, int x_in, int y_in, Vector2i oldDims)
+_CPU_AND_GPU_CODE_ inline void boxFilter2x2(float* imageData_out, int x_out, int y_out, Vector2i newDims,
+                                            const float* imageData_in, int x_in, int y_in, Vector2i oldDims)
 {
 	float pixel_out = 0.f;
 
@@ -45,54 +48,88 @@ _CPU_AND_GPU_CODE_ inline void boxFilter2x2(DEVICEPTR(float) *imageData_out, int
 	imageData_out[x_out + y_out * newDims.x] = pixel_out / 4.f;
 }
 
-_CPU_AND_GPU_CODE_ inline void filterSubsampleWithHoles(DEVICEPTR(float) *imageData_out, int x, int y, Vector2i newDims, 
-	const CONSTPTR(float) *imageData_in, Vector2i oldDims)
+_CPU_AND_GPU_CODE_ inline void filterSubsampleWithHoles(float* imageData_out, int x, int y, Vector2i newDims,
+                                                        const float* imageData_in, Vector2i oldDims)
 {
 	int src_pos_x = x * 2, src_pos_y = y * 2;
 	float pixel_out = 0.0f, pixel_in, no_good_pixels = 0.0f;
 
 	pixel_in = imageData_in[(src_pos_x + 0) + (src_pos_y + 0) * oldDims.x];
-	if (pixel_in > 0.0f) { pixel_out += pixel_in; no_good_pixels++; }
+	if (pixel_in > 0.0f)
+	{
+		pixel_out += pixel_in;
+		no_good_pixels++;
+	}
 
 	pixel_in = imageData_in[(src_pos_x + 1) + (src_pos_y + 0) * oldDims.x];
-	if (pixel_in > 0.0f) { pixel_out += pixel_in; no_good_pixels++; }
+	if (pixel_in > 0.0f)
+	{
+		pixel_out += pixel_in;
+		no_good_pixels++;
+	}
 
 	pixel_in = imageData_in[(src_pos_x + 0) + (src_pos_y + 1) * oldDims.x];
-	if (pixel_in > 0.0f) { pixel_out += pixel_in; no_good_pixels++; }
+	if (pixel_in > 0.0f)
+	{
+		pixel_out += pixel_in;
+		no_good_pixels++;
+	}
 
 	pixel_in = imageData_in[(src_pos_x + 1) + (src_pos_y + 1) * oldDims.x];
-	if (pixel_in > 0.0f) { pixel_out += pixel_in; no_good_pixels++; }
+	if (pixel_in > 0.0f)
+	{
+		pixel_out += pixel_in;
+		no_good_pixels++;
+	}
 
 	if (no_good_pixels > 0) pixel_out /= no_good_pixels;
 
 	imageData_out[x + y * newDims.x] = pixel_out;
 }
 
-_CPU_AND_GPU_CODE_ inline void filterSubsampleWithHoles(DEVICEPTR(Vector4f) *imageData_out, int x, int y, Vector2i newDims, 
-	const CONSTPTR(Vector4f) *imageData_in, Vector2i oldDims)
+_CPU_AND_GPU_CODE_ inline void filterSubsampleWithHoles(Vector4f* imageData_out, int x, int y, Vector2i newDims,
+                                                        const Vector4f* imageData_in, Vector2i oldDims)
 {
 	int src_pos_x = x * 2, src_pos_y = y * 2;
-	Vector4f pixel_out(0.0f), pixel_in; float no_good_pixels = 0.0f;
+	Vector4f pixel_out(0.0f), pixel_in;
+	float no_good_pixels = 0.0f;
 
 	pixel_in = imageData_in[(src_pos_x + 0) + (src_pos_y + 0) * oldDims.x];
-	if (pixel_in.w >= 0) { pixel_out += pixel_in; no_good_pixels++; }
+	if (pixel_in.w >= 0)
+	{
+		pixel_out += pixel_in;
+		no_good_pixels++;
+	}
 
 	pixel_in = imageData_in[(src_pos_x + 1) + (src_pos_y + 0) * oldDims.x];
-	if (pixel_in.w >= 0) { pixel_out += pixel_in; no_good_pixels++; }
+	if (pixel_in.w >= 0)
+	{
+		pixel_out += pixel_in;
+		no_good_pixels++;
+	}
 
 	pixel_in = imageData_in[(src_pos_x + 0) + (src_pos_y + 1) * oldDims.x];
-	if (pixel_in.w >= 0) { pixel_out += pixel_in; no_good_pixels++; }
+	if (pixel_in.w >= 0)
+	{
+		pixel_out += pixel_in;
+		no_good_pixels++;
+	}
 
 	pixel_in = imageData_in[(src_pos_x + 1) + (src_pos_y + 1) * oldDims.x];
-	if (pixel_in.w >= 0) { pixel_out += pixel_in; no_good_pixels++; }
+	if (pixel_in.w >= 0)
+	{
+		pixel_out += pixel_in;
+		no_good_pixels++;
+	}
 
 	if (no_good_pixels > 0) pixel_out /= no_good_pixels;
-	else { pixel_out.w = -1.0f; }
+	else
+	{ pixel_out.w = -1.0f; }
 
 	imageData_out[x + y * newDims.x] = pixel_out;
 }
 
-_CPU_AND_GPU_CODE_ inline void gradientX(DEVICEPTR(Vector4s) *grad, int x, int y, const CONSTPTR(Vector4u) *image, Vector2i imgSize)
+_CPU_AND_GPU_CODE_ inline void gradientX(Vector4s* grad, int x, int y, const Vector4u* image, Vector2i imgSize)
 {
 	Vector4s d1, d2, d3, d_out;
 
@@ -100,9 +137,9 @@ _CPU_AND_GPU_CODE_ inline void gradientX(DEVICEPTR(Vector4s) *grad, int x, int y
 	d1.y = image[(x + 1) + (y - 1) * imgSize.x].y - image[(x - 1) + (y - 1) * imgSize.x].y;
 	d1.z = image[(x + 1) + (y - 1) * imgSize.x].z - image[(x - 1) + (y - 1) * imgSize.x].z;
 
-	d2.x = image[(x + 1) + (y)* imgSize.x].x - image[(x - 1) + (y)* imgSize.x].x;
-	d2.y = image[(x + 1) + (y)* imgSize.x].y - image[(x - 1) + (y)* imgSize.x].y;
-	d2.z = image[(x + 1) + (y)* imgSize.x].z - image[(x - 1) + (y)* imgSize.x].z;
+	d2.x = image[(x + 1) + (y) * imgSize.x].x - image[(x - 1) + (y) * imgSize.x].x;
+	d2.y = image[(x + 1) + (y) * imgSize.x].y - image[(x - 1) + (y) * imgSize.x].y;
+	d2.z = image[(x + 1) + (y) * imgSize.x].z - image[(x - 1) + (y) * imgSize.x].z;
 
 	d3.x = image[(x + 1) + (y + 1) * imgSize.x].x - image[(x - 1) + (y + 1) * imgSize.x].x;
 	d3.y = image[(x + 1) + (y + 1) * imgSize.x].y - image[(x - 1) + (y + 1) * imgSize.x].y;
@@ -118,7 +155,7 @@ _CPU_AND_GPU_CODE_ inline void gradientX(DEVICEPTR(Vector4s) *grad, int x, int y
 	grad[x + y * imgSize.x] = d_out;
 }
 
-_CPU_AND_GPU_CODE_ inline void gradientY(DEVICEPTR(Vector4s) *grad, int x, int y, const CONSTPTR(Vector4u) *image, Vector2i imgSize)
+_CPU_AND_GPU_CODE_ inline void gradientY(Vector4s* grad, int x, int y, const Vector4u* image, Vector2i imgSize)
 {
 	Vector4s d1, d2, d3, d_out;
 
@@ -126,9 +163,9 @@ _CPU_AND_GPU_CODE_ inline void gradientY(DEVICEPTR(Vector4s) *grad, int x, int y
 	d1.y = image[(x - 1) + (y + 1) * imgSize.x].y - image[(x - 1) + (y - 1) * imgSize.x].y;
 	d1.z = image[(x - 1) + (y + 1) * imgSize.x].z - image[(x - 1) + (y - 1) * imgSize.x].z;
 
-	d2.x = image[(x)+(y + 1) * imgSize.x].x - image[(x)+(y - 1) * imgSize.x].x;
-	d2.y = image[(x)+(y + 1) * imgSize.x].y - image[(x)+(y - 1) * imgSize.x].y;
-	d2.z = image[(x)+(y + 1) * imgSize.x].z - image[(x)+(y - 1) * imgSize.x].z;
+	d2.x = image[(x) + (y + 1) * imgSize.x].x - image[(x) + (y - 1) * imgSize.x].x;
+	d2.y = image[(x) + (y + 1) * imgSize.x].y - image[(x) + (y - 1) * imgSize.x].y;
+	d2.z = image[(x) + (y + 1) * imgSize.x].z - image[(x) + (y - 1) * imgSize.x].z;
 
 	d3.x = image[(x + 1) + (y + 1) * imgSize.x].x - image[(x + 1) + (y - 1) * imgSize.x].x;
 	d3.y = image[(x + 1) + (y + 1) * imgSize.x].y - image[(x + 1) + (y - 1) * imgSize.x].y;
@@ -144,18 +181,18 @@ _CPU_AND_GPU_CODE_ inline void gradientY(DEVICEPTR(Vector4s) *grad, int x, int y
 	grad[x + y * imgSize.x] = d_out;
 }
 
-_CPU_AND_GPU_CODE_ inline void gradientXY(DEVICEPTR(Vector2f) *grad, int x, int y, const CONSTPTR(float) *image, Vector2i imgSize)
+_CPU_AND_GPU_CODE_ inline void gradientXY(Vector2f* grad, int x, int y, const float* image, Vector2i imgSize)
 {
 	Vector2f d1, d2, d3, d_out;
 
 	// Compute gradient in the X direction
 	d1.x = image[(y - 1) * imgSize.x + (x + 1)] - image[(y - 1) * imgSize.x + (x - 1)];
-	d2.x = image[(y    ) * imgSize.x + (x + 1)] - image[(y    ) * imgSize.x + (x - 1)];
+	d2.x = image[(y) * imgSize.x + (x + 1)] - image[(y) * imgSize.x + (x - 1)];
 	d3.x = image[(y + 1) * imgSize.x + (x + 1)] - image[(y + 1) * imgSize.x + (x - 1)];
 
 	// Compute gradient in the Y direction
 	d1.y = image[(y + 1) * imgSize.x + (x - 1)] - image[(y - 1) * imgSize.x + (x - 1)];
-	d2.y = image[(y + 1) * imgSize.x + (x    )] - image[(y - 1) * imgSize.x + (x    )];
+	d2.y = image[(y + 1) * imgSize.x + (x)] - image[(y - 1) * imgSize.x + (x)];
 	d3.y = image[(y + 1) * imgSize.x + (x + 1)] - image[(y - 1) * imgSize.x + (x + 1)];
 
 	d_out.x = (d1.x + 2.f * d2.x + d3.x) / 8.f;
@@ -163,3 +200,5 @@ _CPU_AND_GPU_CODE_ inline void gradientXY(DEVICEPTR(Vector2f) *grad, int x, int 
 
 	grad[y * imgSize.x + x] = d_out;
 }
+
+} // namespace ITMLib

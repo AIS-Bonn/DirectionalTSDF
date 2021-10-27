@@ -13,14 +13,14 @@ namespace ITMLib
  */
 struct ITMLowLevelEngineFactory
 {
-  //#################### PUBLIC STATIC MEMBER FUNCTIONS ####################
+	//#################### PUBLIC STATIC MEMBER FUNCTIONS ####################
 
-  /**
-   * \brief Makes a low-level engine.
-   *
-   * \param deviceType  The device on which the low-level engine should operate.
-   */
-  static ITMLowLevelEngine *MakeLowLevelEngine(ITMLibSettings::DeviceType deviceType);
+	/**
+	 * \brief Makes a low-level engine.
+	 *
+	 * \param deviceType  The device on which the low-level engine should operate.
+	 */
+	static ITMLowLevelEngine* MakeLowLevelEngine(ITMLibSettings::DeviceType deviceType);
 };
 
 }

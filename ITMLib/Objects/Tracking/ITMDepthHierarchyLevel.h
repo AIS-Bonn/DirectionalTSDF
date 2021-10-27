@@ -9,39 +9,40 @@
 
 namespace ITMLib
 {
-	class ITMDepthHierarchyLevel : public ITMHierarchyLevel
+class ITMDepthHierarchyLevel : public ITMHierarchyLevel
+{
+public:
+	ORUtils::Image<float>* depth = nullptr;
+
+	ITMDepthHierarchyLevel(Vector2i imgSize, int levelId, TrackerIterationType iterationType,
+	                       MemoryDeviceType memoryType, bool skipAllocation = false)
+		: ITMHierarchyLevel(levelId, iterationType, skipAllocation)
 	{
-	public:
-		ORUtils::Image<float> *depth = nullptr;
-
-		ITMDepthHierarchyLevel(Vector2i imgSize, int levelId, TrackerIterationType iterationType,
-			MemoryDeviceType memoryType, bool skipAllocation = false)
-			: ITMHierarchyLevel(levelId, iterationType, skipAllocation)
+		if (!skipAllocation)
 		{
-			if (!skipAllocation)
-			{
-				this->depth = new ORUtils::Image<float>(imgSize, memoryType);
-			}
+			this->depth = new ORUtils::Image<float>(imgSize, memoryType);
 		}
+	}
 
-		void UpdateHostFromDevice() override
-		{ 
-			this->depth->UpdateHostFromDevice();
-		}
+	void UpdateHostFromDevice() override
+	{
+		this->depth->UpdateHostFromDevice();
+	}
 
-		void UpdateDeviceFromHost() override
-		{ 
-			this->depth->UpdateDeviceFromHost();
-		}
+	void UpdateDeviceFromHost() override
+	{
+		this->depth->UpdateDeviceFromHost();
+	}
 
-		~ITMDepthHierarchyLevel(void)
-		{
-			if (manageData)
-				delete depth;
-		}
+	~ITMDepthHierarchyLevel(void)
+	{
+		if (manageData)
+			delete depth;
+	}
 
-		// Suppress the default copy constructor and assignment operator
-		ITMDepthHierarchyLevel(const ITMDepthHierarchyLevel&);
-		ITMDepthHierarchyLevel& operator=(const ITMDepthHierarchyLevel&);
-	};
+	// Suppress the default copy constructor and assignment operator
+	ITMDepthHierarchyLevel(const ITMDepthHierarchyLevel&);
+
+	ITMDepthHierarchyLevel& operator=(const ITMDepthHierarchyLevel&);
+};
 }

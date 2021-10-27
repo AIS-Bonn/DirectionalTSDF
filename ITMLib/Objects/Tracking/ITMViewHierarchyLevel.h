@@ -9,51 +9,56 @@
 
 namespace ITMLib
 {
-	class ITMViewHierarchyLevel : public ITMHierarchyLevel
-	{
-	public:
-		ORUtils::Image<Vector4u> *rgb = nullptr;
-		ORUtils::Image<float> *depth = nullptr;
-		ORUtils::Image<Vector4s> *gradientX_rgb = nullptr, *gradientY_rgb = nullptr;
+class ITMViewHierarchyLevel : public ITMHierarchyLevel
+{
+public:
+	ORUtils::Image<Vector4u>* rgb = nullptr;
+	ORUtils::Image<float>* depth = nullptr;
+	ORUtils::Image<Vector4s>* gradientX_rgb = nullptr, * gradientY_rgb = nullptr;
 
-		ITMViewHierarchyLevel(Vector2i imgSize, int levelId, TrackerIterationType iterationType, MemoryDeviceType memoryType, bool skipAllocation)
+	ITMViewHierarchyLevel(Vector2i imgSize, int levelId, TrackerIterationType iterationType, MemoryDeviceType memoryType,
+	                      bool skipAllocation)
 		: ITMHierarchyLevel(levelId, iterationType, skipAllocation)
+	{
+		if (!skipAllocation)
 		{
-			if (!skipAllocation) {
-				this->rgb = new ORUtils::Image<Vector4u>(imgSize, memoryType);
-				this->depth = new ORUtils::Image<float>(imgSize, memoryType);
-				this->gradientX_rgb = new ORUtils::Image<Vector4s>(imgSize, memoryType);
-				this->gradientY_rgb = new ORUtils::Image<Vector4s>(imgSize, memoryType);
-			}
+			this->rgb = new ORUtils::Image<Vector4u>(imgSize, memoryType);
+			this->depth = new ORUtils::Image<float>(imgSize, memoryType);
+			this->gradientX_rgb = new ORUtils::Image<Vector4s>(imgSize, memoryType);
+			this->gradientY_rgb = new ORUtils::Image<Vector4s>(imgSize, memoryType);
 		}
+	}
 
-		void UpdateHostFromDevice()
-		{ 
-			this->rgb->UpdateHostFromDevice();
-			this->depth->UpdateHostFromDevice();
-			this->gradientX_rgb->UpdateHostFromDevice();
-			this->gradientY_rgb->UpdateHostFromDevice();
-		}
+	void UpdateHostFromDevice()
+	{
+		this->rgb->UpdateHostFromDevice();
+		this->depth->UpdateHostFromDevice();
+		this->gradientX_rgb->UpdateHostFromDevice();
+		this->gradientY_rgb->UpdateHostFromDevice();
+	}
 
-		void UpdateDeviceFromHost()
-		{ 
-			this->rgb->UpdateDeviceFromHost();
-			this->depth->UpdateDeviceFromHost();
-			this->gradientX_rgb->UpdateDeviceFromHost();
-			this->gradientY_rgb->UpdateDeviceFromHost();
-		}
+	void UpdateDeviceFromHost()
+	{
+		this->rgb->UpdateDeviceFromHost();
+		this->depth->UpdateDeviceFromHost();
+		this->gradientX_rgb->UpdateDeviceFromHost();
+		this->gradientY_rgb->UpdateDeviceFromHost();
+	}
 
-		~ITMViewHierarchyLevel(void)
+	~ITMViewHierarchyLevel(void)
+	{
+		if (manageData)
 		{
-			if (manageData) {
-				delete rgb;
-				delete depth;
-				delete gradientX_rgb; delete gradientY_rgb;
-			}
+			delete rgb;
+			delete depth;
+			delete gradientX_rgb;
+			delete gradientY_rgb;
 		}
+	}
 
-		// Suppress the default copy constructor and assignment operator
-		ITMViewHierarchyLevel(const ITMViewHierarchyLevel&);
-		ITMViewHierarchyLevel& operator=(const ITMViewHierarchyLevel&);
-	};
+	// Suppress the default copy constructor and assignment operator
+	ITMViewHierarchyLevel(const ITMViewHierarchyLevel&);
+
+	ITMViewHierarchyLevel& operator=(const ITMViewHierarchyLevel&);
+};
 }

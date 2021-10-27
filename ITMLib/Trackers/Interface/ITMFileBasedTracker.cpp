@@ -5,11 +5,12 @@
 #include <cstdio>
 #include <fstream>
 
-namespace ITMLib {
+namespace ITMLib
+{
 
-ITMFileBasedTracker::ITMFileBasedTracker(const std::string &poseMask_, size_t initialFrameNo_) :
-		poseMask(poseMask_),
-		frameCount(initialFrameNo_)
+ITMFileBasedTracker::ITMFileBasedTracker(const std::string& poseMask_, size_t initialFrameNo_) :
+	poseMask(poseMask_),
+	frameCount(initialFrameNo_)
 {}
 
 bool ITMFileBasedTracker::CanKeepTracking() const
@@ -18,7 +19,7 @@ bool ITMFileBasedTracker::CanKeepTracking() const
 	return poseFile.is_open();
 }
 
-void ITMFileBasedTracker::TrackCamera(ITMTrackingState *trackingState, const ITMView *view)
+void ITMFileBasedTracker::TrackCamera(ITMTrackingState* trackingState, const ITMView* view)
 {
 	trackingState->trackerResult = ITMTrackingState::TRACKING_FAILED;
 

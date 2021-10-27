@@ -36,7 +36,7 @@ struct ITMReconstructionTimeStats : public ITMTimeStatsBase
 		       << " " << carving << " " << swapping;
 	}
 
-	void PrintHeader(std::ostream &stream) const override
+	void PrintHeader(std::ostream& stream) const override
 	{
 		stream << "buildingVisibilityList" << " " << "allocation" << " " << "fusion"
 		       << " " << "carving" << " " << "swapping";

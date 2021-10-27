@@ -15,11 +15,11 @@ struct ITMTimeStatsBase
 
 	virtual float GetSum() const = 0;
 
-	virtual void Print(std::ostream &stream) const = 0;
+	virtual void Print(std::ostream& stream) const = 0;
 
-	virtual void PrintHeader(std::ostream &stream) const = 0;
+	virtual void PrintHeader(std::ostream& stream) const = 0;
 
-	friend std::ostream& operator<<( std::ostream& stream, const ITMTimeStatsBase& timeStats )
+	friend std::ostream& operator<<(std::ostream& stream, const ITMTimeStatsBase& timeStats)
 	{
 		timeStats.Print(stream);
 		return stream;

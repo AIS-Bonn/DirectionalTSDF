@@ -9,37 +9,38 @@
 
 namespace ITMLib
 {
-	template <class ImageType>
-	class ITMTemplatedHierarchyLevel : public ITMHierarchyLevel
+template<class ImageType>
+class ITMTemplatedHierarchyLevel : public ITMHierarchyLevel
+{
+public:
+	ImageType* data;
+
+	ITMTemplatedHierarchyLevel(Vector2i imgSize, int levelId, TrackerIterationType iterationType,
+	                           MemoryDeviceType memoryType, bool skipAllocation = false)
+		: ITMHierarchyLevel(levelId, iterationType, skipAllocation)
 	{
-	public:
-		ImageType *data;
+		if (!skipAllocation) this->data = new ImageType(imgSize, memoryType);
+	}
 
-		ITMTemplatedHierarchyLevel(Vector2i imgSize, int levelId, TrackerIterationType iterationType, 
-			MemoryDeviceType memoryType, bool skipAllocation = false)
-			: ITMHierarchyLevel(levelId, iterationType, skipAllocation)
-		{
-			if (!skipAllocation) this->data = new ImageType(imgSize, memoryType);
-		}
+	~ITMTemplatedHierarchyLevel()
+	{
+		if (manageData)
+			delete data;
+	}
 
-		~ITMTemplatedHierarchyLevel()
-		{
-			if (manageData)
-				delete data;
-		}
+	void UpdateHostFromDevice() override
+	{
+		this->data->UpdateHostFromDevice();
+	}
 
-		void UpdateHostFromDevice() override
-		{ 
-			this->data->UpdateHostFromDevice();
-		}
+	void UpdateDeviceFromHost() override
+	{
+		this->data->UpdateDeviceFromHost();
+	}
 
-		void UpdateDeviceFromHost() override
-		{ 
-			this->data->UpdateDeviceFromHost();
-		}
+	// Suppress the default copy constructor and assignment operator
+	ITMTemplatedHierarchyLevel(const ITMTemplatedHierarchyLevel&);
 
-		// Suppress the default copy constructor and assignment operator
-		ITMTemplatedHierarchyLevel(const ITMTemplatedHierarchyLevel&);
-		ITMTemplatedHierarchyLevel& operator=(const ITMTemplatedHierarchyLevel&);
-	};
+	ITMTemplatedHierarchyLevel& operator=(const ITMTemplatedHierarchyLevel&);
+};
 }

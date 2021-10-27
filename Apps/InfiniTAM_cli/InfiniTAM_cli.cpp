@@ -8,9 +8,7 @@
 
 #include "Apps/Utils/CLIUtils.h"
 
-#include "ITMLib/ITMLibDefines.h"
 #include "ITMLib/Core/ITMBasicEngine.h"
-#include "ITMLib/Core/ITMMultiEngine.h"
 
 using namespace InfiniTAM::Engine;
 using namespace InputSource;
@@ -34,16 +32,11 @@ int main(int argc, char** argv)
 		return -1;
 	}
 
-	ITMMainEngine* mainEngine = nullptr;
+	ITMMainEngine* mainEngine;
 	switch (internalSettings->libMode)
 	{
 		case ITMLibSettings::LIBMODE_BASIC:
 			mainEngine = new ITMBasicEngine(internalSettings, imageSource->getCalib(),
-			                                imageSource->getRGBImageSize(),
-			                                imageSource->getDepthImageSize());
-			break;
-		case ITMLibSettings::LIBMODE_LOOPCLOSURE:
-			mainEngine = new ITMMultiEngine(internalSettings, imageSource->getCalib(),
 			                                imageSource->getRGBImageSize(),
 			                                imageSource->getDepthImageSize());
 			break;

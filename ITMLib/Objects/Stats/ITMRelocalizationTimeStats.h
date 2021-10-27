@@ -26,12 +26,12 @@ struct ITMRelocalizationTimeStats : public ITMTimeStatsBase
 		return 0;
 	}
 
-	void Print(std::ostream &stream) const override
+	void Print(std::ostream& stream) const override
 	{
 		stream << relocalization;
 	}
 
-	void PrintHeader(std::ostream &stream) const override
+	void PrintHeader(std::ostream& stream) const override
 	{
 		stream << "relocalization";
 	}

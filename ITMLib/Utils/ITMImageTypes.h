@@ -5,6 +5,9 @@
 #include "ITMMath.h"
 #include "../../ORUtils/Image.h"
 
+namespace ITMLib
+{
+
 typedef ORUtils::Image<bool> ITMBoolImage;
 typedef ORUtils::Image<float> ITMFloatImage;
 typedef ORUtils::Image<Vector2f> ITMFloat2Image;
@@ -22,3 +25,5 @@ typedef ORUtils::Image<uchar> ITMUCharImage;
 typedef ORUtils::Image<Vector4u> ITMUChar4Image;
 typedef ORUtils::Image<uint> ITMUIntImage;
 typedef ORUtils::Image<ushort> ITMUShortImage;
+
+} // namespace ITMLib

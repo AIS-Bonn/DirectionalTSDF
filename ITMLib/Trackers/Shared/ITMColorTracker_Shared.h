@@ -4,8 +4,12 @@
 
 #include "../../Utils/ITMPixelUtils.h"
 
-_CPU_AND_GPU_CODE_ inline float getColorDifferenceSq(DEVICEPTR(Vector4f) *locations, DEVICEPTR(Vector4f) *colours, DEVICEPTR(Vector4u) *rgb,
-	const CONSTPTR(Vector2i) & imgSize, int locId_global, Vector4f projParams, Matrix4f M)
+namespace ITMLib
+{
+
+_CPU_AND_GPU_CODE_ inline float getColorDifferenceSq(Vector4f* locations, Vector4f* colours, Vector4u* rgb,
+                                                     const Vector2i& imgSize, int locId_global, Vector4f projParams,
+                                                     Matrix4f M)
 {
 	Vector4f pt_model, pt_camera, colour_known, colour_obs;
 	Vector3f colour_diff;
@@ -29,13 +33,15 @@ _CPU_AND_GPU_CODE_ inline float getColorDifferenceSq(DEVICEPTR(Vector4f) *locati
 	colour_diff.x = colour_obs.x - 255.0f * colour_known.x;
 	colour_diff.y = colour_obs.y - 255.0f * colour_known.y;
 	colour_diff.z = colour_obs.z - 255.0f * colour_known.z;
-	
+
 	return colour_diff.x * colour_diff.x + colour_diff.y * colour_diff.y + colour_diff.z * colour_diff.z;
 }
 
-_CPU_AND_GPU_CODE_ inline bool computePerPointGH_rt_Color(THREADPTR(float) *localGradient, THREADPTR(float) *localHessian,
-	DEVICEPTR(Vector4f) *locations, DEVICEPTR(Vector4f) *colours, DEVICEPTR(Vector4u) *rgb, const CONSTPTR(Vector2i) & imgSize,
-    int locId_global, Vector4f projParams, Matrix4f M, DEVICEPTR(Vector4s) *gx, DEVICEPTR(Vector4s) *gy, int numPara, int startPara)
+_CPU_AND_GPU_CODE_ inline bool computePerPointGH_rt_Color(float* localGradient, float* localHessian,
+                                                          Vector4f* locations, Vector4f* colours, Vector4u* rgb,
+                                                          const Vector2i& imgSize,
+                                                          int locId_global, Vector4f projParams, Matrix4f M,
+                                                          Vector4s* gx, Vector4s* gy, int numPara, int startPara)
 {
 	Vector4f pt_model, pt_camera, colour_known, colour_obs, gx_obs, gy_obs;
 	Vector3f colour_diff_d, d_pt_cam_dpi, d[6];
@@ -71,37 +77,38 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_rt_Color(THREADPTR(float) *loca
 	{
 		switch (para + startPara)
 		{
-		case 0: // tx
-			d_proj_dpi.x = projParams.x * inv_z;
-			d_proj_dpi.y = 0.0f; 
-			break;
-		case 1: // ty
-			d_proj_dpi.x = 0.0f; 
-			d_proj_dpi.y = projParams.y * inv_z;
-			break;
-		case 2: // tz
-			d_proj_dpi.x = -projParams.x * pt_camera.x * inv_z_sq;
-			d_proj_dpi.y = -projParams.y * pt_camera.y * inv_z_sq;
-			break;
-		case 3: // rx
-			d_proj_dpi.x = -projParams.x * pt_camera.y * pt_camera.x * inv_z_sq;
-			d_proj_dpi.y = -projParams.y * (z_sq + pt_camera.y * pt_camera.y) * inv_z_sq;
-			break;
-		case 4: // ry
-			d_proj_dpi.x = projParams.x * (z_sq + pt_camera.x * pt_camera.x) * inv_z_sq;
-			d_proj_dpi.y = projParams.y * pt_camera.x * pt_camera.y * inv_z_sq;
-			break; 
-		case 5: // rz
-			d_proj_dpi.x = -projParams.x * pt_camera.y * inv_z;
-			d_proj_dpi.y = projParams.y * pt_camera.x * inv_z;
-			break;
+			case 0: // tx
+				d_proj_dpi.x = projParams.x * inv_z;
+				d_proj_dpi.y = 0.0f;
+				break;
+			case 1: // ty
+				d_proj_dpi.x = 0.0f;
+				d_proj_dpi.y = projParams.y * inv_z;
+				break;
+			case 2: // tz
+				d_proj_dpi.x = -projParams.x * pt_camera.x * inv_z_sq;
+				d_proj_dpi.y = -projParams.y * pt_camera.y * inv_z_sq;
+				break;
+			case 3: // rx
+				d_proj_dpi.x = -projParams.x * pt_camera.y * pt_camera.x * inv_z_sq;
+				d_proj_dpi.y = -projParams.y * (z_sq + pt_camera.y * pt_camera.y) * inv_z_sq;
+				break;
+			case 4: // ry
+				d_proj_dpi.x = projParams.x * (z_sq + pt_camera.x * pt_camera.x) * inv_z_sq;
+				d_proj_dpi.y = projParams.y * pt_camera.x * pt_camera.y * inv_z_sq;
+				break;
+			case 5: // rz
+				d_proj_dpi.x = -projParams.x * pt_camera.y * inv_z;
+				d_proj_dpi.y = projParams.y * pt_camera.x * inv_z;
+				break;
 		};
 
 		d[para].x = d_proj_dpi.x * gx_obs.x + d_proj_dpi.y * gy_obs.x;
 		d[para].y = d_proj_dpi.x * gx_obs.y + d_proj_dpi.y * gy_obs.y;
 		d[para].z = d_proj_dpi.x * gx_obs.z + d_proj_dpi.y * gy_obs.z;
 
-		localGradient[para] = 2.0f * (d[para].x * colour_diff_d.x + d[para].y * colour_diff_d.y + d[para].z * colour_diff_d.z);
+		localGradient[para] =
+			2.0f * (d[para].x * colour_diff_d.x + d[para].y * colour_diff_d.y + d[para].z * colour_diff_d.z);
 
 		for (int col = 0; col <= para; col++)
 			localHessian[counter++] = 2.0f * (d[para].x * d[col].x + d[para].y * d[col].y + d[para].z * d[col].z);
@@ -109,3 +116,4 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_rt_Color(THREADPTR(float) *loca
 
 	return true;
 }
+} // namespace ITMLib

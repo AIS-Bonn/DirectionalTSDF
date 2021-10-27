@@ -44,17 +44,17 @@ inline int VoxelIndicesToOffset(int x, int y, int z)
  * @param offset
  */
 _CPU_AND_GPU_CODE_ inline void voxelToBlockPosAndOffset(
-	const Vector3i& voxelPos, Vector3i& blockPos, unsigned short &offset)
+	const Vector3i& voxelPos, Vector3i& blockPos, unsigned short& offset)
 {
 	blockPos = voxelToBlockPos(voxelPos);
 
 	offset = voxelPos.x
-					 + (voxelPos.y - blockPos.x) * SDF_BLOCK_SIZE
-					 + (voxelPos.z - blockPos.y) * SDF_BLOCK_SIZE * SDF_BLOCK_SIZE
-					 - blockPos.z * SDF_BLOCK_SIZE3;
+	         + (voxelPos.y - blockPos.x) * SDF_BLOCK_SIZE
+	         + (voxelPos.z - blockPos.y) * SDF_BLOCK_SIZE * SDF_BLOCK_SIZE
+	         - blockPos.z * SDF_BLOCK_SIZE3;
 }
 
-_CPU_AND_GPU_CODE_ inline Vector3i voxelOffsetToCoordinate(int &offset)
+_CPU_AND_GPU_CODE_ inline Vector3i voxelOffsetToCoordinate(int& offset)
 {
 	Vector3i coordinate;
 	coordinate.z = offset / (SDF_BLOCK_SIZE * SDF_BLOCK_SIZE);
@@ -63,14 +63,15 @@ _CPU_AND_GPU_CODE_ inline Vector3i voxelOffsetToCoordinate(int &offset)
 	return coordinate;
 }
 
-_CPU_AND_GPU_CODE_ inline Vector3f voxelIdxToWorldPos(const Vector3i &voxelIdx, const float voxelSize)
+template<typename T>
+_CPU_AND_GPU_CODE_ inline Vector3f voxelIdxToWorldPos(const ORUtils::Vector3<T>& voxelIdx, const float voxelSize)
 {
 	return voxelIdx.toFloat() * voxelSize;
 }
 
-_CPU_AND_GPU_CODE_ inline Vector3i worldPosToVoxelIdx(const Vector3f &worldPos, const float voxelSize)
+_CPU_AND_GPU_CODE_ inline Vector3s worldPosToVoxelIdx(const Vector3f& worldPos, const float voxelSize)
 {
-	return ((worldPos + voxelSize * Vector3f(0.5, 0.5, 0.5)) / voxelSize).toInt();
+	return ((worldPos + voxelSize * Vector3f(0.5, 0.5, 0.5)) / voxelSize).toShort();
 }
 
 } // namespace ITMLib

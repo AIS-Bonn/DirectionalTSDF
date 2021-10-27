@@ -56,7 +56,7 @@ inline float weightVisibility(float distance, const ITMSceneParams& sceneParams)
 	// CM3D CopyMe3D: Scanning and Printing Persons in 3D
 	if (distance > 0)
 		return 1;
-	return MAX(0.1, exp(-(distance * distance) / (sceneParams.mu * sceneParams.mu)))	;
+	return MAX(0.1, exp(-(distance * distance) / (sceneParams.mu * sceneParams.mu)));
 }
 
 _CPU_AND_GPU_CODE_
@@ -78,7 +78,8 @@ _CPU_AND_GPU_CODE_
 inline float combinedWeight(float depth, float distance, const Vector3f& normalCamera, const Vector3f& viewRay,
                             const ITMSceneParams& sceneParams)
 {
-	return weightVisibility(distance, sceneParams) * weightDepth(depth, sceneParams) * weightNormal(normalCamera, viewRay);
+	return weightVisibility(distance, sceneParams) * weightDepth(depth, sceneParams) *
+	       weightNormal(normalCamera, viewRay);
 }
 
 } // namespace ITMLib

@@ -9,43 +9,47 @@
 
 namespace ITMLib
 {
-	class ITMSceneHierarchyLevel : public ITMHierarchyLevel
+class ITMSceneHierarchyLevel : public ITMHierarchyLevel
+{
+public:
+	ORUtils::Image<Vector4f>* pointsMap = nullptr;
+	ORUtils::Image<Vector4f>* normalsMap = nullptr;
+
+	ITMSceneHierarchyLevel(Vector2i imgSize, int levelId, TrackerIterationType iterationType, MemoryDeviceType memoryType,
+	                       bool skipAllocation = false)
+		: ITMHierarchyLevel(levelId, iterationType, skipAllocation)
 	{
-	public:
-		ORUtils::Image<Vector4f> *pointsMap = nullptr;
-		ORUtils::Image<Vector4f> *normalsMap = nullptr;
-
-		ITMSceneHierarchyLevel(Vector2i imgSize, int levelId, TrackerIterationType iterationType, MemoryDeviceType memoryType, bool skipAllocation = false)
-		:ITMHierarchyLevel(levelId, iterationType, skipAllocation)
+		if (!skipAllocation)
 		{
-			if (!skipAllocation) {
-				this->pointsMap = new ORUtils::Image<Vector4f>(imgSize, memoryType);
-				this->normalsMap = new ORUtils::Image<Vector4f>(imgSize, memoryType);
-			}
+			this->pointsMap = new ORUtils::Image<Vector4f>(imgSize, memoryType);
+			this->normalsMap = new ORUtils::Image<Vector4f>(imgSize, memoryType);
 		}
+	}
 
-		void UpdateHostFromDevice()
-		{ 
-			this->pointsMap->UpdateHostFromDevice();
-			this->normalsMap->UpdateHostFromDevice();
-		}
+	void UpdateHostFromDevice()
+	{
+		this->pointsMap->UpdateHostFromDevice();
+		this->normalsMap->UpdateHostFromDevice();
+	}
 
-		void UpdateDeviceFromHost()
-		{ 
-			this->pointsMap->UpdateDeviceFromHost();
-			this->normalsMap->UpdateDeviceFromHost();
-		}
+	void UpdateDeviceFromHost()
+	{
+		this->pointsMap->UpdateDeviceFromHost();
+		this->normalsMap->UpdateDeviceFromHost();
+	}
 
-		~ITMSceneHierarchyLevel(void)
+	~ITMSceneHierarchyLevel(void)
+	{
+		if (manageData)
 		{
-			if (manageData) {
-				delete pointsMap;
-				delete normalsMap;
-			}
+			delete pointsMap;
+			delete normalsMap;
 		}
+	}
 
-		// Suppress the default copy constructor and assignment operator
-		ITMSceneHierarchyLevel(const ITMSceneHierarchyLevel&);
-		ITMSceneHierarchyLevel& operator=(const ITMSceneHierarchyLevel&);
-	};
+	// Suppress the default copy constructor and assignment operator
+	ITMSceneHierarchyLevel(const ITMSceneHierarchyLevel&);
+
+	ITMSceneHierarchyLevel& operator=(const ITMSceneHierarchyLevel&);
+};
 }

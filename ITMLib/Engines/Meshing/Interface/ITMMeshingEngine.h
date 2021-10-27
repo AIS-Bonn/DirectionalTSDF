@@ -2,17 +2,19 @@
 
 #pragma once
 
-#include "../../../Objects/Meshing/ITMMesh.h"
-#include "../../../Objects/Scene/ITMScene.h"
+#include <ITMLib/Objects/Meshing/ITMMesh.h>
+#include <ITMLib/Objects/Scene/ITMScene.h>
+#include <ITMLib/ITMLibDefines.h>
 
 namespace ITMLib
 {
-	class ITMMeshingEngine
-	{
-	public:
-		virtual void MeshScene(ITMMesh *mesh, const Scene *scene) = 0;
+class ITMMeshingEngine
+{
+public:
+	virtual void MeshScene(ITMMesh* mesh, const Scene* scene) = 0;
 
-		ITMMeshingEngine(void) { }
-		virtual ~ITMMeshingEngine(void) { }
-	};
+	ITMMeshingEngine() = default;
+
+	virtual ~ITMMeshingEngine() = default;
+};
 }

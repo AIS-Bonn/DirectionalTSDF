@@ -7,10 +7,11 @@
 
 #pragma once
 
-#include "../../../Objects/RenderStates/ITMRenderState_VH.h"
-#include "../../../Objects/Scene/ITMScene.h"
-#include "../../../Objects/Tracking/ITMTrackingState.h"
-#include "../../../Objects/Views/ITMView.h"
+#include <ITMLib/Objects/RenderStates/ITMRenderState.h>
+#include <ITMLib/Objects/Scene/ITMScene.h>
+#include <ITMLib/Objects/Tracking/ITMTrackingState.h>
+#include <ITMLib/Objects/Views/ITMView.h>
+#include <ITMLib/Utils/ITMLibSettings.h>
 
 namespace ITMLib
 {
@@ -19,14 +20,14 @@ class IITMVisualisationEngine
 public:
 	enum RenderImageType
 	{
-		RENDER_SHADED_GREYSCALE,
-		RENDER_SHADED_GREYSCALE_IMAGENORMALS,
-		RENDER_COLOUR_FROM_VOLUME,
-		RENDER_COLOUR_FROM_SDFNORMAL,
-		RENDER_COLOUR_FROM_IMAGENORMAL,
-		RENDER_COLOUR_FROM_CONFIDENCE_SDFNORMAL,
-		RENDER_COLOUR_FROM_CONFIDENCE_IMAGENORMAL,
-		RENDER_COLOUR_FROM_DEPTH,
+		RENDER_DEPTH_SDFNORMAL,
+		RENDER_DEPTH_IMAGENORMAL,
+		RENDER_COLOUR,
+		RENDER_NORMAL_SDFNORMAL,
+		RENDER_NORMAL_IMAGENORMAL,
+		RENDER_CONFIDENCE_SDFNORMAL,
+		RENDER_CONFIDENCE_IMAGENORMAL,
+		RENDER_DEPTH_COLOUR, // rainbow-style depth rendering
 	};
 
 	enum RenderRaycastSelection
@@ -45,16 +46,6 @@ public:
 	static void WeightToUchar4(ITMUChar4Image* dst, const ITMFloatImage* src);
 };
 
-template<class ITMVoxelIndex>
-struct IndexToRenderState
-{
-	typedef ITMRenderState type;
-};
-template<>
-struct IndexToRenderState<ITMVoxelBlockHash>
-{
-	typedef ITMRenderState_VH type;
-};
 
 /** \brief
 	Interface to engines helping with the visualisation of
@@ -72,26 +63,20 @@ class ITMVisualisationEngine : public IITMVisualisationEngine
 {
 public:
 	explicit ITMVisualisationEngine(std::shared_ptr<const ITMLibSettings> settings)
-		: settings(std::move(settings)),
-		renderIndex(nullptr), renderVBA(nullptr)
+		: settings(std::move(settings))
 	{}
 
-	virtual ~ITMVisualisationEngine() = default;
+	virtual ~ITMVisualisationEngine()
+	{
+		delete renderingTSDF;
+	}
+
 
 	/** Creates a render state, containing rendering info
 	for the scene.
 	*/
-	virtual typename IndexToRenderState<ITMVoxelIndex>::type*
+	virtual ITMRenderState*
 	CreateRenderState(const Scene* scene, const Vector2i& imgSize) const = 0;
-
-	virtual void ComputeRenderingTSDF(const Scene* scene, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
-	                                  ITMRenderState* renderState) = 0;
-
-	/** Given a render state, Count the number of visible blocks
-	with minBlockId <= blockID <= maxBlockId .
-	*/
-	virtual int CountVisibleBlocks(const Scene* scene, const ITMRenderState* renderState, int minBlockId = 0,
-	                               int maxBlockId = SDF_LOCAL_BLOCK_NUM) const = 0;
 
 	/** Given scene, pose and projParams, create an estimate
 	of the minimum and maximum depths at each pixel of
@@ -103,7 +88,7 @@ public:
 	/** This will render an image using raycasting. */
 	virtual void RenderImage(const Scene* scene, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
 	                         const ITMRenderState* renderState, ITMUChar4Image* outputImage,
-	                         RenderImageType type = RENDER_SHADED_GREYSCALE,
+	                         RenderImageType type = RENDER_DEPTH_SDFNORMAL,
 	                         RenderRaycastSelection raycastType = RENDER_FROM_NEW_RAYCAST) const = 0;
 
 	/** Finds the scene surface using raycasting. */
@@ -133,33 +118,32 @@ public:
 	virtual void RenderTrackingError(ITMUChar4Image* outRendering, const ITMTrackingState* trackingState,
 	                                 const ITMView* view) const = 0;
 
-	void SaveRenderTSDF(const std::string& outputDirectory)
-	{
-		if (not renderVBA or not renderIndex)
-			return;
-		renderVBA->SaveToDirectory(outputDirectory);
-		renderIndex->SaveToDirectory(outputDirectory);
-	}
-
 	float renderingTSDFTime = 0;
 
 protected:
-	std::shared_ptr<const ITMLibSettings> settings;
+	virtual void
+	ComputeRenderingTSDFImpl(const Scene* scene, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
+	                         ITMRenderState* renderState) = 0;
 
-	// FIXME: Deprecated, remove
-	ITMVoxelBlockHash* renderIndex;
-	ITMLocalVBA<ITMVoxel>* renderVBA;
+	void ComputeRenderingTSDF(const Scene* scene, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
+	                          ITMRenderState* renderState);
+
+	/**
+	 * Returns current renderingTSDF or scene->tsdf, depending on whether directional is enabled or not
+	 */
+	TSDF<ITMIndex, ITMVoxel>* GetRenderingTSDF(const Scene* scene) const
+	{
+		if (settings->Directional())
+			return renderingTSDF;
+		return scene->tsdf;
+	}
+
+	TSDF<ITMIndex, ITMVoxel>* renderingTSDF = nullptr;
+
+	std::shared_ptr<const ITMLibSettings> settings = nullptr;
 
 	int frameCounter = 0;
 	int lastTSDFCombineFrameCounter = 0;
 	ORUtils::SE3Pose lastTSDFCombinePose;
-
-	/** True, if directional TSDFBase is combined to default TSDFBase for rendering
-	 * @return
-	 */
-	bool CombineTSDFForRendering() const
-	{
-		return this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL and DIRECTIONAL_RENDERING_MODE == 1;
-	}
 };
 }

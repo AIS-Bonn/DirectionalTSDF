@@ -9,6 +9,7 @@
 #include <thrust/sequence.h>
 #include <thrust/transform.h>
 #include <ITMLib/Utils/ITMTimer.h>
+#include "ITMLib/Utils/TemplateUtils.h"
 #include <ITMLib/Engines/Reconstruction/Shared/ITMBlockTraversal.h>
 #include <ORUtils/FileUtils.h>
 
@@ -32,12 +33,9 @@ ITMVisualisationEngine_CUDA::ITMVisualisationEngine_CUDA(std::shared_ptr<const I
 	ORcudaSafeCall(cudaMalloc((void**) &this->noTotalPoints_device, sizeof(uint)));
 	ORcudaSafeCall(cudaMalloc((void**) &noVisibleEntries_device, sizeof(uint)));
 
-	combinedTSDFWeights_device = nullptr;
-	combinedTSDF_device = new stdgpu::unordered_map<Vector3s, Vector6f*>;
-
-	if (CombineTSDFForRendering())
+	if (settings->Directional())
 	{
-		renderingTSDF = new TSDF_CUDA<ITMIndexXYZ, ITMVoxel>(settings->sceneParams.allocationSize / 4);
+		this->renderingTSDF = new TSDF_CUDA<ITMIndex, ITMVoxel>(settings->sceneParams.allocationSize / 4);
 	}
 }
 
@@ -47,612 +45,50 @@ ITMVisualisationEngine_CUDA::~ITMVisualisationEngine_CUDA()
 	ORcudaSafeCall(cudaFree(noTotalBlocks_device));
 	ORcudaSafeCall(cudaFree(renderingBlockList_device));
 	ORcudaSafeCall(cudaFree(noVisibleEntries_device));
-
-	delete renderingTSDF;
-
-	if (combinedTSDF_device)
-		stdgpu::unordered_map<Vector3s, Vector6f*>::destroyDeviceObject(*combinedTSDF_device);
-	delete combinedTSDF_device;
-	destroyDeviceArray(combinedTSDFWeights_device);
 }
 
-ITMRenderState_VH* ITMVisualisationEngine_CUDA::CreateRenderState(const Scene* scene, const Vector2i& imgSize) const
+ITMRenderState* ITMVisualisationEngine_CUDA::CreateRenderState(const Scene* scene, const Vector2i& imgSize) const
 {
-	return new ITMRenderState_VH(
-		ITMVoxelBlockHash::noTotalEntries, imgSize, scene->sceneParams->viewFrustum_min,
+	return new ITMRenderState(
+		imgSize, scene->sceneParams->viewFrustum_min,
 		scene->sceneParams->viewFrustum_max, MEMORYDEVICE_CUDA
 	);
 }
 
-
-#define ReadVoxelSDFDiscardZero(dst, blk, pos) voxel = &blk[VoxelIndicesToOffset(pos.x, pos.y, pos.z)]; if (voxel->w_depth == 0) return Vector3f(0, 0, 0); dst = voxel->sdf;
-_CPU_AND_GPU_CODE_ inline Vector3f computeGradient(ITMVoxel* block, ITMVoxel** neighbors, const Vector3i& idx, float tau)
+void ITMVisualisationEngine_CUDA::ComputeRenderingTSDFImpl(const Scene* scene, const ORUtils::SE3Pose* pose,
+                                                           const ITMLib::ITMIntrinsics* intrinsics,
+                                                           ITMRenderState* renderState)
 {
-	if (not block)
-		return Vector3f(0, 0, 0);
-
-	if (idx.x == 0 and not neighbors[1])
-		return Vector3f(0, 0, 0);
-	if (idx.x == 7 and not neighbors[0])
-		return Vector3f(0, 0, 0);
-	if (idx.y == 0 and not neighbors[3])
-		return Vector3f(0, 0, 0);
-	if (idx.y == 7 and not neighbors[2])
-		return Vector3f(0, 0, 0);
-	if (idx.z == 0 and not neighbors[5])
-		return Vector3f(0, 0, 0);
-	if (idx.z == 7 and not neighbors[4])
-		return Vector3f(0, 0, 0);
-
-	bool found;
-	ITMVoxel* voxel;
-	Vector3f ret(0, 0, 0);
-	float p1, p2;
-
-	// gradient x
-	if (idx.x == 7)
-	{
-		ReadVoxelSDFDiscardZero(p1, neighbors[static_cast<TSDFDirection_type>(TSDFDirection::X_POS)], Vector3i(0, idx.y, idx.z));
-	}
-	else
-	{
-		ReadVoxelSDFDiscardZero(p1, block, Vector3i(idx.x + 1, idx.y, idx.z));
-	}
-	if (idx.x == 0)
-	{
-		ReadVoxelSDFDiscardZero(p2, neighbors[1], Vector3i(7, idx.y, idx.z));
-	}
-	else
-	{
-		ReadVoxelSDFDiscardZero(p2, block, Vector3i(idx.x - 1, idx.y, idx.z));
-	}
-	ret.x = ITMVoxel::valueToFloat(p1 - p2);
-
-	// gradient y
-	if (idx.y == 7)
-	{
-		ReadVoxelSDFDiscardZero(p1, neighbors[2], Vector3i(idx.x, 0, idx.z));
-	}
-	else
-	{
-		ReadVoxelSDFDiscardZero(p1, block, Vector3i(idx.x, idx.y + 1, idx.z));
-	}
-	if (idx.y == 0)
-	{
-		ReadVoxelSDFDiscardZero(p2, neighbors[3], Vector3i(idx.x, 7, idx.z));
-	}
-	else
-	{
-		ReadVoxelSDFDiscardZero(p2, block, Vector3i(idx.x, idx.y - 1, idx.z));
-	}
-	ret.y = ITMVoxel::valueToFloat(p1 - p2);
-
-	// gradient z
-	if (idx.z == 7)
-	{
-		ReadVoxelSDFDiscardZero(p1, neighbors[4], Vector3i(idx.x, idx.y, 0));
-	}
-	else
-	{
-		ReadVoxelSDFDiscardZero(p1, block, Vector3i(idx.x, idx.y, idx.z + 1));
-	}
-	if (idx.z == 0)
-	{
-		ReadVoxelSDFDiscardZero(p2, neighbors[5], Vector3i(idx.x, idx.y, 7));
-	}
-	else
-	{
-		ReadVoxelSDFDiscardZero(p2, block, Vector3i(idx.x, idx.y, idx.z - 1));
-	}
-	ret.z = ITMVoxel::valueToFloat(p1 - p2);
-
-	if (ret == Vector3f(0, 0, 0))
-		return Vector3f(0, 0, 0);
-
-	if (tau > 0)
-	{
-		// Check each direction maximum 2 * truncationDistance / voxelSize + margin
-		if (abs(ret.x) > 2.4 * tau or abs(ret.y) > 2.4 * tau or abs(ret.z) > 2.4 * tau)
-			return Vector3f(0, 0, 0);
-		// Check, if ret too unreliable (very close values in neighboring voxels). minimum expected length: (2 * tau)^2
-		if (ORUtils::dot(ret, ret) < 2 * (tau * tau)) return Vector3f(0, 0, 0);
-	}
-
-	return ret.normalised();
-}
-
-/**
- * A faster version of combineDiretionalTSDFViewPoint that uses shared memory between threads to reduce tsdf lookups
- * @param renderingTSDF
- * @param tsdf
- * @param visibleBlocks
- * @param numVisibleBlocks
- * @param invM
- * @param voxelSize
- * @param mu
- * @param maxW
- */
-__global__ void
-combineDirectionalTSDFViewPoint2(stdgpu::unordered_map<ITMIndexXYZ, ITMVoxel*> renderingTSDF,
-                                 const stdgpu::unordered_map<ITMIndex, ITMVoxel*> tsdf,
-                                 const Vector3s* visibleBlocks, const stdgpu::index_t numVisibleBlocks,
-                                 const Matrix4f invM, const float voxelSize, const float mu, const int maxW)
-{
-	stdgpu::index_t i = static_cast<stdgpu::index_t>(blockIdx.x);
-	if (i >= numVisibleBlocks) return;
-
-	int linearIdx = blockIdx.y * blockDim.x + threadIdx.x;
-
-	const Vector3s& blockPos = visibleBlocks[i];
-
-	__shared__ ITMVoxel* renderBlock;
-	__shared__ ITMVoxel* blocks[N_DIRECTIONS];
-	__shared__ ITMVoxel* neighborBlocks[6 * N_DIRECTIONS];
-	if (linearIdx == 6)
-	{
-			auto it = renderingTSDF.find(blockPos);
-			renderBlock = nullptr;
-			if (it != renderingTSDF.end())
-				renderBlock = it->second;
-	}
-	if (linearIdx >= 0 and linearIdx < 6)
-	{
-		ITMIndex index = ITMIndex(blockPos, TSDFDirection(linearIdx));
-
-		auto it = tsdf.find(index);
-		if (it == tsdf.end())
-		{
-			blocks[linearIdx] = nullptr;
-		} else
-		{
-			blocks[linearIdx] = it->second;
-		}
-	}
-	if (linearIdx >= 7 and linearIdx < 7 + 6 * N_DIRECTIONS)
-	{
-		int offset = linearIdx - 7;
-		int directionIdx = offset / N_DIRECTIONS;
-		int neighborIdx = offset % 6;
-
-		Vector3s shift[6] =
-			{
-				Vector3s(1, 0, 0),
-				Vector3s(-1, 0, 0),
-				Vector3s(0, 1, 0),
-				Vector3s(0, -1, 0),
-				Vector3s(0, 0, 1),
-				Vector3s(0, 0, -1)
-			};
-		ITMIndex index = ITMIndex(blockPos + shift[neighborIdx], TSDFDirection(directionIdx));
-		auto it = tsdf.find(index);
-		if (it == tsdf.end())
-			neighborBlocks[directionIdx * 6 + neighborIdx] = nullptr;
-		else
-			neighborBlocks[directionIdx * 6 + neighborIdx] = it->second;
-	}
-
-	__syncthreads();
-
-	if (not renderBlock)
-		return;
-
-	ITMVoxel& voxel = renderBlock[linearIdx];
-	Vector3i voxelPosIdx = blockToVoxelPos(Vector3i(blockPos.x, blockPos.y, blockPos.z))
-	                       + voxelOffsetToCoordinate(linearIdx);
-	Vector3f voxelPos = voxelPosIdx.toFloat();
-	Vector3f rayDirection = (voxelPos * voxelSize - (invM * Vector4f(0, 0, 0, 1)).toVector3()).normalised();
-
-	Vector3f colorCombined(0, 0, 0);
-	float sdfCombined = 0;
-	float weightCombined = 0;
-	float colorWeightCombined = 0;
-
-	Vector3f colorCombinedNoGradient(0, 0, 0);
-	Vector3f gradientCombined(0, 0, 0);
-	float sdfCombinedNoGradient = 0;
-	float weightCombinedNoGradient = 0;
-	float colorWeightCombinedNoGradient = 0;
-
-	Vector3f colorFreeSpace(0, 0, 0);
-	Vector3f gradientFreeSpace(0, 0, 0);
-	float freeSpaceWeight = 0;
-	float freeSpaceSDF = 0;
-
-
-	for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
-	{
-		ITMVoxel* block = blocks[directionIdx];
-		if (not block)
-			continue;
-
-		float sdf = block[linearIdx].sdf;
-		float w_depth = block[linearIdx].w_depth;
-
-		bool found = false;
-
-		Vector3f color;
-		float color_w = 1;
-		if (RENDER_DIRECTION_COLORS == 1)
-			color = TSDFDirectionColor[directionIdx];
-		else
-			color = readFromSDF_color4u_uninterpolated(color_w, tsdf, voxelPos, maxW, TSDFDirection(directionIdx)).toVector3();
-
-		Vector3f gradient = computeGradient(block, neighborBlocks + directionIdx * 6, voxelOffsetToCoordinate(linearIdx), voxelSize / mu);
-
-		float weight =
-			DirectionWeight(DirectionAngle(gradient, TSDFDirection(directionIdx)))
-			* ORUtils::dot(gradient, -rayDirection)
-			* w_depth;
-		weight = MAX(weight, 0);
-
-		float weightNoGradient = MAX(0,
-		                             w_depth
-		                             * ORUtils::dot(-rayDirection, TSDFDirectionVector[directionIdx])
-//		                             * DirectionWeight(DirectionAngle(-rayDirection, TSDFDirection(directionIdx)))
-		);
-		weightCombinedNoGradient += weightNoGradient;
-		sdfCombinedNoGradient += weightNoGradient * sdf;
-		colorWeightCombinedNoGradient += weightNoGradient * color_w;
-		colorCombinedNoGradient += weightNoGradient * color_w * color;
-
-		sdfCombined += weight * sdf;
-		weightCombined += weight;
-		colorWeightCombined += weight * color_w;
-		colorCombined += weight * color_w * color;
-		gradientCombined += weight * gradient;
-	}
-
-	bool hasGradient = gradientCombined.x != 0 or gradientCombined.y != 0 or gradientCombined.z != 0;
-	bool hasFreeSpaceGradient = gradientFreeSpace.x != 0 or gradientFreeSpace.y != 0 or gradientFreeSpace.z != 0;
-
-	if (weightCombined > 0)
-	{
-		sdfCombined /= weightCombined;
-		if (hasGradient) gradientCombined = gradientCombined.normalised();
-	} else if (weightCombinedNoGradient > 0)
-	{
-		sdfCombined = sdfCombinedNoGradient / weightCombinedNoGradient;
-		weightCombined = weightCombinedNoGradient;
-		gradientCombined = Vector3f(0, 0, 0);
-	} else
-	{
-		sdfCombined = 1;
-		weightCombined = 0;
-		gradientCombined = Vector3f(0, 0, 0);
-	}
-
-	if (colorWeightCombined > 0)
-	{
-		colorCombined /= colorWeightCombined;
-	}
-	else if (colorWeightCombinedNoGradient > 0)
-	{
-		colorCombined = colorCombinedNoGradient / colorWeightCombinedNoGradient;
-		colorWeightCombined = colorWeightCombinedNoGradient;
-	} else {
-		colorCombined = Vector3f(0, 0, 0);
-		colorWeightCombined = 0;
-	}
-
-	if (freeSpaceWeight > 0)
-	{
-		freeSpaceSDF /= freeSpaceWeight;
-		colorFreeSpace /= freeSpaceWeight;
-		if (hasFreeSpaceGradient)
-			gradientFreeSpace = gradientFreeSpace.normalised();
-	}
-
-	if (freeSpaceWeight > 0
-	    and ((hasGradient and hasFreeSpaceGradient
-	          and dot(gradientFreeSpace, gradientCombined) <
-	              0.707 // if same surface, use normal combination instead of free space (prevent dents in surface)
-	          and dot(gradientFreeSpace, gradientCombined) > -0.707 // if opposite surface, don't carve
-	         ) or (not hasGradient and not hasFreeSpaceGradient)))
-	{
-		voxel.sdf = ITMVoxel::floatToValue(freeSpaceSDF);
-		voxel.w_depth = ITMVoxel::floatToWeight(freeSpaceWeight, maxW);
-		voxel.clr = TO_UCHAR3(colorFreeSpace * 255.0f);
-		voxel.w_color = ITMVoxel::floatToWeight(freeSpaceWeight, maxW);
-	} else
-	{
-		voxel.sdf = ITMVoxel::floatToValue(sdfCombined);
-		voxel.w_depth = ITMVoxel::floatToWeight(weightCombined, maxW);
-		voxel.clr = TO_UCHAR3(colorCombined * 255.0f);
-		voxel.w_color = ITMVoxel::floatToWeight(colorWeightCombined, maxW);
-	}
-}
-
-__global__ void
-combineDirectionalTSDFViewPoint(stdgpu::unordered_map<ITMIndexXYZ, ITMVoxel*> renderingTSDF,
-                                const stdgpu::unordered_map<ITMIndex, ITMVoxel*> tsdf,
-																const Vector3s* visibleBlocks, const stdgpu::index_t numVisibleBlocks,
-                                const Matrix4f invM, const float voxelSize, const float mu, const int maxW)
-{
-	stdgpu::index_t i = static_cast<stdgpu::index_t>(blockIdx.x);
-	if (i >= numVisibleBlocks) return;
-	const Vector3s& blockPos = visibleBlocks[i];
-	int linearIdx = blockIdx.y * blockDim.x + threadIdx.x;
-
-	auto it = renderingTSDF.find(blockPos);
-	if (it == renderingTSDF.end())
-		return;
-
-	ITMVoxel* block = it->second;
-
-	ITMVoxel& voxel = block[linearIdx];
-	Vector3i voxelPosIdx = blockToVoxelPos(Vector3i(blockPos.x, blockPos.y, blockPos.z))
-	                       + voxelOffsetToCoordinate(linearIdx);
-	Vector3f voxelPos = voxelPosIdx.toFloat();
-	Vector3f rayDirection = (voxelPos * voxelSize - (invM * Vector4f(0, 0, 0, 1)).toVector3()).normalised();
-
-	Vector3f colorCombined(0, 0, 0);
-	float sdfCombined = 0;
-	float weightCombined = 0;
-	float colorWeightCombined = 0;
-
-	Vector3f colorCombinedNoGradient(0, 0, 0);
-	Vector3f gradientCombined(0, 0, 0);
-	float sdfCombinedNoGradient = 0;
-	float weightCombinedNoGradient = 0;
-	float colorWeightCombinedNoGradient = 0;
-
-	Vector3f colorFreeSpace(0, 0, 0);
-	Vector3f gradientFreeSpace(0, 0, 0);
-	float freeSpaceWeight = 0;
-	float freeSpaceSDF = 0;
-
-	for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
-	{
-		float confidence = 0;
-		bool found = false;
-		float sdf = readWithConfidenceFromSDF_float_uninterpolated(found, confidence, tsdf, voxelPos,
-		                                                           maxW, TSDFDirection(directionIdx));
-		if (not found)
-			continue;
-
-		Vector3f color;
-		float color_w = 1;
-		if (RENDER_DIRECTION_COLORS == 1)
-			color = TSDFDirectionColor[directionIdx];
-		else
-			color = readFromSDF_color4u_uninterpolated(color_w, tsdf, voxelPos, maxW, TSDFDirection(directionIdx)).toVector3();
-		Vector3f gradient = computeSingleNormalFromSDF(tsdf, voxelPos.toIntFloor(), TSDFDirection(directionIdx), voxelSize / mu);
-
-		float weight =
-			DirectionWeight(DirectionAngle(gradient, TSDFDirection(directionIdx)))
-			* ORUtils::dot(gradient, -rayDirection)
-			* confidence;
-		weight = MAX(weight, 0);
-
-//		if (voxelPosIdx.x == -71 and voxelPosIdx.y == -24 and voxelPosIdx.z == 258)
-//			printf("[%i] (%f, %f, [%f, %f, %f], %f) [%f, %f, %f] (%.12f, %.12f, %.12f) -> %.12f\n", directionIdx, sdf, confidence,
-//				color.x, color.y, color.z, color_w,
-//				gradient.x, gradient.y, gradient.z,
-//			  DirectionAngle(gradient, TSDFDirection(directionIdx)),
-//				DirectionWeight(DirectionAngle(gradient, TSDFDirection(directionIdx))),
-//				ORUtils::dot(gradient, -rayDirection), weight);
-
-//		if (confidence > 0 and sdf > 0
-//		    and ORUtils::length(gradient) > 0)
-//		{ // free space
-//
-//			// Don't carve, if this is the "backside" of a face
-//			BlockTraversal bt(voxelPos * voxelSize, -rayDirection, 2 * mu, voxelSize, true);
-//			bool carve = true;
-//			while (bt.HasNextBlock())
-//			{
-//				Vector3i vIdx = bt.GetNextBlock();
-//
-//				float sdf_ = readFromSDF_float_uninterpolated(found, tsdf, vIdx.toFloat(), TSDFDirection(directionIdx));
-//				if (sdf_ < 0)
-//				{
-//					carve = false;
-//					break;
-//				}
-//			}
-//
-//			if (carve)
-//			{
-////				float weightFS = weight;
-//				float weightFS = confidence
-//				                 //				                 * ORUtils::dot(-rayDirection, TSDFDirectionVector[directionIdx])
-//
-//				                 * MAX(0, ORUtils::dot(gradient, TSDFDirectionVector[directionIdx]))
-////				                 * DirectionWeight(DirectionAngle(gradient, TSDFDirection(directionIdx)))
-//				;
-//
-//				weightFS = MAX(weightFS, 0);
-//
-//				freeSpaceSDF += weightFS * sdf;
-//				freeSpaceWeight += weightFS;
-//				colorFreeSpace += weightFS * color;
-//				gradientFreeSpace += weightFS * gradient;
-//			}
-//		}
-
-		float weightNoGradient = MAX(0,
-		                             confidence
-		                             * ORUtils::dot(-rayDirection, TSDFDirectionVector[directionIdx])
-//		                             * DirectionWeight(DirectionAngle(-rayDirection, TSDFDirection(directionIdx)))
-		);
-		weightCombinedNoGradient += weightNoGradient;
-		sdfCombinedNoGradient += weightNoGradient * sdf;
-		colorWeightCombinedNoGradient += weightNoGradient * color_w;
-		colorCombinedNoGradient += weightNoGradient * color_w * color;
-
-		sdfCombined += weight * sdf;
-		weightCombined += weight;
-		colorWeightCombined += weight * color_w;
-		colorCombined += weight * color_w * color;
-		gradientCombined += weight * gradient;
-	}
-
-	bool hasGradient = gradientCombined.x != 0 or gradientCombined.y != 0 or gradientCombined.z != 0;
-	bool hasFreeSpaceGradient = gradientFreeSpace.x != 0 or gradientFreeSpace.y != 0 or gradientFreeSpace.z != 0;
-
-	if (weightCombined > 0)
-	{
-		sdfCombined /= weightCombined;
-		if (hasGradient) gradientCombined = gradientCombined.normalised();
-	} else if (weightCombinedNoGradient > 0)
-	{
-		sdfCombined = sdfCombinedNoGradient / weightCombinedNoGradient;
-		weightCombined = weightCombinedNoGradient;
-		gradientCombined = Vector3f(0, 0, 0);
-	} else
-	{
-		sdfCombined = 1;
-		weightCombined = 0;
-		gradientCombined = Vector3f(0, 0, 0);
-	}
-
-	if (colorWeightCombined > 0)
-	{
-		colorCombined /= colorWeightCombined;
-	}
-	else if (colorWeightCombinedNoGradient > 0)
-	{
-		colorCombined = colorCombinedNoGradient / colorWeightCombinedNoGradient;
-		colorWeightCombined = colorWeightCombinedNoGradient;
-	} else {
-		colorCombined = Vector3f(0, 0, 0);
-		colorWeightCombined = 0;
-	}
-
-	if (freeSpaceWeight > 0)
-	{
-		freeSpaceSDF /= freeSpaceWeight;
-		colorFreeSpace /= freeSpaceWeight;
-		if (hasFreeSpaceGradient)
-			gradientFreeSpace = gradientFreeSpace.normalised();
-	}
-
-	if (freeSpaceWeight > 0
-	    and ((hasGradient and hasFreeSpaceGradient
-	          and dot(gradientFreeSpace, gradientCombined) <
-	              0.707 // if same surface, use normal combination instead of free space (prevent dents in surface)
-	          and dot(gradientFreeSpace, gradientCombined) > -0.707 // if opposite surface, don't carve
-	         ) or (not hasGradient and not hasFreeSpaceGradient)))
-	{
-		voxel.sdf = ITMVoxel::floatToValue(freeSpaceSDF);
-		voxel.w_depth = ITMVoxel::floatToWeight(freeSpaceWeight, maxW);
-		voxel.clr = TO_UCHAR3(colorFreeSpace * 255.0f);
-		voxel.w_color = ITMVoxel::floatToWeight(freeSpaceWeight, maxW);
-	} else
-	{
-		voxel.sdf = ITMVoxel::floatToValue(sdfCombined);
-		voxel.w_depth = ITMVoxel::floatToWeight(weightCombined, maxW);
-		voxel.clr = TO_UCHAR3(colorCombined * 255.0f);
-		voxel.w_color = ITMVoxel::floatToWeight(colorWeightCombined, maxW);
-	}
-
-//	if (voxelPosIdx.x == -71 and voxelPosIdx.y == -24 and voxelPosIdx.z == 258)
-//	{
-//		printf("FS(%.10f, %.10f) Def(%.10f, %.10f)  [%f, %f, %f]X[%f, %f, %f] = %f [FS: %i] -> (%f, %f, [%i, %i, %i], %f)\n", freeSpaceSDF, freeSpaceWeight, sdfCombined, weightCombined,
-//		       gradientFreeSpace.x, gradientFreeSpace.y, gradientFreeSpace.z,
-//		       gradientCombined.x, gradientCombined.y, gradientCombined.z,
-//		       dot(gradientFreeSpace, gradientCombined),
-//		       (freeSpaceWeight > 0
-//		        and ((
-//			             hasGradient and hasFreeSpaceGradient
-//			             and dot(gradientFreeSpace, gradientCombined) < 0.5 // if same surface, use normal combination instead of free space (prevent dents in surface)
-//			             and dot(gradientFreeSpace, gradientCombined) > -0.5 // if opposite surface, don't carve
-//
-//		             ) or (not hasGradient and not hasFreeSpaceGradient))
-//		       ),
-//		       voxelBlock[linearIdx].sdf, voxelBlock[linearIdx].w_depth,
-//		       voxelBlock[linearIdx].clr.x,voxelBlock[linearIdx].clr.y, voxelBlock[linearIdx].clr.z,  voxelBlock[linearIdx].w_color
-//		);
-//	}
-}
-
-void ITMVisualisationEngine_CUDA::ComputeRenderingTSDF(const Scene* scene, const ORUtils::SE3Pose* pose,
-                                                       const ITMLib::ITMIntrinsics* intrinsics,
-                                                       ITMRenderState* renderState)
-{
-	const ITMHashEntry* hashTable = scene->index.GetEntries();
-	float voxelSize = scene->sceneParams->voxelSize;
-	Vector2i imgSize = renderState->renderingRangeImage->noDims;
 	Matrix4f M = pose->GetM();
-	Vector4f projParams = intrinsics->projectionParamsSimple.all;
 
-	ITMRenderState_VH* renderState_vh = (ITMRenderState_VH*) renderState;
-	size_t N = renderState_vh->noVisibleEntries;
+	size_t N = renderState->noVisibleEntries;
 
 	if (N == 0)
 		return;
 
-	TSDF_CUDA<ITMIndexXYZ, ITMVoxel>* renderingTSDF_device = (TSDF_CUDA<ITMIndexXYZ, ITMVoxel>*) renderingTSDF;
+	auto renderingTSDF_device = this->renderingTSDF->toCUDA();
 	if (N >= renderingTSDF->allocatedBlocksMax)
 		renderingTSDF->resize(2 * N);
 	else
 		renderingTSDF->clear();
-	renderingTSDF_device->allocate(renderState_vh->GetVisibleBlocks(), N);
+	renderingTSDF_device->allocate(renderState->GetVisibleBlocks(), N);
 
-	auto tsdf = dynamic_cast<TSDF_CUDA<ITMIndex, ITMVoxel>*>(scene->tsdf);
+	auto tsdf = scene->tsdfDirectional->toCUDA();
 	dim3 gridSize(N, 1);
 	dim3 blockSize(8 * 8 * 8);
-	combineDirectionalTSDFViewPoint2 << < gridSize, blockSize >> > (
+//	combineDirectionalTSDFViewPoint_opt_device << < gridSize, blockSize >> > (
+	combineDirectionalTSDFViewPoint_device << < gridSize, blockSize >> > (
 		renderingTSDF_device->getMap(),
-		tsdf->getMap(), renderState_vh->GetVisibleBlocks(), N,
-		pose->GetInvM(), scene->sceneParams->voxelSize, scene->sceneParams->mu, scene->sceneParams->maxW);
+			tsdf->getMap(), renderState->GetVisibleBlocks(), N,
+			pose->GetInvM(), scene->sceneParams->voxelSize, scene->sceneParams->mu, scene->sceneParams->maxW);
 	ORcudaKernelCheck;
-}
-
-int
-ITMVisualisationEngine_CUDA::CountVisibleBlocks(const Scene* scene, const ITMRenderState* renderState, int minBlockId,
-                                                int maxBlockId) const
-{
-	const ITMRenderState_VH* renderState_vh = (const ITMRenderState_VH*) renderState;
-
-	int noVisibleEntries = renderState_vh->noVisibleEntries;
-	const int* visibleEntryIDs_device = renderState_vh->GetVisibleEntryIDs();
-
-		ORcudaSafeCall(cudaMemset(noTotalBlocks_device, 0, sizeof(uint)));
-
-	dim3 blockSize(256);
-	dim3 gridSize((int) ceil((float) noVisibleEntries / (float) blockSize.x));
-
-	const ITMHashEntry* hashTable_device = scene->index.GetEntries();
-	countVisibleBlocks_device << < gridSize, blockSize >> >
-	                                         (visibleEntryIDs_device, noVisibleEntries, hashTable_device, noTotalBlocks_device, minBlockId, maxBlockId);
-	ORcudaKernelCheck;
-
-	uint noTotalBlocks;
-	ORcudaSafeCall(cudaMemcpy(&noTotalBlocks, noTotalBlocks_device, sizeof(uint), cudaMemcpyDeviceToHost));
-
-	return noTotalBlocks;
 }
 
 void ITMVisualisationEngine_CUDA::CreateExpectedDepths(const Scene* scene, const ORUtils::SE3Pose* pose,
                                                        const ITMIntrinsics* intrinsics,
                                                        ITMRenderState* renderState)
 {
-	renderingTSDFTime = 0;
-	if (CombineTSDFForRendering())
-	{
-		Vector3f v1 = pose->GetR() * Vector3f(1, 0, 0);
-		Vector3f v2 = lastTSDFCombinePose.GetR() * Vector3f(1, 0, 0);
-		float relativePoseAngle = acos(MAX(MIN(dot(v1, v2), 1), -1));
-		if (frameCounter < 5 // initialization phase, many changes in TSDFBase
-		    or frameCounter - lastTSDFCombineFrameCounter > 50 // update sometimes, even if camera static
-		    or ORUtils::length(lastTSDFCombinePose.GetT() - pose->GetT()) > 0.05 // update, if camera translates
-		    or relativePoseAngle > 0.05 * M_PI_2 // update, if camera rotates
-		    or true
-			)
-		{
-			ITMTimer timer;
-			timer.Tick();
-			ComputeRenderingTSDF(scene, pose, intrinsics, renderState);
-			renderingTSDFTime = timer.Tock();
-//			printf("CombineTSDFForRendering() frames: %i\ttranslation: %f\tangle: %f\ttime: %fs\n",
-//			       frameCounter - lastTSDFCombineFrameCounter,
-//			       ORUtils::length(lastTSDFCombinePose.GetT() - pose->GetT()), relativePoseAngle, renderingTSDFTime);
-			lastTSDFCombinePose = *pose;
-			lastTSDFCombineFrameCounter = frameCounter;
-		}
-	}
-	frameCounter++;
+	ComputeRenderingTSDF(scene, pose, intrinsics, renderState);
 
 	float voxelSize = scene->sceneParams->voxelSize;
 
@@ -664,18 +100,16 @@ void ITMVisualisationEngine_CUDA::CreateExpectedDepths(const Scene* scene, const
 	init.y = VERY_CLOSE;
 	memsetKernel<Vector2f>(minmaxData, init, renderState->renderingRangeImage->dataSize);
 
-	ITMRenderState_VH* renderState_vh = (ITMRenderState_VH*) renderState;
-
 	//go through list of visible 8x8x8 blocks, project to image plane, create list of 16x16 rendering blocks
 	{
-		int noVisibleEntries = renderState_vh->noVisibleEntries;
+		int noVisibleEntries = renderState->noVisibleEntries;
 		if (noVisibleEntries == 0) return;
 
 		dim3 blockSize(256);
 		dim3 gridSize((int) ceil((float) noVisibleEntries / (float) blockSize.x));
 		ORcudaSafeCall(cudaMemset(noTotalBlocks_device, 0, sizeof(uint)));
-		projectAndSplitBlocks_device << <gridSize, blockSize >> > (
-			renderingBlockList_device, noTotalBlocks_device, renderState_vh->GetVisibleBlocks(),
+		projectAndSplitBlocks_device << < gridSize, blockSize >> > (
+			renderingBlockList_device, noTotalBlocks_device, renderState->GetVisibleBlocks(),
 				noVisibleEntries, pose->GetM(), intrinsics->projectionParamsSimple.all, imgSize, voxelSize);
 		ORcudaKernelCheck;
 	}
@@ -690,139 +124,40 @@ void ITMVisualisationEngine_CUDA::CreateExpectedDepths(const Scene* scene, const
 		// fill minmaxData
 		dim3 blockSize(16, 16);
 		dim3 gridSize((unsigned int) ceil((float) noTotalBlocks / 4.0f), 4);
-		computeMinMaxData_device << < gridSize, blockSize >> > (noTotalBlocks, renderingBlockList_device, imgSize, minmaxData);
+		computeMinMaxData_device << <
+		gridSize, blockSize >> > (noTotalBlocks, renderingBlockList_device, imgSize, minmaxData);
 		ORcudaKernelCheck;
 	}
 }
-
 
 void ITMVisualisationEngine_CUDA::GenericRaycast(const Scene* scene, const Vector2i& imgSize, const Matrix4f& invM,
                                                  const Vector4f& projParams, const ITMRenderState* renderState,
                                                  bool updateVisibleList) const
 {
-	HashEntryVisibilityType* entriesVisibleType = NULL;
-	if (updateVisibleList && (dynamic_cast<const ITMRenderState_VH*>(renderState) != NULL))
-	{
-		entriesVisibleType = ((ITMRenderState_VH*) renderState)->GetEntriesVisibleType();
-	}
-
-		dim3 cudaBlockSize(16, 12);
+	dim3 cudaBlockSize(16, 12);
 	dim3 gridSize((int) ceil((float) imgSize.x / (float) cudaBlockSize.x),
 	              (int) ceil((float) imgSize.y / (float) cudaBlockSize.y));
-	if (this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL and DIRECTIONAL_RENDERING_MODE == 2)
-	{
-		InputPointClouds pointClouds;
-		for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
-		{
-			pointClouds.pointCloud[directionIdx] = renderState->raycastResultDirectional[directionIdx]->GetData(
-				MEMORYDEVICE_CUDA);
 
-			genericRaycast_device<ITMIndex, ITMVoxel> << < gridSize, cudaBlockSize >> > (
-				pointClouds.pointCloud[directionIdx],
-					renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA),
-					((TSDF_CUDA<ITMIndex, ITMVoxel>*) scene->tsdf)->getMap(),
-					imgSize,
-					invM,
-					invertProjectionParams(projParams),
-					*(scene->sceneParams),
-					renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA),
-					TSDFDirection(directionIdx)
-			);
-			ORcudaKernelCheck;
 
-			pointClouds.pointCloudNormals[directionIdx] = renderState->raycastNormalsDirectional[directionIdx]->GetData(
-				MEMORYDEVICE_CUDA);
-			computePointCloudNormals_device<ITMVoxel, ITMVoxelBlockHash> << < gridSize, cudaBlockSize >> > (
-				pointClouds.pointCloudNormals[directionIdx],
-					pointClouds.pointCloud[directionIdx],
-					imgSize,
-					scene->sceneParams->voxelSize
-			);
-			ORcudaKernelCheck;
-		}
+	auto tsdf = GetRenderingTSDF(scene)->toCUDA();
 
-//		combineDirectionalPointClouds_device<ITMIndex, ITMVoxel> << < gridSize, cudaBlockSize >> > (
-//			renderState->raycastResult->GetData(MEMORYDEVICE_CUDA),
-//				renderState->raycastNormals->GetData(MEMORYDEVICE_CUDA),
-//				pointClouds,
-//				renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA),
-//				entriesVisibleType,
-//				((TSDF_CUDA<ITMIndex, ITMVoxel>*) scene->tsdf)->getMap(),
-//				imgSize,
-//				invM,
-//				invertProjectionParams(projParams),
-//				*(scene->sceneParams),
-//				renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA)
-//		);
-//		ORcudaKernelCheck;
-	}
-	else if (this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL and DIRECTIONAL_RENDERING_MODE == 1)
-	{
-//		genericRaycastCombinedTSDF_device<ITMVoxel, ITMVoxelBlockHash> << < gridSize, cudaBlockSize >> > (
-//			renderState->raycastResult->GetData(MEMORYDEVICE_CUDA),
-//				renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA),
-//				entriesVisibleType,
-//				scene->localVBA.GetVoxelBlocks(),
-//				scene->index.getIndexData(),
-//				*combinedTSDF_device,
-//				imgSize,
-//				invM,
-//				invertProjectionParams(projParams),
-//				*(scene->sceneParams),
-//				renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA),
-//				this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL
-//		);
-//		ORcudaKernelCheck;
+	genericRaycast_device << < gridSize, cudaBlockSize >> > (
+		renderState->raycastResult->GetData(MEMORYDEVICE_CUDA),
+			tsdf->getMap(),
+			imgSize,
+			invM,
+			invertProjectionParams(projParams),
+			*(scene->sceneParams),
+			renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA)
+	);
+	ORcudaKernelCheck;
 
-//		genericRaycastRenderingTSDF_device<ITMVoxel, ITMVoxelBlockHash> << < gridSize, cudaBlockSize >> > (
-//			renderState->raycastResult->GetData(MEMORYDEVICE_CUDA),
-//				*renderingTSDF,
-//				imgSize, invM, invertProjectionParams(projParams),
-//				*(scene->sceneParams), renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA)
-//		);
-//		ORcudaKernelCheck;
-
-		genericRaycast_device << < gridSize, cudaBlockSize >> > (
+	computePointCloudNormals_device<ITMVoxel> << < gridSize, cudaBlockSize >> > (
+		renderState->raycastNormals->GetData(MEMORYDEVICE_CUDA),
 			renderState->raycastResult->GetData(MEMORYDEVICE_CUDA),
-				renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA),
-				dynamic_cast<TSDF_CUDA<ITMIndexXYZ, ITMVoxel>*> (renderingTSDF)->getMap(),
-				imgSize,
-				invM,
-				invertProjectionParams(projParams),
-				*(scene->sceneParams),
-				renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA)
-		);
-		ORcudaKernelCheck;
-
-		computePointCloudNormals_device<ITMVoxel, ITMVoxelBlockHash> << < gridSize, cudaBlockSize >> > (
-			renderState->raycastNormals->GetData(MEMORYDEVICE_CUDA),
-				renderState->raycastResult->GetData(MEMORYDEVICE_CUDA),
-				imgSize, scene->sceneParams->voxelSize);
-		ORcudaKernelCheck;
-	}
-	else
-	{
-		genericRaycast_device << < gridSize, cudaBlockSize >> > (
-			renderState->raycastResult->GetData(MEMORYDEVICE_CUDA),
-				renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA),
-				((TSDF_CUDA<ITMIndex, ITMVoxel>*) scene->tsdf)->getMap(),
-				imgSize,
-				invM,
-				invertProjectionParams(projParams),
-				*(scene->sceneParams),
-				renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA),
-				TSDFDirection::NONE
-		);
-		ORcudaKernelCheck;
-
-		computePointCloudNormals_device<ITMVoxel, ITMVoxelBlockHash> << < gridSize, cudaBlockSize >> > (
-			renderState->raycastNormals->GetData(MEMORYDEVICE_CUDA),
-				renderState->raycastResult->GetData(MEMORYDEVICE_CUDA),
-				imgSize, scene->sceneParams->voxelSize);
-		ORcudaKernelCheck;
-	}
+			imgSize, scene->sceneParams->voxelSize);
+	ORcudaKernelCheck;
 }
-
 
 void ITMVisualisationEngine_CUDA::RenderImage(const Scene* scene,
                                               const ORUtils::SE3Pose* pose,
@@ -834,8 +169,6 @@ void ITMVisualisationEngine_CUDA::RenderImage(const Scene* scene,
 {
 	Vector2i imgSize = outputImage->noDims;
 	Matrix4f invM = pose->GetInvM();
-
-	bool useDirectional = this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL;
 
 	Vector4f* pointsRay, * normalsRay;
 	if (raycastType == IITMVisualisationEngine::RENDER_FROM_OLD_RAYCAST)
@@ -852,122 +185,57 @@ void ITMVisualisationEngine_CUDA::RenderImage(const Scene* scene,
 	normalsRay = renderState->raycastNormals->GetData(MEMORYDEVICE_CUDA);
 
 	Vector3f lightSource = Vector3f(invM.getColumn(3));
-
 	Vector4u* outRendering = outputImage->GetData(MEMORYDEVICE_CUDA);
 
-	Vector6f* directionalContribution = nullptr;
-	const ITMVoxel *voxelData = scene->localVBA.GetVoxelBlocks();
-	const ITMVoxelIndex::IndexData* voxelIndex = scene->index.getIndexData();
-	if (useDirectional and not CombineTSDFForRendering())
-	{
-		directionalContribution = renderState->raycastDirectionalContribution->GetData(MEMORYDEVICE_CUDA);
-	}
-
-	TSDF_CUDA<ITMIndexXYZ, ITMVoxel>* renderingTSDF_device = (TSDF_CUDA<ITMIndexXYZ, ITMVoxel>*) renderingTSDF;
-	TSDF_CUDA<ITMIndex , ITMVoxel>* tsdf_device = (TSDF_CUDA<ITMIndex, ITMVoxel>*) scene->tsdf;
+	auto tsdf = GetRenderingTSDF(scene)->toCUDA();
 
 	dim3 cudaBlockSize(8, 8);
 	dim3 gridSize((int) ceil((float) imgSize.x / (float) cudaBlockSize.x),
 	              (int) ceil((float) imgSize.y / (float) cudaBlockSize.y));
 
-	if ((type == IITMVisualisationEngine::RENDER_COLOUR_FROM_VOLUME) &&
-	    (!ITMVoxel::hasColorInformation))
-		type = IITMVisualisationEngine::RENDER_SHADED_GREYSCALE;
-
 	switch (type)
 	{
-		case IITMVisualisationEngine::RENDER_COLOUR_FROM_VOLUME:
-			if (CombineTSDFForRendering())
-			{
-				renderColour_device << < gridSize, cudaBlockSize >> > (outRendering, pointsRay,
-				  renderingTSDF_device->getMap(), scene->sceneParams->oneOverVoxelSize,
-					imgSize, lightSource);
-				ORcudaKernelCheck;
-			}
-			else
-			{
-				renderColour_device << < gridSize, cudaBlockSize >> > (outRendering, pointsRay,
-					tsdf_device->getMap(), scene->sceneParams->oneOverVoxelSize,
-					imgSize, lightSource);
-			}
-			break;
-		case IITMVisualisationEngine::RENDER_COLOUR_FROM_SDFNORMAL:
-			renderColourFromNormals_device<ITMVoxel, ITMVoxelIndex> << < gridSize, cudaBlockSize >> >
-			(outRendering, pointsRay,
-				directionalContribution,
-				voxelData, voxelIndex,
-				imgSize, lightSource);
+		case IITMVisualisationEngine::RENDER_COLOUR:
+			renderColour_device << < gridSize, cudaBlockSize >> > (outRendering, pointsRay,
+		tsdf->getMap(), scene->sceneParams->oneOverVoxelSize,
+		imgSize, lightSource);
 			ORcudaKernelCheck;
 			break;
-		case IITMVisualisationEngine::RENDER_COLOUR_FROM_IMAGENORMAL:
-			if (intrinsics->FocalLengthSignsDiffer())
-			{
-				renderNormals_ImageNormals_device<true> << < gridSize, cudaBlockSize >> >
-				                                                       (outRendering, pointsRay, normalsRay, imgSize, scene->sceneParams->voxelSize, lightSource);
-			} else
-			{
-				renderNormals_ImageNormals_device<false> << < gridSize, cudaBlockSize >> >
-				                                                        (outRendering, pointsRay, normalsRay, imgSize, scene->sceneParams->voxelSize, lightSource);
-			}
+		case IITMVisualisationEngine::RENDER_NORMAL_SDFNORMAL:
+			renderNormals_device << < gridSize, cudaBlockSize >> >
+			(outRendering, pointsRay, tsdf->getMap(), imgSize, scene->sceneParams->oneOverVoxelSize, lightSource);
 			ORcudaKernelCheck;
 			break;
-		case IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE_SDFNORMAL:
-			renderColourFromConfidence_device<ITMVoxel, ITMVoxelIndex> << < gridSize, cudaBlockSize >> >
-			                                                                          (outRendering, pointsRay,
-				                                                                          directionalContribution,
-				                                                                          voxelData, voxelIndex,
-				                                                                          imgSize, *(scene->sceneParams), lightSource);
-		case IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE_IMAGENORMAL:
-			if (intrinsics->FocalLengthSignsDiffer())
-			{
-				renderConfidence_ImageNormals_device<true> << < gridSize, cudaBlockSize >> >
-				                                                          (outRendering, pointsRay, normalsRay, imgSize, *(scene->sceneParams), lightSource);
-			} else
-			{
-				renderConfidence_ImageNormals_device<false> << < gridSize, cudaBlockSize >> >
-				                                                           (outRendering, pointsRay, normalsRay, imgSize, *(scene->sceneParams), lightSource);
-			}
+		case IITMVisualisationEngine::RENDER_NORMAL_IMAGENORMAL:
+			renderNormals_ImageNormals_device << < gridSize, cudaBlockSize >> >
+			(outRendering, pointsRay, normalsRay, imgSize, scene->sceneParams->voxelSize, lightSource);
 			ORcudaKernelCheck;
 			break;
-		case IITMVisualisationEngine::RENDER_COLOUR_FROM_DEPTH:
-			renderDepth_device<ITMVoxel, ITMVoxelIndex> << < gridSize, cudaBlockSize >> >
-			                                                           (outRendering, pointsRay, pose->GetM(), imgSize, scene->sceneParams->voxelSize, scene->sceneParams->viewFrustum_max);
+		case IITMVisualisationEngine::RENDER_CONFIDENCE_SDFNORMAL:
+			renderConfidence_device << < gridSize, cudaBlockSize >> > (outRendering, pointsRay,
+		tsdf->getMap(), imgSize, *(scene->sceneParams), lightSource);
 			ORcudaKernelCheck;
 			break;
-		case IITMVisualisationEngine::RENDER_SHADED_GREYSCALE_IMAGENORMALS:
-			if (intrinsics->FocalLengthSignsDiffer())
-			{
-				renderGrey_ImageNormals_device<true> << < gridSize, cudaBlockSize >> >
-				                                                    (outRendering, pointsRay, normalsRay, scene->sceneParams->voxelSize, imgSize, lightSource);
-			} else
-			{
-				renderGrey_ImageNormals_device<false> << < gridSize, cudaBlockSize >> >
-				                                                     (outRendering, pointsRay, normalsRay, scene->sceneParams->voxelSize, imgSize, lightSource);
-			}
+		case IITMVisualisationEngine::RENDER_CONFIDENCE_IMAGENORMAL:
+			renderConfidence_ImageNormals_device << < gridSize, cudaBlockSize >> >
+			(outRendering, pointsRay, normalsRay, imgSize, *(scene->sceneParams), lightSource);
 			ORcudaKernelCheck;
 			break;
-		case IITMVisualisationEngine::RENDER_SHADED_GREYSCALE:
+		case IITMVisualisationEngine::RENDER_DEPTH_COLOUR:
+			renderDepthColour_device<ITMVoxel> << < gridSize, cudaBlockSize >> > (outRendering, pointsRay, pose->GetM(),
+		imgSize, scene->sceneParams->viewFrustum_max);
+			ORcudaKernelCheck;
+			break;
+		case IITMVisualisationEngine::RENDER_DEPTH_IMAGENORMAL:
+			renderDepthShaded_ImageNormals_device << < gridSize, cudaBlockSize >> >
+			(outRendering, pointsRay, normalsRay, imgSize, lightSource);
+			ORcudaKernelCheck;
+			break;
+		case IITMVisualisationEngine::RENDER_DEPTH_SDFNORMAL:
 		default:
-			if (CombineTSDFForRendering())
-			{
-				ORcudaKernelCheck;
-				renderGrey_device << < gridSize, cudaBlockSize >> > (
-					outRendering, pointsRay,
-						renderingTSDF_device->getMap(),
-						scene->sceneParams->oneOverVoxelSize,
-						imgSize, lightSource);
-				ORcudaKernelCheck;
-			}
-			else
-			{
-				ORcudaKernelCheck;
-				renderGrey_device << < gridSize, cudaBlockSize >> > (
-					outRendering, pointsRay,
-						tsdf_device->getMap(),
-						scene->sceneParams->oneOverVoxelSize,
-						imgSize, lightSource);
-				ORcudaKernelCheck;
-			}
+			renderDepthShaded_device << < gridSize, cudaBlockSize >> >
+			(outRendering, pointsRay, tsdf->getMap(), scene->sceneParams->oneOverVoxelSize, imgSize, lightSource);
+			ORcudaKernelCheck;
 			break;
 	}
 }
@@ -988,8 +256,6 @@ void ITMVisualisationEngine_CUDA::ForwardRender(const Scene* scene,
 	int* fwdProjMissingPoints = renderState->fwdProjMissingPoints->GetData(MEMORYDEVICE_CUDA);
 	const Vector2f* minmaximg = renderState->renderingRangeImage->GetData(MEMORYDEVICE_CUDA);
 	float voxelSize = scene->sceneParams->voxelSize;
-	const ITMVoxel* voxelData = scene->localVBA.GetVoxelBlocks();
-	const typename ITMVoxelIndex::IndexData* voxelIndex = scene->index.getIndexData();
 
 	renderState->forwardProjection->Clear();
 
@@ -1001,7 +267,7 @@ void ITMVisualisationEngine_CUDA::ForwardRender(const Scene* scene,
 		                (int) ceil((float) imgSize.y / (float) blockSize.y));
 
 		forwardProject_device << < gridSize, blockSize >> >
-		                                     (forwardProjection, pointsRay, imgSize, M, projParams, voxelSize);
+		(forwardProjection, pointsRay, imgSize, M, projParams, voxelSize);
 		ORcudaKernelCheck;
 	}
 
@@ -1024,20 +290,7 @@ void ITMVisualisationEngine_CUDA::ForwardRender(const Scene* scene,
 		blockSize = dim3(256);
 		gridSize = dim3((int) ceil((float) renderState->noFwdProjMissingPoints / blockSize.x));
 
-		genericRaycastMissingPoints_device<ITMVoxel, ITMVoxelIndex> << < gridSize, blockSize >> > (
-			forwardProjection,
-				nullptr,
-				nullptr,
-				voxelData,
-				voxelIndex,
-				imgSize,
-				invM,
-				invertProjectionParams(projParams),
-				fwdProjMissingPoints, renderState->noFwdProjMissingPoints,
-				*(scene->sceneParams), minmaximg,
-				this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL
-		);
-		ORcudaKernelCheck;
+		std::cerr << "genericRaycastMissingPoints_device not implemented" << std::endl;
 	}
 }
 
@@ -1049,8 +302,6 @@ void ITMVisualisationEngine_CUDA::CreatePointCloud(const Scene* scene,
 {
 	Vector2i imgSize = renderState->raycastResult->noDims;
 	Matrix4f invM = trackingState->pose_d->GetInvM() * view->calib.trafo_rgb_to_depth.calib;
-
-	bool useDirectial = this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL;
 
 	GenericRaycast(scene, imgSize, invM, view->calib.intrinsics_rgb.projectionParamsSimple.all, renderState, true);
 	trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
@@ -1064,18 +315,10 @@ void ITMVisualisationEngine_CUDA::CreatePointCloud(const Scene* scene,
 
 	dim3 cudaBlockSize(16, 16);
 	dim3 gridSize = getGridSize(imgSize, cudaBlockSize);
-	if (this->settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL and DIRECTIONAL_RENDERING_MODE == 1)
-	{
-		renderPointCloud_device << < gridSize, cudaBlockSize >> > (locations, colours, noTotalPoints_device, pointsRay,
-			renderingTSDF->toCUDA()->getMap(),
-			skipPoints, scene->sceneParams->voxelSize, imgSize, lightSource);
-	}
-	else
-	{
-		renderPointCloud_device << < gridSize, cudaBlockSize >> > (locations, colours, noTotalPoints_device, pointsRay,
-			renderingTSDF->toCUDA()->getMap(),
-			skipPoints, scene->sceneParams->voxelSize, imgSize, lightSource);
-	}
+
+	renderPointCloud_device << < gridSize, cudaBlockSize >> > (locations, colours, noTotalPoints_device, pointsRay,
+		renderingTSDF->toCUDA()->getMap(),
+		skipPoints, scene->sceneParams->voxelSize, imgSize, lightSource);
 	ORcudaKernelCheck;
 
 	ORcudaSafeCall(
@@ -1112,15 +355,8 @@ void ITMVisualisationEngine_CUDA::CreateICPMaps(const Scene* scene,
 	dim3 gridSize((int) ceil((float) imgSize.x / (float) cudaBlockSize.x),
 	              (int) ceil((float) imgSize.y / (float) cudaBlockSize.y));
 
-	if (view->calib.intrinsics_d.FocalLengthSignsDiffer())
-	{
-		renderICP_device<true> << < gridSize, cudaBlockSize >> > (pointsMap, normalsMap, pointsRay, normalsRay,
-			scene->sceneParams->voxelSize, imgSize, lightSource);
-	} else
-	{
-		renderICP_device<false> << < gridSize, cudaBlockSize >> > (pointsMap, normalsMap, pointsRay, normalsRay,
-			scene->sceneParams->voxelSize, imgSize, lightSource);
-	}
+	renderICP_device << < gridSize, cudaBlockSize >> > (pointsMap, normalsMap, pointsRay, normalsRay,
+		scene->sceneParams->voxelSize, imgSize, lightSource);
 	ORcudaKernelCheck;
 }
 
@@ -1140,7 +376,7 @@ void ITMVisualisationEngine_CUDA::RenderTrackingError(ITMUChar4Image* outRenderi
 	dim3 cudaBlockSize(16, 12);
 	dim3 gridSize((int) ceil((float) imgSize.x / (float) cudaBlockSize.x),
 	              (int) ceil((float) imgSize.y / (float) cudaBlockSize.y));
-	renderPixelError_device<ITMVoxel, ITMVoxelIndex> << < gridSize, cudaBlockSize >> > (
+	renderPixelError_device<ITMVoxel> << < gridSize, cudaBlockSize >> > (
 		data, pointsRay, normalsRay, depthImage, depthImageInvPose, sceneRenderingPose,
 			view->calib.intrinsics_d.projectionParamsSimple.all, imgSize, maxError);
 }

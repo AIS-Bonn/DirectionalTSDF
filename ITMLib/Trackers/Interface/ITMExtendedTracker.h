@@ -16,123 +16,134 @@
 
 namespace ITMLib
 {
-	/** Base class for engine performing ICP based depth tracking.
-	    A typical example would be the original KinectFusion
-	    tracking algorithm.
-	*/
-	class ITMExtendedTracker : public ITMTracker
-	{
-	private:
-		static const int MIN_VALID_POINTS_DEPTH;
-		static const int MIN_VALID_POINTS_RGB;
+/** Base class for engine performing ICP based depth tracking.
+		A typical example would be the original KinectFusion
+		tracking algorithm.
+*/
+class ITMExtendedTracker : public ITMTracker
+{
+private:
+	static const int MIN_VALID_POINTS_DEPTH;
+	static const int MIN_VALID_POINTS_RGB;
 
-		const ITMLowLevelEngine *lowLevelEngine;
-		ITMImageHierarchy<ITMSceneHierarchyLevel> *sceneHierarchy;
-		ITMImageHierarchy<ITMDepthHierarchyLevel> *viewHierarchy_Depth;
-		ITMImageHierarchy<ITMIntensityHierarchyLevel> *viewHierarchy_Intensity;
-		ITMImageHierarchy<ITMTemplatedHierarchyLevel<ITMFloat4Image> > *reprojectedPointsHierarchy;
-		ITMImageHierarchy<ITMTemplatedHierarchyLevel<ITMFloatImage> > *projectedIntensityHierarchy;
+	const ITMLowLevelEngine* lowLevelEngine;
+	ITMImageHierarchy<ITMSceneHierarchyLevel>* sceneHierarchy;
+	ITMImageHierarchy<ITMDepthHierarchyLevel>* viewHierarchy_Depth;
+	ITMImageHierarchy<ITMIntensityHierarchyLevel>* viewHierarchy_Intensity;
+	ITMImageHierarchy<ITMTemplatedHierarchyLevel<ITMFloat4Image> >* reprojectedPointsHierarchy;
+	ITMImageHierarchy<ITMTemplatedHierarchyLevel<ITMFloatImage> >* projectedIntensityHierarchy;
 
-		ITMTrackingState *trackingState;
-		const ITMView *view;
+	ITMTrackingState* trackingState;
+	const ITMView* view;
 
-		int *noIterationsPerLevel;
+	int* noIterationsPerLevel;
 
-		float terminationThreshold;
+	float terminationThreshold;
 
-		float colourWeight;
+	float colourWeight;
 
-		void PrepareForEvaluation();
-		void SetEvaluationParams(int levelId);
+	void PrepareForEvaluation();
 
-		void ComputeDelta(float *delta, float *nabla, float *hessian, bool shortIteration) const;
-		void ApplyDelta(const Matrix4f & para_old, const float *delta, Matrix4f & para_new) const;
-		bool HasConverged(float *step) const;
+	void SetEvaluationParams(int levelId);
 
-		void SetEvaluationData(ITMTrackingState *trackingState, const ITMView *view);
+	void ComputeDelta(float* delta, float* nabla, float* hessian, bool shortIteration) const;
 
-		void UpdatePoseQuality(int noValidPoints_old, float *hessian_good, float f_old);
+	void ApplyDelta(const Matrix4f& para_old, const float* delta, Matrix4f& para_new) const;
 
-		ORUtils::HomkerMap *map;
-		ORUtils::SVMClassifier *svmClassifier;
-		Vector4f mu, sigma;
-	protected:
-		float *spaceThresh;
-		float *colourThresh;
+	bool HasConverged(float* step) const;
 
-		int currentLevelId;
-		TrackerIterationType currentIterationType;
+	void SetEvaluationData(ITMTrackingState* trackingState, const ITMView* view);
 
-		Matrix4f scenePose;
-		Matrix4f depthToRGBTransform;
-		ITMSceneHierarchyLevel *sceneHierarchyLevel_Depth;
-		ITMDepthHierarchyLevel *viewHierarchyLevel_Depth;
-		ITMIntensityHierarchyLevel *viewHierarchyLevel_Intensity;
-		ITMTemplatedHierarchyLevel<ITMFloat4Image> *reprojectedPointsLevel;
-		ITMTemplatedHierarchyLevel<ITMFloatImage > *projectedIntensityLevel;
+	void UpdatePoseQuality(int noValidPoints_old, float* hessian_good, float f_old);
 
-		bool useColour;
-		bool useDepth;
+	ORUtils::HomkerMap* map;
+	ORUtils::SVMClassifier* svmClassifier;
+	Vector4f mu, sigma;
+protected:
+	float* spaceThresh;
+	float* colourThresh;
 
-		float minColourGradient;
-		float viewFrustum_min, viewFrustum_max;
-		float tukeyCutOff;
+	int currentLevelId;
+	TrackerIterationType currentIterationType;
 
-		/** minimum weight of pixel to be used for tracking */
-		int framesToSkip;
+	Matrix4f scenePose;
+	Matrix4f depthToRGBTransform;
+	ITMSceneHierarchyLevel* sceneHierarchyLevel_Depth;
+	ITMDepthHierarchyLevel* viewHierarchyLevel_Depth;
+	ITMIntensityHierarchyLevel* viewHierarchyLevel_Intensity;
+	ITMTemplatedHierarchyLevel<ITMFloat4Image>* reprojectedPointsLevel;
+	ITMTemplatedHierarchyLevel<ITMFloatImage>* projectedIntensityLevel;
 
-		/** factor by which to divide pixel weight */
-		int framesToWeight;
-		int framesProcessed;
+	bool useColour;
+	bool useDepth;
 
-		virtual int ComputeGandH_Depth(float &f, float *nabla, float *hessian, Matrix4f approxInvPose) = 0;
-		virtual int ComputeGandH_RGB(float &f, float *nabla, float *hessian, Matrix4f approxPose) = 0;
+	float minColourGradient;
+	float viewFrustum_min, viewFrustum_max;
+	float tukeyCutOff;
 
-		/** Project depth points into intensity frame and lookup a corresponding intensity value
-		 *
-		 * @param points_out 3D position of depth points in depth frame
-		 * @param intensity_out corresponding intensity value for every depth point
-		 * @param intensity_in
-		 * @param depth_in
-		 * @param intrinsics_depth
-		 * @param intrinsics_rgb
-		 * @param scenePose transformation between rgb and depth frame
-		 */
-		virtual void ProjectCurrentIntensityFrame(ITMFloat4Image *points_out,
-												  ITMFloatImage *intensity_out,
-												  const ITMFloatImage *intensity_in,
-												  const ITMFloatImage *depth_in,
-												  const Vector4f &intrinsics_depth,
-												  const Vector4f &intrinsics_rgb,
-												  const Matrix4f &scenePose) = 0;
+	/** minimum weight of pixel to be used for tracking */
+	int framesToSkip;
 
-	public:
-		void TrackCamera(ITMTrackingState *trackingState, const ITMView *view);
+	/** factor by which to divide pixel weight */
+	int framesToWeight;
+	int framesProcessed;
 
-		bool requiresColourRendering() const { return false; }
-		bool requiresDepthReliability() const { return true; }
-		bool requiresPointCloudRendering() const { return true; }
+	virtual int ComputeGandH_Depth(float& f, float* nabla, float* hessian, Matrix4f approxInvPose) = 0;
 
-		void SetupLevels(int numIterCoarse, int numIterFine, float spaceThreshCoarse, float spaceThreshFine, float colourThreshCoarse, float colourThreshFine);
+	virtual int ComputeGandH_RGB(float& f, float* nabla, float* hessian, Matrix4f approxPose) = 0;
 
-		ITMExtendedTracker(Vector2i imgSize_d,
-						   Vector2i imgSize_rgb,
-						   bool useDepth,
-						   bool useColour,
-						   float colourWeight,
-						   TrackerIterationType *trackingRegime,
-						   int noHierarchyLevels,
-						   float terminationThreshold,
-						   float failureDetectorThreshold,
-						   float viewFrustum_min,
-						   float viewFrustum_max,
-						   float minColourGradient,
-						   float tukeyCutOff,
-						   int framesToSkip,
-						   int framesToWeight,
-						   const ITMLowLevelEngine *lowLevelEngine,
-						   MemoryDeviceType memoryType
-						   );
-		virtual ~ITMExtendedTracker(void);
-	};
+	/** Project depth points into intensity frame and lookup a corresponding intensity value
+	 *
+	 * @param points_out 3D position of depth points in depth frame
+	 * @param intensity_out corresponding intensity value for every depth point
+	 * @param intensity_in
+	 * @param depth_in
+	 * @param intrinsics_depth
+	 * @param intrinsics_rgb
+	 * @param scenePose transformation between rgb and depth frame
+	 */
+	virtual void ProjectCurrentIntensityFrame(ITMFloat4Image* points_out,
+	                                          ITMFloatImage* intensity_out,
+	                                          const ITMFloatImage* intensity_in,
+	                                          const ITMFloatImage* depth_in,
+	                                          const Vector4f& intrinsics_depth,
+	                                          const Vector4f& intrinsics_rgb,
+	                                          const Matrix4f& scenePose) = 0;
+
+public:
+	void TrackCamera(ITMTrackingState* trackingState, const ITMView* view);
+
+	bool requiresColourRendering() const
+	{ return false; }
+
+	bool requiresDepthReliability() const
+	{ return true; }
+
+	bool requiresPointCloudRendering() const
+	{ return true; }
+
+	void SetupLevels(int numIterCoarse, int numIterFine, float spaceThreshCoarse, float spaceThreshFine,
+	                 float colourThreshCoarse, float colourThreshFine);
+
+	ITMExtendedTracker(Vector2i imgSize_d,
+	                   Vector2i imgSize_rgb,
+	                   bool useDepth,
+	                   bool useColour,
+	                   float colourWeight,
+	                   TrackerIterationType* trackingRegime,
+	                   int noHierarchyLevels,
+	                   float terminationThreshold,
+	                   float failureDetectorThreshold,
+	                   float viewFrustum_min,
+	                   float viewFrustum_max,
+	                   float minColourGradient,
+	                   float tukeyCutOff,
+	                   int framesToSkip,
+	                   int framesToWeight,
+	                   const ITMLowLevelEngine* lowLevelEngine,
+	                   MemoryDeviceType memoryType
+	);
+
+	virtual ~ITMExtendedTracker(void);
+};
 }

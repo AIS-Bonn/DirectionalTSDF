@@ -35,7 +35,7 @@ typedef enum
 	FUSIONMETRIC_POINT_TO_PLANE,
 } FusionMetric;
 
-inline TSDFMode TSDFModeFromString(const std::string &mode)
+inline TSDFMode TSDFModeFromString(const std::string& mode)
 {
 	if (iequals(mode, "default"))
 		return TSDFMODE_DEFAULT;
@@ -46,7 +46,7 @@ inline TSDFMode TSDFModeFromString(const std::string &mode)
 	return TSDFMODE_DEFAULT;
 }
 
-inline FusionMode FusionModeFromString(const std::string &mode)
+inline FusionMode FusionModeFromString(const std::string& mode)
 {
 	if (iequals(mode, "voxelProjection"))
 		return FUSIONMODE_VOXEL_PROJECTION;
@@ -61,7 +61,7 @@ inline FusionMode FusionModeFromString(const std::string &mode)
 	return FUSIONMODE_VOXEL_PROJECTION;
 }
 
-inline CarvingMode CarvingModeFromString(const std::string &mode)
+inline CarvingMode CarvingModeFromString(const std::string& mode)
 {
 	if (iequals(mode, "voxelProjection"))
 		return CARVINGMODE_VOXEL_PROJECTION;
@@ -72,7 +72,7 @@ inline CarvingMode CarvingModeFromString(const std::string &mode)
 	return CARVINGMODE_VOXEL_PROJECTION;
 }
 
-inline FusionMetric FusionMetricFromString(const std::string &metric)
+inline FusionMetric FusionMetricFromString(const std::string& metric)
 {
 	if (iequals(metric, "pointToPoint"))
 		return FUSIONMETRIC_POINT_TO_POINT;

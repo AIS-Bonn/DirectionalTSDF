@@ -9,8 +9,7 @@ namespace ITMLib
 class ITMMeshingEngine_CUDA : public ITMMeshingEngine
 {
 private:
-	unsigned int* noTriangles_device;
-	Vector4s* visibleBlockGlobalPos_device;
+	unsigned int* noTriangles_device{};
 
 	/**
 	 * Generate entire mesh on GPU

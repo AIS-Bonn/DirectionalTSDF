@@ -65,7 +65,8 @@ computeNormalBilateralFiltered(const Vector4f* normals, const float sigma_d, con
 			if (value.w == -1)
 				continue;
 
-			const float weight = gaussD(sigma_d_factor, i - x, j - y) * gaussR(sigma_r_factor, length((value - center).toVector3()));
+			const float weight =
+				gaussD(sigma_d_factor, i - x, j - y) * gaussR(sigma_r_factor, length((value - center).toVector3()));
 
 			sum += weight * value.toVector3();
 			sum_weight += weight;
@@ -92,7 +93,7 @@ computeNormalBilateralFiltered(const Vector4f* normals, const float sigma_d, con
  */
 _CPU_AND_GPU_CODE_ inline float
 computeDepthBilateralFiltered(const float* depth, const float sigma_d, const float sigma_r, const int radius,
-                            const int x, const int y, const Vector2i& imgSize)
+                              const int x, const int y, const Vector2i& imgSize)
 {
 	const float center = depth[y * imgSize.x + x];
 	if (center < 0)
@@ -103,7 +104,8 @@ computeDepthBilateralFiltered(const float* depth, const float sigma_d, const flo
 
 	float sigma_d_factor = 1 / (2.0f * sigma_d * sigma_d);
 //	float sigma_r_factor = 1 / (2.0f * sigma_r * sigma_r);
-	float sigma_r_factor = 1 / (2.0f * sigma_r * sigma_r * center * center); // depth-dependent gradient filter (further away->higher noise->higher sigma_r)
+	float sigma_r_factor = 1 / (2.0f * sigma_r * sigma_r * center *
+	                            center); // depth-dependent gradient filter (further away->higher noise->higher sigma_r)
 
 	for (int i = x - radius; i <= x + radius; i++)
 	{

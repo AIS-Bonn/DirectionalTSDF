@@ -21,89 +21,97 @@
 
 namespace ITMLib
 {
-	/** \brief
-	    Main engine, that instantiates all the other engines and
-	    provides a simplified interface to them.
+/** \brief
+		Main engine, that instantiates all the other engines and
+		provides a simplified interface to them.
 
-	    This class is the main entry point to the ITMLib library
-	    and basically performs the whole KinectFusion algorithm.
-	    It stores the latest image internally, as well as the 3D
-	    world model and additionally it keeps track of the camera
-	    pose.
+		This class is the main entry point to the ITMLib library
+		and basically performs the whole KinectFusion algorithm.
+		It stores the latest image internally, as well as the 3D
+		world model and additionally it keeps track of the camera
+		pose.
 
-	    The intended use is as follows:
-	    -# Create an ITMMainEngine specifying the internal settings,
-	       camera parameters and image sizes
-	    -# Get the pointer to the internally stored images with
-	       @ref GetView() and write new image information to that
-	       memory
-	    -# Call the method @ref ProcessFrame() to track the camera
-	       and integrate the new information into the world model
-	    -# Optionally access the rendered reconstruction or another
-	       image for visualisation using @ref GetImage()
-	    -# Iterate the above three steps for each image in the
-	       sequence
+		The intended use is as follows:
+		-# Create an ITMMainEngine specifying the internal settings,
+			 camera parameters and image sizes
+		-# Get the pointer to the internally stored images with
+			 @ref GetView() and write new image information to that
+			 memory
+		-# Call the method @ref ProcessFrame() to track the camera
+			 and integrate the new information into the world model
+		-# Optionally access the rendered reconstruction or another
+			 image for visualisation using @ref GetImage()
+		-# Iterate the above three steps for each image in the
+			 sequence
 
-	    To access the internal information, look at the member
-	    variables @ref trackingState and @ref scene.
-	*/
-	class ITMMainEngine
+		To access the internal information, look at the member
+		variables @ref trackingState and @ref scene.
+*/
+class ITMMainEngine
+{
+public:
+	enum GetImageType
 	{
-	public:
-		enum GetImageType
-		{
-			InfiniTAM_IMAGE_ORIGINAL_RGB,
-			InfiniTAM_IMAGE_ORIGINAL_DEPTH,
-			InfiniTAM_IMAGE_SCENERAYCAST,
-			InfiniTAM_IMAGE_COLOUR_FROM_VOLUME,
-			InfiniTAM_IMAGE_COLOUR_FROM_NORMAL,
-			InfiniTAM_IMAGE_COLOUR_FROM_CONFIDENCE,
-			InfiniTAM_IMAGE_COLOUR_FROM_DEPTH,
-			InfiniTAM_IMAGE_COLOUR_FROM_ICP_ERROR,
-			InfiniTAM_IMAGE_FREECAMERA_SHADED,
-			InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME,
-			InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL,
-			InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_CONFIDENCE,
-			InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_DEPTH,
-			InfiniTAM_IMAGE_UNKNOWN
-		};
+		InfiniTAM_IMAGE_ORIGINAL_RGB,
+		InfiniTAM_IMAGE_ORIGINAL_DEPTH,
+		InfiniTAM_IMAGE_SCENERAYCAST,
+		InfiniTAM_IMAGE_COLOUR_FROM_VOLUME,
+		InfiniTAM_IMAGE_COLOUR_FROM_NORMAL,
+		InfiniTAM_IMAGE_COLOUR_FROM_CONFIDENCE,
+		InfiniTAM_IMAGE_COLOUR_FROM_DEPTH,
+		InfiniTAM_IMAGE_COLOUR_FROM_ICP_ERROR,
+		InfiniTAM_IMAGE_FREECAMERA_SHADED,
+		InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME,
+		InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL,
+		InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_CONFIDENCE,
+		InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_DEPTH,
+		InfiniTAM_IMAGE_UNKNOWN
+	};
 
-		/// Gives access to the current input frame
-		virtual ITMView* GetView(void) = 0;
+	/// Gives access to the current input frame
+	virtual ITMView* GetView() = 0;
 
-		/// Gives access to the current camera pose and additional tracking information
-		virtual ITMTrackingState* GetTrackingState(void) = 0;
+	/// Gives access to the current camera pose and additional tracking information
+	virtual ITMTrackingState* GetTrackingState() = 0;
 
-		virtual ITMRenderState* GetRenderState(void) = 0;
+	virtual ITMRenderState* GetRenderState() = 0;
 
-		virtual ITMRenderState* GetRenderStateFreeview(void) = 0;
+	virtual ITMRenderState* GetRenderStateFreeview() = 0;
 
-		virtual ITMRenderError ComputeICPError()
-		{ return ITMRenderError(); };
+	virtual ITMRenderError ComputeICPError()
+	{ return ITMRenderError(); };
 
-		/// Process a frame with rgb and depth images and optionally a corresponding imu measurement
-    virtual ITMTrackingState::TrackingResult ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement = nullptr, const ORUtils::SE3Pose* pose = nullptr) = 0;
+	/// Process a frame with rgb and depth images and optionally a corresponding imu measurement
+	virtual ITMTrackingState::TrackingResult
+	ProcessFrame(ITMUChar4Image* rgbImage, ITMShortImage* rawDepthImage, ITMIMUMeasurement* imuMeasurement,
+	             const ORUtils::SE3Pose* pose) = 0;
 
-		/// Get a result image as output
-		virtual Vector2i GetImageSize(void) const = 0;
+	/// Get a result image as output
+	[[nodiscard]] virtual Vector2i GetImageSize() const = 0;
 
-		virtual void GetImage(ITMUChar4Image *out, GetImageType getImageType, ORUtils::SE3Pose *pose = nullptr, const ITMIntrinsics *intrinsics = nullptr, bool normalsFromSDF=false) = 0;
+	virtual void
+	GetImage(ITMUChar4Image* out, GetImageType getImageType, ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
+	         bool normalsFromSDF) = 0;
 
-		/// Extracts a mesh from the current scene and saves it to the model file specified by the file name
-		virtual void SaveSceneToMesh(const char *fileName) { };
+	/// Extracts a mesh from the current scene and saves it to the model file specified by the file name
+	virtual void SaveSceneToMesh(const char* fileName)
+	{};
 
-		/// save and load the full scene and relocaliser (if any) to/from file
-		virtual void SaveToFile() { };
-		virtual void LoadFromFile() { };
+	/// save and load the full scene and relocaliser (if any) to/from file
+	virtual void SaveToFile()
+	{};
 
-		virtual ~ITMMainEngine() {}
+	virtual void LoadFromFile()
+	{};
 
-		virtual const unsigned int* GetAllocationsPerDirection() = 0;
+	virtual ~ITMMainEngine() = default;
 
-		const ITMTimeStats &GetTimeStats() const
-		{
-			return timeStats;
-		}
+	virtual const unsigned int* GetAllocationsPerDirection() = 0;
+
+	[[nodiscard]] const ITMTimeStats& GetTimeStats() const
+	{
+		return timeStats;
+	}
 
 
 	/**
@@ -112,49 +120,49 @@ namespace ITMLib
 	 * @param normalsFromSDF whether to use SDF or image points to interpolate normals
 	 * @return
 	 */
-		static IITMVisualisationEngine::RenderImageType ImageTypeToRenderType(GetImageType getImageType, bool normalsFromSDF)
+	static IITMVisualisationEngine::RenderImageType ImageTypeToRenderType(GetImageType getImageType, bool normalsFromSDF)
+	{
+		if (normalsFromSDF)
 		{
-			if (normalsFromSDF)
-			{
-				switch(getImageType)
-				{
-					case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_VOLUME:
-					case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME:
-						return IITMVisualisationEngine::RENDER_COLOUR_FROM_VOLUME;
-					case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_NORMAL:
-					case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL:
-						return IITMVisualisationEngine::RENDER_COLOUR_FROM_SDFNORMAL;
-					case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_CONFIDENCE:
-					case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_CONFIDENCE:
-						return IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE_SDFNORMAL;
-					case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_DEPTH:
-					case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_DEPTH:
-						return IITMVisualisationEngine::RENDER_COLOUR_FROM_DEPTH;
-					default:
-						return IITMVisualisationEngine::RENDER_SHADED_GREYSCALE;
-				}
-			}
-			switch(getImageType)
+			switch (getImageType)
 			{
 				case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_VOLUME:
 				case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME:
-					return IITMVisualisationEngine::RENDER_COLOUR_FROM_VOLUME;
+					return IITMVisualisationEngine::RENDER_COLOUR;
 				case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_NORMAL:
 				case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL:
-					return IITMVisualisationEngine::RENDER_COLOUR_FROM_IMAGENORMAL;
+					return IITMVisualisationEngine::RENDER_NORMAL_SDFNORMAL;
 				case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_CONFIDENCE:
 				case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_CONFIDENCE:
-					return IITMVisualisationEngine::RENDER_COLOUR_FROM_CONFIDENCE_IMAGENORMAL;
+					return IITMVisualisationEngine::RENDER_CONFIDENCE_SDFNORMAL;
 				case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_DEPTH:
 				case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_DEPTH:
-					return IITMVisualisationEngine::RENDER_COLOUR_FROM_DEPTH;
+					return IITMVisualisationEngine::RENDER_DEPTH_COLOUR;
 				default:
-					return IITMVisualisationEngine::RENDER_SHADED_GREYSCALE_IMAGENORMALS;
+					return IITMVisualisationEngine::RENDER_DEPTH_SDFNORMAL;
 			}
 		}
+		switch (getImageType)
+		{
+			case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_VOLUME:
+			case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME:
+				return IITMVisualisationEngine::RENDER_COLOUR;
+			case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_NORMAL:
+			case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL:
+				return IITMVisualisationEngine::RENDER_NORMAL_IMAGENORMAL;
+			case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_CONFIDENCE:
+			case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_CONFIDENCE:
+				return IITMVisualisationEngine::RENDER_CONFIDENCE_IMAGENORMAL;
+			case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_DEPTH:
+			case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_DEPTH:
+				return IITMVisualisationEngine::RENDER_DEPTH_COLOUR;
+			default:
+				return IITMVisualisationEngine::RENDER_DEPTH_IMAGENORMAL;
+		}
+	}
 
-	protected:
-		ITMTimeStats timeStats;
-	};
+protected:
+	ITMTimeStats timeStats;
+};
 
 } // namespace ITMLib

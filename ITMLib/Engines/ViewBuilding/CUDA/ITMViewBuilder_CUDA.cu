@@ -10,8 +10,11 @@
 using namespace ITMLib;
 using namespace ORUtils;
 
-ITMViewBuilder_CUDA::ITMViewBuilder_CUDA(const ITMRGBDCalib& calib):ITMViewBuilder(calib) { }
-ITMViewBuilder_CUDA::~ITMViewBuilder_CUDA(void) { }
+ITMViewBuilder_CUDA::ITMViewBuilder_CUDA(const ITMRGBDCalib& calib) : ITMViewBuilder(calib)
+{}
+
+ITMViewBuilder_CUDA::~ITMViewBuilder_CUDA(void)
+{}
 
 //---------------------------------------------------------------------------
 //
@@ -20,11 +23,19 @@ ITMViewBuilder_CUDA::~ITMViewBuilder_CUDA(void) { }
 //---------------------------------------------------------------------------
 
 
-__global__ void convertDisparityToDepth_device(float *depth_out, const short *depth_in, Vector2f disparityCalibParams, float fx_depth, Vector2i imgSize);
-__global__ void convertDepthAffineToFloat_device(float *d_out, const short *d_in, Vector2i imgSize, Vector2f depthCalibParams);
-__global__ void filterDepth_device(float *imageData_out, const float *imageData_in, Vector2i imgDims);
-__global__ void filterNormals_device(Vector4f *normals_out, const Vector4f *normals_in, Vector2i imgDims);
-__global__ void ComputeNormalAndWeight_device(const float* depth_in, Vector4f* normal_out, Vector2i imgDims, Vector4f intrinsic);
+__global__ void
+convertDisparityToDepth_device(float* depth_out, const short* depth_in, Vector2f disparityCalibParams, float fx_depth,
+                               Vector2i imgSize);
+
+__global__ void
+convertDepthAffineToFloat_device(float* d_out, const short* d_in, Vector2i imgSize, Vector2f depthCalibParams);
+
+__global__ void filterDepth_device(float* imageData_out, const float* imageData_in, Vector2i imgDims);
+
+__global__ void filterNormals_device(Vector4f* normals_out, const Vector4f* normals_in, Vector2i imgDims);
+
+__global__ void
+ComputeNormalAndWeight_device(const float* depth_in, Vector4f* normal_out, Vector2i imgDims, Vector4f intrinsic);
 
 //---------------------------------------------------------------------------
 //
@@ -32,7 +43,8 @@ __global__ void ComputeNormalAndWeight_device(const float* depth_in, Vector4f* n
 //
 //---------------------------------------------------------------------------
 
-void ITMViewBuilder_CUDA::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, bool useBilateralFilter, bool computeNormals)
+void ITMViewBuilder_CUDA::UpdateView(ITMView** view_ptr, ITMUChar4Image* rgbImage, ITMShortImage* rawDepthImage,
+                                     bool useBilateralFilter, bool computeNormals)
 {
 	timeStats.Reset();
 	ITMTimer timer;
@@ -49,21 +61,22 @@ void ITMViewBuilder_CUDA::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImag
 		this->normals = new ITMFloat4Image(rawDepthImage->noDims, true, true);
 	}
 
-	ITMView *view = *view_ptr;
+	ITMView* view = *view_ptr;
 
 	view->rgb->SetFrom(rgbImage, MemoryBlock<Vector4u>::CPU_TO_CUDA);
 	this->shortImage->SetFrom(rawDepthImage, MemoryBlock<short>::CPU_TO_CUDA);
 
 	switch (view->calib.disparityCalib.GetType())
 	{
-	case ITMDisparityCalib::TRAFO_KINECT:
-		this->ConvertDisparityToDepth(view->depth, this->shortImage, &(view->calib.intrinsics_d), view->calib.disparityCalib.GetParams());
-		break;
-	case ITMDisparityCalib::TRAFO_AFFINE:
-		this->ConvertDepthAffineToFloat(view->depth, this->shortImage, view->calib.disparityCalib.GetParams());
-		break;
-	default:
-		break;
+		case ITMDisparityCalib::TRAFO_KINECT:
+			this->ConvertDisparityToDepth(view->depth, this->shortImage, &(view->calib.intrinsics_d),
+			                              view->calib.disparityCalib.GetParams());
+			break;
+		case ITMDisparityCalib::TRAFO_AFFINE:
+			this->ConvertDepthAffineToFloat(view->depth, this->shortImage, view->calib.disparityCalib.GetParams());
+			break;
+		default:
+			break;
 	}
 	timeStats.copyImages += timer.Tock();
 
@@ -92,7 +105,8 @@ void ITMViewBuilder_CUDA::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImag
 	}
 }
 
-void ITMViewBuilder_CUDA::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage, ITMShortImage *depthImage, bool useBilateralFilter, ITMIMUMeasurement *imuMeasurement, bool computeNormals)
+void ITMViewBuilder_CUDA::UpdateView(ITMView** view_ptr, ITMUChar4Image* rgbImage, ITMShortImage* depthImage,
+                                     bool useBilateralFilter, ITMIMUMeasurement* imuMeasurement, bool computeNormals)
 {
 	if (*view_ptr == nullptr)
 	{
@@ -105,69 +119,76 @@ void ITMViewBuilder_CUDA::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImag
 		this->normals = new ITMFloat4Image(depthImage->noDims, true, true);
 	}
 
-	ITMViewIMU* imuView = (ITMViewIMU*)(*view_ptr);
+	ITMViewIMU* imuView = (ITMViewIMU*) (*view_ptr);
 	imuView->imu->SetFrom(imuMeasurement);
 
 	this->UpdateView(view_ptr, rgbImage, depthImage, useBilateralFilter, computeNormals);
 }
 
-void ITMViewBuilder_CUDA::ConvertDisparityToDepth(ITMFloatImage *depth_out, const ITMShortImage *depth_in, const ITMIntrinsics *depthIntrinsics,
-	Vector2f disparityCalibParams)
+void ITMViewBuilder_CUDA::ConvertDisparityToDepth(ITMFloatImage* depth_out, const ITMShortImage* depth_in,
+                                                  const ITMIntrinsics* depthIntrinsics,
+                                                  Vector2f disparityCalibParams)
 {
 	Vector2i imgSize = depth_in->noDims;
 
-	const short *d_in = depth_in->GetData(MEMORYDEVICE_CUDA);
-	float *d_out = depth_out->GetData(MEMORYDEVICE_CUDA);
+	const short* d_in = depth_in->GetData(MEMORYDEVICE_CUDA);
+	float* d_out = depth_out->GetData(MEMORYDEVICE_CUDA);
 
 	float fx_depth = depthIntrinsics->projectionParamsSimple.fx;
 
 	dim3 blockSize(16, 16);
-	dim3 gridSize((int)ceil((float)imgSize.x / (float)blockSize.x), (int)ceil((float)imgSize.y / (float)blockSize.y));
+	dim3 gridSize((int) ceil((float) imgSize.x / (float) blockSize.x),
+	              (int) ceil((float) imgSize.y / (float) blockSize.y));
 
-	convertDisparityToDepth_device << <gridSize, blockSize >> >(d_out, d_in, disparityCalibParams, fx_depth, imgSize);
+	convertDisparityToDepth_device << < gridSize, blockSize >> >(d_out, d_in, disparityCalibParams, fx_depth, imgSize);
 	ORcudaKernelCheck;
 }
 
-void ITMViewBuilder_CUDA::ConvertDepthAffineToFloat(ITMFloatImage *depth_out, const ITMShortImage *depth_in, Vector2f depthCalibParams)
+void ITMViewBuilder_CUDA::ConvertDepthAffineToFloat(ITMFloatImage* depth_out, const ITMShortImage* depth_in,
+                                                    Vector2f depthCalibParams)
 {
 	Vector2i imgSize = depth_in->noDims;
 
-	const short *d_in = depth_in->GetData(MEMORYDEVICE_CUDA);
-	float *d_out = depth_out->GetData(MEMORYDEVICE_CUDA);
+	const short* d_in = depth_in->GetData(MEMORYDEVICE_CUDA);
+	float* d_out = depth_out->GetData(MEMORYDEVICE_CUDA);
 
 	dim3 blockSize(16, 16);
-	dim3 gridSize((int)ceil((float)imgSize.x / (float)blockSize.x), (int)ceil((float)imgSize.y / (float)blockSize.y));
+	dim3 gridSize((int) ceil((float) imgSize.x / (float) blockSize.x),
+	              (int) ceil((float) imgSize.y / (float) blockSize.y));
 
-	convertDepthAffineToFloat_device << <gridSize, blockSize >> >(d_out, d_in, imgSize, depthCalibParams);
+	convertDepthAffineToFloat_device << < gridSize, blockSize >> >(d_out, d_in, imgSize, depthCalibParams);
 	ORcudaKernelCheck;
 }
 
-void ITMViewBuilder_CUDA::DepthFiltering(ITMFloatImage *image_out, const ITMFloatImage *image_in)
+void ITMViewBuilder_CUDA::DepthFiltering(ITMFloatImage* image_out, const ITMFloatImage* image_in)
 {
 	Vector2i imgDims = image_in->noDims;
 
-	const float *imageData_in = image_in->GetData(MEMORYDEVICE_CUDA);
-	float *imageData_out = image_out->GetData(MEMORYDEVICE_CUDA);
+	const float* imageData_in = image_in->GetData(MEMORYDEVICE_CUDA);
+	float* imageData_out = image_out->GetData(MEMORYDEVICE_CUDA);
 
 	dim3 blockSize(16, 16);
-	dim3 gridSize((int)ceil((float)imgDims.x / (float)blockSize.x), (int)ceil((float)imgDims.y / (float)blockSize.y));
+	dim3 gridSize((int) ceil((float) imgDims.x / (float) blockSize.x),
+	              (int) ceil((float) imgDims.y / (float) blockSize.y));
 
-	filterDepth_device << <gridSize, blockSize >> >(imageData_out, imageData_in, imgDims);
+	filterDepth_device << < gridSize, blockSize >> >(imageData_out, imageData_in, imgDims);
 	ORcudaKernelCheck;
 }
 
-void ITMViewBuilder_CUDA::ComputeNormalAndWeights(ITMFloat4Image *normal_out, const ITMFloatImage *depth_in, Vector4f intrinsic)
+void ITMViewBuilder_CUDA::ComputeNormalAndWeights(ITMFloat4Image* normal_out, const ITMFloatImage* depth_in,
+                                                  Vector4f intrinsic)
 {
 	Vector2i imgDims = depth_in->noDims;
 
-	const float *depthData_in = depth_in->GetData(MEMORYDEVICE_CUDA);
+	const float* depthData_in = depth_in->GetData(MEMORYDEVICE_CUDA);
 
-	Vector4f *normalData_out = normal_out->GetData(MEMORYDEVICE_CUDA);
+	Vector4f* normalData_out = normal_out->GetData(MEMORYDEVICE_CUDA);
 
 	dim3 blockSize(16, 16);
-	dim3 gridSize((int)ceil((float)imgDims.x / (float)blockSize.x), (int)ceil((float)imgDims.y / (float)blockSize.y));
+	dim3 gridSize((int) ceil((float) imgDims.x / (float) blockSize.x),
+	              (int) ceil((float) imgDims.y / (float) blockSize.y));
 
-	ComputeNormalAndWeight_device << <gridSize, blockSize >> >(depthData_in, normalData_out, imgDims, intrinsic);
+	ComputeNormalAndWeight_device << < gridSize, blockSize >> >(depthData_in, normalData_out, imgDims, intrinsic);
 	ORcudaKernelCheck;
 }
 
@@ -175,13 +196,14 @@ void ITMViewBuilder_CUDA::NormalFiltering(ITMFloat4Image* normals_out, const ITM
 {
 	Vector2i imgDims = normals_in->noDims;
 
-	const Vector4f *n_in = normals_in->GetData(MEMORYDEVICE_CUDA);
-	Vector4f *n_out = normals_out->GetData(MEMORYDEVICE_CUDA);
+	const Vector4f* n_in = normals_in->GetData(MEMORYDEVICE_CUDA);
+	Vector4f* n_out = normals_out->GetData(MEMORYDEVICE_CUDA);
 
 	dim3 blockSize(16, 16);
-	dim3 gridSize((int)ceil((float)imgDims.x / (float)blockSize.x), (int)ceil((float)imgDims.y / (float)blockSize.y));
+	dim3 gridSize((int) ceil((float) imgDims.x / (float) blockSize.x),
+	              (int) ceil((float) imgDims.y / (float) blockSize.y));
 
-	filterNormals_device << <gridSize, blockSize >> >(n_out, n_in, imgDims);
+	filterNormals_device << < gridSize, blockSize >> >(n_out, n_in, imgDims);
 	ORcudaKernelCheck;
 }
 
@@ -191,7 +213,9 @@ void ITMViewBuilder_CUDA::NormalFiltering(ITMFloat4Image* normals_out, const ITM
 //
 //---------------------------------------------------------------------------
 
-__global__ void convertDisparityToDepth_device(float *d_out, const short *d_in, Vector2f disparityCalibParams, float fx_depth, Vector2i imgSize)
+__global__ void
+convertDisparityToDepth_device(float* d_out, const short* d_in, Vector2f disparityCalibParams, float fx_depth,
+                               Vector2i imgSize)
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x;
 	int y = threadIdx.y + blockIdx.y * blockDim.y;
@@ -201,7 +225,8 @@ __global__ void convertDisparityToDepth_device(float *d_out, const short *d_in, 
 	convertDisparityToDepth(d_out, x, y, d_in, disparityCalibParams, fx_depth, imgSize);
 }
 
-__global__ void convertDepthAffineToFloat_device(float *d_out, const short *d_in, Vector2i imgSize, Vector2f depthCalibParams)
+__global__ void
+convertDepthAffineToFloat_device(float* d_out, const short* d_in, Vector2i imgSize, Vector2f depthCalibParams)
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x;
 	int y = threadIdx.y + blockIdx.y * blockDim.y;
@@ -211,7 +236,7 @@ __global__ void convertDepthAffineToFloat_device(float *d_out, const short *d_in
 	convertDepthAffineToFloat(d_out, x, y, d_in, imgSize, depthCalibParams);
 }
 
-__global__ void filterDepth_device(float *imageData_out, const float *imageData_in, Vector2i imgDims)
+__global__ void filterDepth_device(float* imageData_out, const float* imageData_in, Vector2i imgDims)
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
 
@@ -220,7 +245,7 @@ __global__ void filterDepth_device(float *imageData_out, const float *imageData_
 	filterDepth(imageData_out, imageData_in, 5.0, 0.025, x, y, imgDims);
 }
 
-__global__ void filterNormals_device(Vector4f *normals_out, const Vector4f *normals_in, Vector2i imgDims)
+__global__ void filterNormals_device(Vector4f* normals_out, const Vector4f* normals_in, Vector2i imgDims)
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
 
@@ -229,7 +254,8 @@ __global__ void filterNormals_device(Vector4f *normals_out, const Vector4f *norm
 	filterNormals(normals_out, normals_in, 2.5, 5.0, x, y, imgDims);
 }
 
-__global__ void ComputeNormalAndWeight_device(const float* depth_in, Vector4f* normal_out, Vector2i imgDims, Vector4f intrinsic)
+__global__ void
+ComputeNormalAndWeight_device(const float* depth_in, Vector4f* normal_out, Vector2i imgDims, Vector4f intrinsic)
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
 

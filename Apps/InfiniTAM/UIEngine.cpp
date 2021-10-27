@@ -23,7 +23,6 @@
 
 #include "../../ITMLib/ITMLibDefines.h"
 #include "../../ITMLib/Core/ITMBasicEngine.h"
-#include "../../ITMLib/Core/ITMMultiEngine.h"
 
 #include "../../ORUtils/FileUtils.h"
 #include "../../InputSource/FFMPEGWriter.h"
@@ -412,14 +411,6 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 				uiEngine->outImage[0]->ChangeDims(uiEngine->mainEngine->GetView()->depth->noDims);
 			}
 
-			ITMMultiEngine *multiEngine = dynamic_cast<ITMMultiEngine*>(uiEngine->mainEngine);
-			if (multiEngine != nullptr)
-			{
-				int idx = multiEngine->findPrimaryLocalMapIdx();
-				if (idx < 0) idx = 0;
-				multiEngine->setFreeviewLocalMapIdx(idx);
-			}
-
 			uiEngine->freeviewActive = true;
 		}
 		uiEngine->needsRefresh = true;
@@ -497,20 +488,6 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 		catch (const std::runtime_error &e)
 		{
 			printf("failed: %s\n", e.what());
-		}
-	}
-	break;
-	case '[':
-	case ']':
-	{
-		ITMMultiEngine *multiEngine = dynamic_cast<ITMMultiEngine*>(uiEngine->mainEngine);
-		if (multiEngine != nullptr)
-		{
-			int idx = multiEngine->getFreeviewLocalMapIdx();
-			if (key == '[') idx--;
-			else idx++;
-			multiEngine->changeFreeviewLocalMapIdx(&(uiEngine->freeviewPose), idx);
-			uiEngine->needsRefresh = true;
 		}
 	}
 	break;

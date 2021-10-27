@@ -6,34 +6,31 @@
 
 namespace ITMLib
 {
-class SummingVoxelMap_CPU;
-
-class ITMSceneReconstructionEngine_CPU : public ITMSceneReconstructionEngine
+template<typename TIndex>
+class ITMSceneReconstructionEngine_CPU : public ITMSceneReconstructionEngine<TIndex>
 {
 protected:
-	ORUtils::MemoryBlock<HashEntryAllocType> *entriesAllocType;
-	ORUtils::MemoryBlock<Vector4s> *blockCoords;
-	ORUtils::MemoryBlock<TSDFDirection> *blockDirections;
+	TSDF_CPU<TIndex, SummingVoxel>* summingVoxelMap = nullptr;
 
-	SummingVoxelMap_CPU* summingVoxelMap;
+	/** Wrapper to make automatically getting tsdf/directionTSDF from scene object easier. */
+	TSDF_CPU<TIndex, ITMVoxel>* GetTSDF(const Scene* scene);
 
-	void IntegrateIntoSceneVoxelProjection(Scene *scene,
-		const ITMView *view, const ITMTrackingState *trackingState,
-		const ITMRenderState *renderState) override;
+	void IntegrateIntoSceneVoxelProjection(Scene* scene,
+	                                       const ITMView* view, const ITMTrackingState* trackingState) override;
 
-	void IntegrateIntoSceneRayCasting(Scene *scene, const ITMView *view,
-																		const ITMTrackingState *trackingState, const ITMRenderState *renderState) override;
+	void IntegrateIntoSceneRayCasting(Scene* scene, const ITMView* view,
+	                                  const ITMTrackingState* trackingState) override;
 
 public:
-	void ResetScene(Scene *scene) override;
+	void ResetScene(Scene* scene) override;
 
 	void FindVisibleBlocks(const Scene* scene, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
 	                       ITMRenderState* renderState) override;
 
-	void AllocateSceneFromDepth(Scene *scene, const ITMView *view, const ITMTrackingState *trackingState,
-		const ITMRenderState *renderState, bool onlyUpdateVisibleList = false, bool resetVisibleList = false) override;
+	void AllocateSceneFromDepth(Scene* scene, const ITMView* view, const ITMTrackingState* trackingState) override;
 
-	explicit ITMSceneReconstructionEngine_CPU(std::shared_ptr<const ITMLibSettings> settings);
+	explicit ITMSceneReconstructionEngine_CPU(const std::shared_ptr<const ITMLibSettings>& settings);
+
 	~ITMSceneReconstructionEngine_CPU();
 };
 }

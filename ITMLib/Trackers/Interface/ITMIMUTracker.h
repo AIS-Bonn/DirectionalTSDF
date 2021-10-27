@@ -9,18 +9,25 @@
 
 namespace ITMLib
 {
-	class ITMIMUTracker : public ITMTracker
-	{
-	private:
-		ITMIMUCalibrator *calibrator;
+class ITMIMUTracker : public ITMTracker
+{
+private:
+	ITMIMUCalibrator* calibrator;
 
-	public:
-		void TrackCamera(ITMTrackingState *trackingState, const ITMView *view);
-		bool requiresColourRendering() const { return false; }
-		bool requiresDepthReliability() const { return false; }
-		bool requiresPointCloudRendering() const { return false; }
+public:
+	void TrackCamera(ITMTrackingState* trackingState, const ITMView* view);
 
-		ITMIMUTracker(ITMIMUCalibrator *calibrator);
-		virtual ~ITMIMUTracker(void);
-	};
+	bool requiresColourRendering() const
+	{ return false; }
+
+	bool requiresDepthReliability() const
+	{ return false; }
+
+	bool requiresPointCloudRendering() const
+	{ return false; }
+
+	ITMIMUTracker(ITMIMUCalibrator* calibrator);
+
+	virtual ~ITMIMUTracker(void);
+};
 }

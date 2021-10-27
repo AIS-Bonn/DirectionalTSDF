@@ -2,14 +2,15 @@
 
 #pragma once
 
+#include <memory>
 #include <type_traits>
-#include "Objects/Scene/ITMRepresentationAccess.h"
+#include <unordered_set>
+
 #include "Objects/Scene/ITMDirectional.h"
 #include "Utils/ITMPixelUtils.h"
 #include "ITMBlockTraversal.h"
 #include "ITMLib/Engines/Reconstruction/Interface/ITMSceneReconstructionEngine.h"
 #include "ITMLib/Engines/Reconstruction/Shared/ITMFusionWeight.hpp"
-#include "ITMLib/Engines/Reconstruction/Shared/ITMSummingVoxelMap.h"
 #include "ITMLib/Utils/ITMProjectionUtils.h"
 #include "ITMLib/Objects/Scene/ITMSummingVoxel.h"
 
@@ -103,7 +104,8 @@ computeUpdatedVoxelDepthInfo(ITMVoxel& voxel, const TSDFDirection direction,
 			{
 				float directionAngle = DirectionAngle(normal_world, direction);
 				float directionWeight = DirectionWeight(directionAngle);
-				newW = combinedWeight(depth_measure, distance, normal_camera.toVector3(), viewRay_camera, sceneParams) * directionWeight;
+				newW = combinedWeight(depth_measure, distance, normal_camera.toVector3(), viewRay_camera, sceneParams) *
+				       directionWeight;
 //				newW *= (ORUtils::dot(normal_camera.toVector3(), -viewRay_camera) > 0.3); // don't fuse too steep angles in directional, as unreliable
 //				if (distance > 0 and directionAngle > direction_angle_threshold and directionAngle < M_PI_2)
 //					newW = 0.01f * weightNormal(normal_camera.toVector3(), viewRay_camera);
@@ -142,7 +144,8 @@ computeUpdatedVoxelColorInfo(TVoxel& voxel, const TSDFDirection direction,
                              const Matrix4f& M_rgb, const Vector4f& projParams_rgb,
                              const ITMFusionParams& fusionParams,
                              const ITMSceneParams& sceneParams,
-                             const float* depth, const Vector4f* depthNormals, const Vector4u* rgb, const Vector2i& imgSize_d, const Vector2i& imgSize_rgb)
+                             const float* depth, const Vector4f* depthNormals, const Vector4u* rgb,
+                             const Vector2i& imgSize_d, const Vector2i& imgSize_rgb)
 {
 	// project point into image
 	Vector4f voxel_rgb = M_rgb * voxel_world;
@@ -150,7 +153,8 @@ computeUpdatedVoxelColorInfo(TVoxel& voxel, const TSDFDirection direction,
 	if (voxel_rgb.z <= 0 or voxel_d.z <= 0) return;
 
 	Vector2f voxel_image_d = project(voxel_d.toVector3(), projParams_d);
-	if ((voxel_image_d.x < 1) || (voxel_image_d.x > imgSize_d.width - 2) || (voxel_image_d.y < 1) || (voxel_image_d.y > imgSize_d.height - 2))
+	if ((voxel_image_d.x < 1) || (voxel_image_d.x > imgSize_d.width - 2) || (voxel_image_d.y < 1) ||
+	    (voxel_image_d.y > imgSize_d.height - 2))
 		return;
 
 	// get depth and normal
@@ -164,13 +168,14 @@ computeUpdatedVoxelColorInfo(TVoxel& voxel, const TSDFDirection direction,
 	float colorWeight_new = 1;
 	Vector3f color_new;
 	Vector2f voxel_image_rgb = project(voxel_rgb.toVector3(), projParams_rgb);
-	if ((voxel_image_rgb.x < 1) || (voxel_image_rgb.x > imgSize_rgb.width - 2) || (voxel_image_rgb.y < 1) || (voxel_image_rgb.y > imgSize_rgb.height - 2))
+	if ((voxel_image_rgb.x < 1) || (voxel_image_rgb.x > imgSize_rgb.width - 2) || (voxel_image_rgb.y < 1) ||
+	    (voxel_image_rgb.y > imgSize_rgb.height - 2))
 	{
 		colorWeight_new = 0;
-	}
-	else
+	} else
 	{
-		color_new = rgb[(int)(voxel_image_rgb.x + 0.5f) + (int)(voxel_image_rgb.y + 0.5f) * imgSize_rgb.width].toVector3().toFloat() / 255.0f;
+		color_new = rgb[(int) (voxel_image_rgb.x + 0.5f) +
+		                (int) (voxel_image_rgb.y + 0.5f) * imgSize_rgb.width].toVector3().toFloat() / 255.0f;
 //		color_new = TO_VECTOR3(interpolateBilinear(rgb, voxel_image_rgb, imgSize_rgb)) / 255.0f;
 	}
 
@@ -212,7 +217,8 @@ computeUpdatedVoxelColorInfo(TVoxel& voxel, const TSDFDirection direction,
 //			if (sdf_old > 0) // only apply to negative, as positive might be used for estimating surface -> DEFINITELY WORSE
 //				depthWeight_new = 0.01;
 
-			depthWeight_new *= weightDepth(1, sceneParams) * weightNormal(normal_camera.toVector3(), viewRay_camera); // use constant depth weigh, because outside truncation range
+			depthWeight_new *= weightDepth(1, sceneParams) * weightNormal(normal_camera.toVector3(),
+			                                                              viewRay_camera); // use constant depth weigh, because outside truncation range
 
 			if (direction != TSDFDirection::NONE)
 			{
@@ -220,19 +226,23 @@ computeUpdatedVoxelColorInfo(TVoxel& voxel, const TSDFDirection direction,
 //				depthWeight_new *= static_cast<float>(DirectionAngle(-pixelRay_world, direction) < 2 * M_PI_4);
 
 //				depthWeight_new *=  DirectionWeight(DirectionAngle(-pixelRay_world, direction));
-				depthWeight_new *=  (M_PI_2 - DirectionAngle(-pixelRay_world, direction)) / M_PI_2;
+				depthWeight_new *= (M_PI_2 - DirectionAngle(-pixelRay_world, direction)) / M_PI_2;
 			}
 
 			// Check if pixel near to depth gap (large offset to neighboring pixels) in which case, don't carve (retain edges of objects)
-			float voxelSizeImage = sceneParams.voxelSize / voxel_d.z * projParams_d.x;
+//			float voxelSizeImage = sceneParams.voxelSize / voxel_d.z * projParams_d.x;
 			bool dontCarve = false;
 			for (int i = 1; i <= 2 and not dontCarve; i++)
 //			for (int i = 1; i < ceil(voxelSizeImage / 2) and not dontCarve; i++)
 			{
-				dontCarve |= fabs(depth_measure - depth[imgCoords_d.x + i + (imgCoords_d.y + 0) * imgSize_d.width]) > sceneParams.mu;
-				dontCarve |= fabs(depth_measure - depth[imgCoords_d.x - i + (imgCoords_d.y + 0) * imgSize_d.width]) > sceneParams.mu;
-				dontCarve |= fabs(depth_measure - depth[imgCoords_d.x + 0 + (imgCoords_d.y + i) * imgSize_d.width]) > sceneParams.mu;
-				dontCarve |= fabs(depth_measure - depth[imgCoords_d.x + 0 + (imgCoords_d.y - i) * imgSize_d.width]) > sceneParams.mu;
+				dontCarve |=
+					fabs(depth_measure - depth[imgCoords_d.x + i + (imgCoords_d.y + 0) * imgSize_d.width]) > sceneParams.mu;
+				dontCarve |=
+					fabs(depth_measure - depth[imgCoords_d.x - i + (imgCoords_d.y + 0) * imgSize_d.width]) > sceneParams.mu;
+				dontCarve |=
+					fabs(depth_measure - depth[imgCoords_d.x + 0 + (imgCoords_d.y + i) * imgSize_d.width]) > sceneParams.mu;
+				dontCarve |=
+					fabs(depth_measure - depth[imgCoords_d.x + 0 + (imgCoords_d.y - i) * imgSize_d.width]) > sceneParams.mu;
 
 				dontCarve |= depth[imgCoords_d.x + i + (imgCoords_d.y + 0) * imgSize_d.width] <= 0;
 				dontCarve |= depth[imgCoords_d.x - i + (imgCoords_d.y + 0) * imgSize_d.width] <= 0;
@@ -253,11 +263,14 @@ computeUpdatedVoxelColorInfo(TVoxel& voxel, const TSDFDirection direction,
 
 				// Fuse positive values, even if angle larger than threshold for direction (carve freespace)
 //				if (distance > 0 and directionAngle > direction_angle_threshold and DirectionAngle(-pixelRay_world, direction) < 2 * M_PI_4) // too much? problematic with thin objects
-				if (distance > 0 and directionAngle > direction_angle_threshold and DirectionAngle(-pixelRay_world, direction) < direction_angle_threshold)
-					depthWeight_new = combinedWeight(depth_measure, distance, normal_camera.toVector3(), viewRay_camera, sceneParams);
+				if (distance > 0 and directionAngle > direction_angle_threshold and
+				    DirectionAngle(-pixelRay_world, direction) < direction_angle_threshold)
+					depthWeight_new = combinedWeight(depth_measure, distance, normal_camera.toVector3(), viewRay_camera,
+					                                 sceneParams);
 //					depthWeight_new = weightDepth(1, sceneParams) * weightNormal(normal_camera.toVector3(), viewRay_camera);
 			}
-			colorWeight_new *= MAX(0, depthWeight_new * (1 - MIN(1.0f, ORUtils::length(voxel_world.toVector3() - pt_world) / sceneParams.mu))); // distance from surface
+			colorWeight_new *= MAX(0, depthWeight_new * (1 - MIN(1.0f, ORUtils::length(voxel_world.toVector3() - pt_world) /
+			                                                           sceneParams.mu))); // distance from surface
 		}
 	}
 	if (depthWeight_new <= 0)
@@ -321,7 +334,8 @@ struct ComputeUpdatedVoxelInfo<true, TVoxel>
 	                                       const Vector2i& imgSize_d,
 	                                       const Vector4u* rgb, const Vector2i& imgSize_rgb)
 	{
-		computeUpdatedVoxelColorInfo<TVoxel>(voxel, direction, pt_world, M_d, projParams_d, M_rgb, projParams_rgb, fusionParams,
+		computeUpdatedVoxelColorInfo<TVoxel>(voxel, direction, pt_world, M_d, projParams_d, M_rgb, projParams_rgb,
+		                                     fusionParams,
 		                                     sceneParams, depth, depthNormals, rgb, imgSize_d, imgSize_rgb);
 	}
 };
@@ -414,159 +428,15 @@ _CPU_AND_GPU_CODE_ static void voxelProjectionCarveSpace(const ITMVoxel& voxel,
 	voxelRayCastingSum.update(1, carveWeight / count);
 }
 
+template<typename TIndex, template<typename, typename...> class Map, typename... Args, typename... Args2>
 _CPU_AND_GPU_CODE_
-inline void SetBlockVisibleType(const ITMHashEntry* hashTable,
-                                Vector4s* blockCoords,
-                                TSDFDirection* blockDirections,
-                                HashEntryVisibilityType* entriesVisibleType,
-                                Vector3i blockPos, TSDFDirection direction = TSDFDirection::NONE)
-{
-	bool useDirectional = (direction != TSDFDirection::NONE);
-	//compute index in hash table
-	int hashIdx = hashIndex(blockPos, direction);
-
-	//check if hash table contains entry
-	bool isFound = false;
-
-	ITMHashEntry hashEntry = hashTable[hashIdx];
-
-	if (IS_EQUAL3(hashEntry.pos, blockPos) and hashEntry.ptr >= -1 and
-	    (not useDirectional or hashEntry.direction == static_cast<TSDFDirection_type>(direction)))
-	{
-		//entry has been streamed out but is visible or in memory and visible
-		entriesVisibleType[hashIdx] = (hashEntry.ptr == -1) ? VISIBLE_STREAMED_OUT : VISIBLE_IN_MEMORY;
-
-		isFound = true;
-	}
-
-	if (!isFound)
-	{
-		bool isExcess = false;
-		if (hashEntry.ptr >= -1) //search excess list only if there is no room in ordered part
-		{
-			while (hashEntry.offset >= 1)
-			{
-				hashIdx = SDF_BUCKET_NUM + hashEntry.offset - 1;
-				hashEntry = hashTable[hashIdx];
-
-				if (IS_EQUAL3(hashEntry.pos, blockPos) and hashEntry.ptr >= -1 and
-				    (not useDirectional or hashEntry.direction == static_cast<TSDFDirection_type>(direction)))
-				{
-					//entry has been streamed out but is visible or in memory and visible
-					entriesVisibleType[hashIdx] = (hashEntry.ptr == -1) ? VISIBLE_STREAMED_OUT : VISIBLE_IN_MEMORY;
-
-					isFound = true;
-					break;
-				}
-			}
-
-			isExcess = true;
-		}
-	}
-}
-
-_CPU_AND_GPU_CODE_
-inline void SetBlockAllocAndVisibleType(const ITMHashEntry* hashTable,
-                                        Vector4s* blockCoords,
-                                        TSDFDirection* blockDirections,
-                                        HashEntryAllocType* entriesAllocType,
-                                        HashEntryVisibilityType* entriesVisibleType,
-                                        Vector3i blockPos, TSDFDirection direction = TSDFDirection::NONE)
-{
-	bool useDirectional = (direction != TSDFDirection::NONE);
-	//compute index in hash table
-	int hashIdx = hashIndex(blockPos, direction);
-
-	//check if hash table contains entry
-	bool isFound = false;
-
-	ITMHashEntry hashEntry = hashTable[hashIdx];
-
-	if (IS_EQUAL3(hashEntry.pos, blockPos) and hashEntry.ptr >= -1 and
-	    (not useDirectional or hashEntry.direction == static_cast<TSDFDirection_type>(direction)))
-	{
-		//entry has been streamed out but is visible or in memory and visible
-		entriesVisibleType[hashIdx] = (hashEntry.ptr == -1) ? VISIBLE_STREAMED_OUT : VISIBLE_IN_MEMORY;
-
-		isFound = true;
-	}
-
-	if (!isFound)
-	{
-		bool isExcess = false;
-		if (hashEntry.ptr >= -1) //seach excess list only if there is no room in ordered part
-		{
-			while (hashEntry.offset >= 1)
-			{
-				hashIdx = SDF_BUCKET_NUM + hashEntry.offset - 1;
-				hashEntry = hashTable[hashIdx];
-
-				if (IS_EQUAL3(hashEntry.pos, blockPos) and hashEntry.ptr >= -1 and
-				    (not useDirectional or hashEntry.direction == static_cast<TSDFDirection_type>(direction)))
-				{
-					//entry has been streamed out but is visible or in memory and visible
-					entriesVisibleType[hashIdx] = (hashEntry.ptr == -1) ? VISIBLE_STREAMED_OUT : VISIBLE_IN_MEMORY;
-
-					isFound = true;
-					break;
-				}
-			}
-
-			isExcess = true;
-		}
-
-		if (!isFound) //still not found
-		{
-			entriesAllocType[hashIdx] = isExcess ? ALLOCATE_EXCESS : ALLOCATE_ORDERED; //needs allocation
-			if (!isExcess) entriesVisibleType[hashIdx] = VISIBLE_IN_MEMORY; //new entry is visible
-
-			blockCoords[hashIdx] = Vector4s(blockPos.x, blockPos.y, blockPos.z, 1);
-			blockDirections[hashIdx] = direction;
-		}
-	}
-}
-
-/**
- * Helper function to access SummingVoxel in SummingVoxelMap given voxelIdx
- * @tparam SummingVoxelMap
- * @param summingVoxelMap
- * @param voxelIdx
- * @return
- */
-template<typename SummingVoxelMap>
-_CPU_AND_GPU_CODE_
-SummingVoxel* getSummingVoxel(SummingVoxelMap& summingVoxelMap, const Vector3s& voxelIdx, TSDFDirection_type directionIdx = 0)
-{
-	static_assert(std::is_same<typename SummingVoxelMap::key_type, IndexType>::value,
-	              "template parameter SummingVoxelMap requires key type IndexType");
-	static_assert(std::is_same<typename SummingVoxelMap::mapped_type, SummingVoxel*>::value,
-	              "template parameter SummingVoxelMap requires value type SummingVoxel*");
-
-#if __CUDA_ARCH__
-	if (summingVoxelMap.bucket_count() <= 0)
-		return nullptr;
-#endif
-
-	Vector3i blockPos;
-	unsigned short offset;
-	voxelToBlockPosAndOffset(voxelIdx.toInt(), blockPos, offset);
-
-	auto it = summingVoxelMap.find(IndexType(blockPos.toShort(), directionIdx));
-	if (it == summingVoxelMap.end())
-		return nullptr;
-	else
-		return it->second + offset;
-}
-
-template<template<typename, typename...> class Map, typename... Args>
-_CPU_AND_GPU_CODE_
-inline void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vector4f* depthNormals,
-                              const Matrix4f& invM_d,
-                              const Vector4f& invProjParams_d, const Vector4f& invProjParams_rgb,
+inline void rayCastCarveSpace(const int x, const int y, const Vector2i imgSize, const float* depth,
+                              const Vector4f* depthNormals, const Matrix4f& invM_d,
+                              const Vector4f& invProjParams_d, const Vector4f& projParams_rgb,
                               const ITMFusionParams& fusionParams,
                               const ITMSceneParams& sceneParams,
-                              const Map<ITMIndex, ITMVoxel*, Args...> tsdf,
-                              Map<ITMIndex, SummingVoxel*, Args...> summingVoxelMap)
+                              const Map<TIndex, ITMVoxel*, Args...>& tsdf,
+                              Map<TIndex, SummingVoxel*, Args2...>& summingVoxelMap)
 {
 	const float mu = sceneParams.mu;
 	const float viewFrustum_min = sceneParams.viewFrustum_min;
@@ -601,12 +471,11 @@ inline void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vect
 	carveDistance -= depthNoiseSigma(depthValue, fabs(1.0 - dot(normal_world, -rayDirection_world)) * M_PI * 0.5) * 3;
 
 	BlockTraversal blockTraversal(rayStart_world, rayDirection_world, carveDistance, voxelSize, true);
-	ITMVoxelBlockHash::IndexCache cache[N_DIRECTIONS];
 	while (blockTraversal.HasNextBlock())
 	{
 		Vector3i voxelIdx = blockTraversal.GetNextBlock();
 
-		ITMIndex blockIdx;
+		TIndex blockIdx;
 		unsigned short offset;
 		voxelIdxToIndexAndOffset(blockIdx, offset, voxelIdx);
 
@@ -665,14 +534,14 @@ inline void rayCastCarveSpace(int x, int y, Vector2i imgSize, float* depth, Vect
 	}
 }
 
-template<template<typename, typename...> class Map, typename... Args>
+template<typename TIndex, template<typename, typename...> class Map, typename... Args>
 _CPU_AND_GPU_CODE_
-inline void rayCastUpdate(int x, int y, Vector2i imgSize_d, Vector2i imgSize_rgb,
+inline void rayCastUpdate(const int x, const int y, const Vector2i imgSize_d, const Vector2i imgSize_rgb,
                           const Vector4f& pt_sensor, const Vector4f& normal_sensor, const Vector4f& color,
                           const Matrix4f& invM_d, const Vector4f& invProjParams_d,
                           const ITMFusionParams& fusionParams,
                           const ITMSceneParams& sceneParams,
-                          Map<ITMIndex, SummingVoxel*, Args...> summingVoxelMap)
+                          Map<TIndex, SummingVoxel*, Args...>& summingVoxelMap)
 {
 	const float mu = sceneParams.mu;
 	const float viewFrustum_min = sceneParams.viewFrustum_min;
@@ -758,7 +627,7 @@ inline void rayCastUpdate(int x, int y, Vector2i imgSize_d, Vector2i imgSize_rgb
 					continue;
 				}
 
-				ITMIndex blockIdx;
+				TIndex blockIdx;
 				unsigned short offset;
 				voxelIdxToIndexAndOffset(blockIdx, offset, voxelIdx, TSDFDirection(direction));
 				auto it = summingVoxelMap.find(blockIdx);
@@ -769,7 +638,7 @@ inline void rayCastUpdate(int x, int y, Vector2i imgSize_d, Vector2i imgSize_rgb
 				if (fusionParams.useWeighting)
 				{
 					float directionWeight = DirectionWeight(angles[direction]);
-					float voxelDistanceWeight = 1 - MIN(length(voxelSurfaceOffset) / mu, 1);
+//					float voxelDistanceWeight = 1 - MIN(length(voxelSurfaceOffset) / mu, 1);
 
 					weight = combinedWeight(depthValue, distance, normal_sensor.toVector3(), viewRay_camera,
 					                        sceneParams) * directionWeight;// * voxelDistanceWeight;
@@ -786,7 +655,7 @@ inline void rayCastUpdate(int x, int y, Vector2i imgSize_d, Vector2i imgSize_rgb
 			}
 		} else
 		{
-			ITMIndex blockIdx;
+			TIndex blockIdx;
 			unsigned short offset;
 			voxelIdxToIndexAndOffset(blockIdx, offset, voxelIdx);
 			auto it = summingVoxelMap.find(blockIdx);
@@ -841,88 +710,27 @@ inline void rayCastCombine(ITMVoxel& voxel, const SummingVoxel& rayCastingSum, c
 }
 
 /**
- * Ray cast depth image to find visible blocks for space carving
- *
- * @param entriesAllocType Per HashEntry indicator whether it requires allocation
- * @param entriesVisibleType Per HashEntry indicator if block is visible
- * @param x
- * @param y
- * @param blockCoords
- * @param depth
- * @param invM_d
- * @param projParams_d
- * @param mu
- * @param imgSize
- * @param voxelSize
- * @param hashTable
- * @param viewFrustum_min
- * @param viewFrustum_max
- */
-_CPU_AND_GPU_CODE_ inline void
-buildSpaceCarvingVisibleType(HashEntryVisibilityType* entriesVisibleType,
-                             int x, int y,
-                             Vector4s* blockCoords, TSDFDirection* blockDirections,
-                             const float* depth,
-                             const Vector4f* depthNormal, Matrix4f invM_d,
-                             Vector4f projParams_d, float mu, Vector2i imgSize, float voxelSize,
-                             const ITMHashEntry* hashTable, float viewFrustum_min, float viewFrustum_max,
-                             const ITMFusionParams& fusionParams
-)
-{
-	float depth_measure = depth[x + y * imgSize.x];
-	if ((depth_measure - mu) < viewFrustum_min or (depth_measure + mu) > viewFrustum_max)
-		return;
-
-	Vector3f pt_camera = reprojectImagePoint(x, y, depth_measure, projParams_d);
-	Vector3f pt_world = (invM_d * Vector4f(pt_camera, 1)).toVector3();
-	Vector4f rayStart_camera = Vector4f(reprojectImagePoint(x, y, viewFrustum_min, projParams_d), 1);
-	Vector3f rayStart_world = (invM_d * rayStart_camera).toVector3();
-	Vector3f rayDirection_world = (pt_world - rayStart_world).normalised();
-
-	float carveDistance = ORUtils::length(pt_world - rayStart_world);
-	BlockTraversal blockTraversal_carving(rayStart_world, rayDirection_world, carveDistance,
-	                                      voxelSize * SDF_BLOCK_SIZE, false);
-	while (blockTraversal_carving.HasNextBlock())
-	{
-		Vector3i blockPos = blockTraversal_carving.GetNextBlock();
-
-		if (fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL)
-		{
-			for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
-			{
-				SetBlockVisibleType(hashTable, blockCoords, blockDirections, entriesVisibleType,
-				                    blockPos, TSDFDirection(direction));
-			}
-		} else
-		{
-			SetBlockVisibleType(hashTable, blockCoords, blockDirections, entriesVisibleType, blockPos);
-		}
-	}
-}
-
-/**
  * Ray cast depth image to find visible blocks for allocation, insert into set
  *
- * @param visibleBlocks set to insert visible blocks into
+ * @param allocationBlocks set to insert visible blocks into
  * @param x
  * @param y
  * @param blockCoords
  * @param depth
  * @param invM_d
- * @param projParams_d
+ * @param invProjParams_d
  * @param mu
  * @param imgSize
  * @param voxelSize
- * @param hashTable
  * @param viewFrustum_min
  * @param viewFrustum_max
  * @tparam Set
  */
-template<template<typename...> class Set, typename... Args>
+template<typename TIndex, template<typename...> class Set, typename... Args>
 _CPU_AND_GPU_CODE_ inline void
-findAllocationBlocks(Set<ITMIndex, Args...>& visibleBlocks,
+findAllocationBlocks(Set<TIndex, Args...>& allocationBlocks,
                      int x, int y, const float* depth, const Vector4f* depthNormal,
-                     const Matrix4f& invM_d, Vector4f projParams_d, float mu, Vector2i imgSize, float voxelSize,
+                     const Matrix4f& invM_d, Vector4f invProjParams_d, float mu, Vector2i imgSize, float voxelSize,
                      float viewFrustum_min, float viewFrustum_max, const ITMFusionParams& fusionParams)
 {
 	float depth_measure = depth[x + y * imgSize.x];
@@ -932,7 +740,7 @@ findAllocationBlocks(Set<ITMIndex, Args...>& visibleBlocks,
 
 	Vector3f normalWorld = normalCameraToWorld(normal_camera, invM_d);
 
-	Vector4f pt_camera = Vector4f(reprojectImagePoint(x, y, depth_measure, projParams_d), 1);
+	Vector4f pt_camera = Vector4f(reprojectImagePoint(x, y, depth_measure, invProjParams_d), 1);
 
 	Vector3f pt_world = (invM_d * pt_camera).toVector3();
 
@@ -982,110 +790,13 @@ findAllocationBlocks(Set<ITMIndex, Args...>& visibleBlocks,
 					continue;
 //				if (DirectionWeight(angles[directionIdx]) <= 0)
 //					continue;
-				visibleBlocks.insert(ITMIndex(blockIdx, TSDFDirection(directionIdx)));
+				allocationBlocks.insert(TIndex(blockIdx, TSDFDirection(directionIdx)));
 			}
 		} else
 		{
-			visibleBlocks.insert(ITMIndex(blockIdx, TSDFDirection::NONE));
+			allocationBlocks.insert(TIndex(blockIdx));
 		}
 		lastBlockIdx = blockIdx;
-	}
-}
-
-/**
- * Ray cast depth image to find visible blocks and determine whether they need allocation.
- *
- * @param entriesAllocType Per HashEntry indicator whether it requires allocation
- * @param entriesVisibleType Per HashEntry indicator if block is visible
- * @param x
- * @param y
- * @param blockCoords
- * @param depth
- * @param invM_d
- * @param projParams_d
- * @param mu
- * @param imgSize
- * @param voxelSize
- * @param hashTable
- * @param viewFrustum_min
- * @param viewFrustum_max
- */
-_CPU_AND_GPU_CODE_ inline void
-buildHashAllocAndVisibleType(HashEntryAllocType* entriesAllocType,
-                             HashEntryVisibilityType* entriesVisibleType,
-                             int x, int y,
-                             Vector4s* blockCoords, TSDFDirection* blockDirections,
-                             const float* depth,
-                             const Vector4f* depthNormal, Matrix4f invM_d,
-                             Vector4f projParams_d, float mu, Vector2i imgSize, float voxelSize,
-                             const ITMHashEntry* hashTable, float viewFrustum_min, float viewFrustum_max,
-                             const ITMFusionParams& fusionParams
-)
-{
-	float depth_measure = depth[x + y * imgSize.x];
-	Vector4f normal_camera = depthNormal[x + y * imgSize.x];
-	if ((depth_measure - mu) < viewFrustum_min or (depth_measure + mu) > viewFrustum_max or normal_camera.w != 1)
-		return;
-
-	Vector3f normalWorld = normalCameraToWorld(normal_camera, invM_d);
-
-	Vector4f pt_camera = Vector4f(reprojectImagePoint(x, y, depth_measure, projParams_d), 1);
-
-	Vector3f pt_world = (invM_d * pt_camera).toVector3();
-
-	Vector3f rayDirectionBefore, rayDirectionBehind;
-	if (fusionParams.fusionMode == FusionMode::FUSIONMODE_VOXEL_PROJECTION
-	    or fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING_VIEW_DIR)
-	{
-		Vector4f camera_ray_world = invM_d * Vector4f(pt_camera.toVector3().normalised(), 0);
-		rayDirectionBefore = -camera_ray_world.toVector3();
-		rayDirectionBehind = camera_ray_world.toVector3();
-	} else
-	{
-
-		rayDirectionBehind = -normalWorld;
-
-		if (fusionParams.fusionMode == FusionMode::FUSIONMODE_RAY_CASTING_VIEW_DIR_AND_NORMAL)
-			rayDirectionBefore = -(invM_d * Vector4f(pt_camera.toVector3().normalised(), 0)).toVector3();
-		else
-			rayDirectionBefore = normalWorld;
-	}
-
-	BlockTraversal blockTraversalBefore(pt_world, rayDirectionBefore, mu, voxelSize);
-	BlockTraversal blockTraversalBehind(pt_world, rayDirectionBehind, mu, voxelSize);
-	if (blockTraversalBehind.HasNextBlock()) blockTraversalBehind.GetNextBlock(); // Skip first voxel to prevent duplicate fusion
-
-	float angles[N_DIRECTIONS];
-	ComputeDirectionAngle(normalWorld, angles);
-
-	Vector3i lastBlockPos(MAX_INT, MAX_INT, MAX_INT);
-	while (blockTraversalBefore.HasNextBlock() or blockTraversalBehind.HasNextBlock())
-	{
-		Vector3i voxelPos;
-		if (blockTraversalBefore.HasNextBlock())
-			voxelPos = blockTraversalBefore.GetNextBlock();
-		else
-			voxelPos = blockTraversalBehind.GetNextBlock();
-
-		Vector3i blockPos = voxelToBlockPos(voxelPos);
-		if (blockPos == lastBlockPos)
-			continue;
-
-		if (fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL)
-		{
-			for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
-			{
-				if (DirectionWeight(angles[direction]) <= 0)
-					continue;
-				SetBlockAllocAndVisibleType(hashTable, blockCoords, blockDirections, entriesAllocType, entriesVisibleType,
-				                            blockPos, TSDFDirection(direction));
-			}
-		} else
-		{
-			SetBlockAllocAndVisibleType(hashTable, blockCoords, blockDirections, entriesAllocType, entriesVisibleType,
-			                            blockPos);
-		}
-		lastBlockPos = blockPos;
 	}
 }
 
@@ -1124,7 +835,7 @@ _CPU_AND_GPU_CODE_ inline void checkPointVisibility(bool& isVisible, bool& isVis
 
 template<bool checkEnlarged>
 _CPU_AND_GPU_CODE_ inline void checkBlockVisibility(bool& isVisible, bool& isVisibleEnlarged,
-                                                    const Vector3s& hashPos, const Matrix4f& M_d,
+                                                    const Vector3s& blockPos, const Matrix4f& M_d,
                                                     const Vector4f& projParams_d,
                                                     const float& voxelSize, const Vector2i& imgSize)
 {
@@ -1135,9 +846,9 @@ _CPU_AND_GPU_CODE_ inline void checkBlockVisibility(bool& isVisible, bool& isVis
 	isVisibleEnlarged = false;
 
 	// 0 0 0
-	pt_image.x = (float) hashPos.x * factor;
-	pt_image.y = (float) hashPos.y * factor;
-	pt_image.z = (float) hashPos.z * factor;
+	pt_image.x = (float) blockPos.x * factor;
+	pt_image.y = (float) blockPos.y * factor;
+	pt_image.z = (float) blockPos.z * factor;
 	pt_image.w = 1.0f;
 	checkPointVisibility<checkEnlarged>(isVisible, isVisibleEnlarged, pt_image, M_d, projParams_d, imgSize);
 	if (isVisible) return;
@@ -1180,5 +891,82 @@ _CPU_AND_GPU_CODE_ inline void checkBlockVisibility(bool& isVisible, bool& isVis
 	checkPointVisibility<checkEnlarged>(isVisible, isVisibleEnlarged, pt_image, M_d, projParams_d, imgSize);
 	if (isVisible) return;
 }
+
+template<typename TIndex, template<typename...> class Set, typename... Args>
+struct findVisibleBlocksFunctor
+{
+	/**
+	 * Finds all blocks within the view frustum.
+	 *
+	 * Additionally adds blocks to fusionBlocksList, might not haven been covered during allocation.
+	 * @param visibleBlocks
+	 * @param fusionBlocksList
+	 * @param fusionBlocksListSize
+	 * @param fusionBlocksCounter
+	 * @param pose_M
+	 * @param projParams
+	 * @param imgSize
+	 * @param sceneParams
+	 */
+	findVisibleBlocksFunctor(
+		Set<ITMIndex, Args...>& visibleBlocks,
+		TIndex* fusionBlocksList,
+		size_t fusionBlocksListSize,
+		unsigned long long* fusionBlocksCounter,
+		Matrix4f pose_M,
+		Vector4f projParams,
+		Vector2i imgSize,
+		ITMSceneParams sceneParams) :
+		visibleBlocks(visibleBlocks), visibleBlocks_ref(visibleBlocks), fusionBlocksList(fusionBlocksList),
+		fusionBlocksListSize(fusionBlocksListSize), fusionBlocksCounter(fusionBlocksCounter), pose_M(pose_M),
+		projParams(projParams), imgSize(imgSize), sceneParams(sceneParams)
+	{}
+
+	_CPU_AND_GPU_CODE_
+	void operator()(thrust::pair<TIndex, ITMVoxel*> block)
+	{
+		const Vector3s blockIdx = block.first.getPosition().toShort();
+
+		float dist = (pose_M * Vector4f(blockIdx.toFloat() * 8 * sceneParams.voxelSize, 1)).z;
+		if (dist > 8) return;
+
+		bool isVisible, isVisibleEnlarged;
+		checkBlockVisibility<true>(isVisible, isVisibleEnlarged, blockIdx, pose_M, projParams, sceneParams.voxelSize,
+		                           imgSize);
+
+		if (isVisibleEnlarged)
+		{
+#ifdef __CUDA_ARCH__
+			visibleBlocks.insert(ITMIndex(blockIdx));
+#else
+			visibleBlocks_ref.insert(ITMIndex(blockIdx));
+#endif
+		}
+		if (isVisible and dist <= sceneParams.viewFrustum_max + 8 * sceneParams.voxelSize)
+		{
+#ifdef __CUDA_ARCH__
+			unsigned long long offset = atomicAdd(fusionBlocksCounter, 1);
+#else
+#ifdef WITH_OPENMP
+#pragma omp atomic capture
+#endif
+			unsigned long long offset = (*fusionBlocksCounter)++;
+#endif
+			if (offset > fusionBlocksListSize)
+				return;
+			fusionBlocksList[offset] = block.first;
+		}
+	}
+
+	Set<ITMIndex, Args...> visibleBlocks;
+	Set<ITMIndex, Args...>& visibleBlocks_ref; // CPU needs container as reference, CUDA as value
+	TIndex* fusionBlocksList;
+	size_t fusionBlocksListSize;
+	unsigned long long* fusionBlocksCounter;
+	Matrix4f pose_M;
+	Vector4f projParams;
+	Vector2i imgSize;
+	ITMSceneParams sceneParams;
+};
 
 } // namespace ITMLib

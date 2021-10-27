@@ -11,9 +11,10 @@
 #include <ITMLib/Utils/ITMGeometry.h>
 #include <stdgpu/unordered_map.cuh>
 
-namespace stdgpu{
+namespace stdgpu
+{
 
-template <typename T>
+template<typename T>
 struct hash<ITMLib::IndexDirectional<T>>
 {
 	inline STDGPU_HOST_DEVICE
@@ -26,7 +27,7 @@ struct hash<ITMLib::IndexDirectional<T>>
 	}
 };
 
-template <typename T>
+template<typename T>
 struct hash<ITMLib::Index<T>>
 {
 	inline STDGPU_HOST_DEVICE
@@ -55,7 +56,8 @@ void clearVoxels_device(TVoxel* voxels)
 
 template<typename TIndex, typename TVoxel, template<typename, typename...> class Map, typename... Args>
 __global__ void
-allocateBlocks_device(Map<TIndex, TVoxel*, Args...> tsdf, AllocationStats *allocationStats, TVoxel* voxels, const TIndex* allocationBlocksList, const size_t N, const size_t maxAllocations)
+allocateBlocks_device(Map<TIndex, TVoxel*, Args...> tsdf, AllocationStats* allocationStats, TVoxel* voxels,
+                      const TIndex* allocationBlocksList, const size_t N, const size_t maxAllocations)
 {
 	size_t index = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -69,8 +71,7 @@ allocateBlocks_device(Map<TIndex, TVoxel*, Args...> tsdf, AllocationStats *alloc
 	{
 		atomicAdd(allocationStats->noAllocationsPerDirection +
 		          static_cast<TSDFDirection_type>(allocationBlocksList[index].getDirection()), 1);
-	}
-	else
+	} else
 	{
 		atomicAdd(allocationStats->noAllocationsPerDirection, 1);
 	}
@@ -84,7 +85,7 @@ allocateBlocks_device(Map<TIndex, TVoxel*, Args...> tsdf, AllocationStats *alloc
 	tsdf.emplace(allocationBlocksList[index], voxels + offset * SDF_BLOCK_SIZE3);
 }
 
-template <typename TIndex, typename TVoxel>
+template<typename TIndex, typename TVoxel>
 class TSDF_CUDA : public TSDFBase<TIndex, TVoxel, stdgpu::unordered_map>
 {
 public:
@@ -122,27 +123,33 @@ public:
 			return;
 		if (this->size() >= this->allocatedBlocksMax)
 		{
-			printf("warning: TSDF size exceeded (%i/%zu allocated). stopped allocating.\n", this->size(), this->allocatedBlocksMax);
+			printf("warning: TSDF size exceeded (%lu/%zu allocated). stopped allocating.\n", this->size(),
+			       this->allocatedBlocksMax);
 			return;
 		}
 
-		ORcudaSafeCall(cudaMemcpy(allocationStats_device, &this->allocationStats, sizeof(AllocationStats), cudaMemcpyHostToDevice));
+		ORcudaSafeCall(
+			cudaMemcpy(allocationStats_device, &this->allocationStats, sizeof(AllocationStats), cudaMemcpyHostToDevice));
 
 		dim3 blockSize(256, 1);
 		dim3 gridSize((int) ceil((float) N / (float) blockSize.x));
-		allocateBlocks_device<<<blockSize, gridSize>>>(this->getMap(), allocationStats_device, this->voxels, blocks, N, this->allocatedBlocksMax);
+		allocateBlocks_device<<<blockSize, gridSize>>>(this->getMap(), allocationStats_device, this->voxels, blocks, N,
+		                                               this->allocatedBlocksMax);
 		ORcudaKernelCheck;
 
-		ORcudaSafeCall(cudaMemcpy(&this->allocationStats, allocationStats_device, sizeof(AllocationStats), cudaMemcpyDeviceToHost));
+		ORcudaSafeCall(
+			cudaMemcpy(&this->allocationStats, allocationStats_device, sizeof(AllocationStats), cudaMemcpyDeviceToHost));
 	}
 
-	MemoryDeviceType deviceType() override { return MemoryDeviceType::MEMORYDEVICE_CUDA; }
+	MemoryDeviceType deviceType() override
+	{ return MemoryDeviceType::MEMORYDEVICE_CUDA; }
 
-	explicit TSDF_CUDA(size_t size=1)
+	explicit TSDF_CUDA(size_t size = 1)
 	{
 		resize(size);
 		ORcudaSafeCall(cudaMalloc(&allocationStats_device, sizeof(AllocationStats)));
-		ORcudaSafeCall(cudaMemcpy(allocationStats_device, &this->allocationStats, sizeof(AllocationStats), cudaMemcpyHostToDevice));
+		ORcudaSafeCall(
+			cudaMemcpy(allocationStats_device, &this->allocationStats, sizeof(AllocationStats), cudaMemcpyHostToDevice));
 	}
 
 private:

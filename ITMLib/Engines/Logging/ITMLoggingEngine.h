@@ -16,13 +16,13 @@ namespace ITMLib
 class ITMLoggingEngine
 {
 public:
-	void Initialize(const std::string &outputDirectory);
+	void Initialize(const std::string& outputDirectory);
 
 	void CloseAll();
 
-	void LogTimeStats(const ITMTimeStats &timeStats);
+	void LogTimeStats(const ITMTimeStats& timeStats);
 
-	void LogPose(const ITMTrackingState &trackingState);
+	void LogPose(const ITMTrackingState& trackingState);
 
 	void LogBlockAllocations(const unsigned int* noAllocationsPerDirection);
 

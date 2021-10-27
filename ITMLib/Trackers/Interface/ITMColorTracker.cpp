@@ -7,10 +7,10 @@
 
 using namespace ITMLib;
 
-static inline bool minimizeLM(const ITMColorTracker & tracker, ORUtils::SE3Pose & initialization);
+static inline bool minimizeLM(const ITMColorTracker& tracker, ORUtils::SE3Pose& initialization);
 
-ITMColorTracker::ITMColorTracker(Vector2i imgSize, TrackerIterationType *trackingRegime, int noHierarchyLevels,
-	const ITMLowLevelEngine *lowLevelEngine, MemoryDeviceType memoryType)
+ITMColorTracker::ITMColorTracker(Vector2i imgSize, TrackerIterationType* trackingRegime, int noHierarchyLevels,
+                                 const ITMLowLevelEngine* lowLevelEngine, MemoryDeviceType memoryType)
 {
 	viewHierarchy = new ITMImageHierarchy<ITMViewHierarchyLevel>(imgSize, trackingRegime, noHierarchyLevels, memoryType);
 
@@ -22,11 +22,12 @@ ITMColorTracker::~ITMColorTracker(void)
 	delete viewHierarchy;
 }
 
-void ITMColorTracker::TrackCamera(ITMTrackingState *trackingState, const ITMView *view)
+void ITMColorTracker::TrackCamera(ITMTrackingState* trackingState, const ITMView* view)
 {
 	if (!trackingState->HasValidPointCloud()) return;
 
-	this->view = view; this->trackingState = trackingState;
+	this->view = view;
+	this->trackingState = trackingState;
 
 	this->PrepareForEvaluation(view);
 
@@ -49,46 +50,59 @@ void ITMColorTracker::TrackCamera(ITMTrackingState *trackingState, const ITMView
 	//	scene->pose->params.each.tx, scene->pose->params.each.ty, scene->pose->params.each.tz);
 }
 
-void ITMColorTracker::PrepareForEvaluation(const ITMView *view)
+void ITMColorTracker::PrepareForEvaluation(const ITMView* view)
 {
 	lowLevelEngine->CopyImage(viewHierarchy->GetLevel(0)->rgb, view->rgb);
 
-	ITMImageHierarchy<ITMViewHierarchyLevel> *hierarchy = viewHierarchy;
+	ITMImageHierarchy<ITMViewHierarchyLevel>* hierarchy = viewHierarchy;
 
 	for (int i = 1; i < hierarchy->GetNoLevels(); i++)
 	{
-		ITMViewHierarchyLevel *currentLevel = hierarchy->GetLevel(i), *previousLevel = hierarchy->GetLevel(i - 1);
+		ITMViewHierarchyLevel* currentLevel = hierarchy->GetLevel(i), * previousLevel = hierarchy->GetLevel(i - 1);
 		lowLevelEngine->FilterSubsample(currentLevel->rgb, previousLevel->rgb);
 	}
 
 	for (int i = 0; i < hierarchy->GetNoLevels(); i++)
 	{
-		ITMViewHierarchyLevel *currentLevel = hierarchy->GetLevel(i);
+		ITMViewHierarchyLevel* currentLevel = hierarchy->GetLevel(i);
 
 		lowLevelEngine->GradientX(currentLevel->gradientX_rgb, currentLevel->rgb);
 		lowLevelEngine->GradientY(currentLevel->gradientY_rgb, currentLevel->rgb);
 	}
 }
 
-void ITMColorTracker::ApplyDelta(const ORUtils::SE3Pose & para_old, const float *delta, ORUtils::SE3Pose & para_new) const
+void ITMColorTracker::ApplyDelta(const ORUtils::SE3Pose& para_old, const float* delta, ORUtils::SE3Pose& para_new) const
 {
 	float paramVector[6];
 
 	switch (iterationType)
 	{
-	case TRACKER_ITERATION_ROTATION:
-		paramVector[0] = 0.0f; paramVector[1] = 0.0f; paramVector[2] = 0.0f;
-		paramVector[3] = (float)(delta[0]); paramVector[4] = (float)(delta[1]); paramVector[5] = (float)(delta[2]);
-		break;
-	case TRACKER_ITERATION_TRANSLATION:
-		paramVector[0] = (float)(delta[0]); paramVector[1] = (float)(delta[1]); paramVector[2] = (float)(delta[2]);
-		paramVector[3] = 0.0f; paramVector[4] = 0.0f; paramVector[5] = 0.0f;
-		break;
-	case TRACKER_ITERATION_BOTH:
-		paramVector[0] = (float)(delta[0]); paramVector[1] = (float)(delta[1]); paramVector[2] = (float)(delta[2]);
-		paramVector[3] = (float)(delta[3]); paramVector[4] = (float)(delta[4]); paramVector[5] = (float)(delta[5]);
-		break;
-	default: break;
+		case TRACKER_ITERATION_ROTATION:
+			paramVector[0] = 0.0f;
+			paramVector[1] = 0.0f;
+			paramVector[2] = 0.0f;
+			paramVector[3] = (float) (delta[0]);
+			paramVector[4] = (float) (delta[1]);
+			paramVector[5] = (float) (delta[2]);
+			break;
+		case TRACKER_ITERATION_TRANSLATION:
+			paramVector[0] = (float) (delta[0]);
+			paramVector[1] = (float) (delta[1]);
+			paramVector[2] = (float) (delta[2]);
+			paramVector[3] = 0.0f;
+			paramVector[4] = 0.0f;
+			paramVector[5] = 0.0f;
+			break;
+		case TRACKER_ITERATION_BOTH:
+			paramVector[0] = (float) (delta[0]);
+			paramVector[1] = (float) (delta[1]);
+			paramVector[2] = (float) (delta[2]);
+			paramVector[3] = (float) (delta[3]);
+			paramVector[4] = (float) (delta[4]);
+			paramVector[5] = (float) (delta[5]);
+			break;
+		default:
+			break;
 	}
 
 	para_new.SetFrom(paramVector);
@@ -99,43 +113,47 @@ void ITMColorTracker::EvaluationPoint::computeGradients(bool hessianRequired)
 {
 	int numPara = mParent->numParameters();
 	cacheNabla = new float[numPara];
-	cacheHessian = new float[numPara*numPara];
+	cacheHessian = new float[numPara * numPara];
 
 	mParent->G_oneLevel(cacheNabla, cacheHessian, mPara);
 }
 
-ITMColorTracker::EvaluationPoint::EvaluationPoint(ORUtils::SE3Pose *pos, const ITMColorTracker *f_parent)
+ITMColorTracker::EvaluationPoint::EvaluationPoint(ORUtils::SE3Pose* pos, const ITMColorTracker* f_parent)
 {
 	float localF[1];
 
-	this->mPara = pos; this->mParent = f_parent;
+	this->mPara = pos;
+	this->mParent = f_parent;
 
-	ITMColorTracker *parent = (ITMColorTracker *)mParent;
+	ITMColorTracker* parent = (ITMColorTracker*) mParent;
 
 	mValidPoints = parent->F_oneLevel(localF, mPara);
 
 	cacheF = localF[0];
 
-	cacheHessian = NULL; cacheNabla = NULL;
+	cacheHessian = nullptr;
+	cacheNabla = nullptr;
 }
 
 // LM optimisation
 
-static inline double stepQuality(ITMColorTracker::EvaluationPoint *x, ITMColorTracker::EvaluationPoint *x2, const float *step, const float *grad, const float *B, int numPara)
+static inline double
+stepQuality(ITMColorTracker::EvaluationPoint* x, ITMColorTracker::EvaluationPoint* x2, const float* step,
+            const float* grad, const float* B, int numPara)
 {
 	double actual_reduction = x->f() - x2->f();
 	double predicted_reduction = 0.0;
-	float *tmp = new float[numPara];
+	float* tmp = new float[numPara];
 
 	matmul(B, step, tmp, numPara, numPara);
-	for (int i = 0; i < numPara; i++) predicted_reduction -= grad[i] * step[i] + 0.5*step[i] * tmp[i];
+	for (int i = 0; i < numPara; i++) predicted_reduction -= grad[i] * step[i] + 0.5 * step[i] * tmp[i];
 	delete[] tmp;
 
 	if (predicted_reduction < 0) return actual_reduction / fabs(predicted_reduction);
 	return actual_reduction / predicted_reduction;
 }
 
-static inline bool minimizeLM(const ITMColorTracker & tracker, ORUtils::SE3Pose & initialization)
+static inline bool minimizeLM(const ITMColorTracker& tracker, ORUtils::SE3Pose& initialization)
 {
 	// These are some sensible default parameters for Levenberg Marquardt.
 	// The first three control the convergence criteria, the others might
@@ -149,31 +167,36 @@ static inline bool minimizeLM(const ITMColorTracker & tracker, ORUtils::SE3Pose 
 	static const float TR_REGION_DECREASE = 0.25f;
 
 	int numPara = tracker.numParameters();
-	float *d = new float[numPara];
+	float* d = new float[numPara];
 	float lambda = 0.01f;
 	int step_counter = 0;
 
-	ITMColorTracker::EvaluationPoint *x = tracker.evaluateAt(new ORUtils::SE3Pose(initialization));
-	ITMColorTracker::EvaluationPoint *x2 = NULL;
+	ITMColorTracker::EvaluationPoint* x = tracker.evaluateAt(new ORUtils::SE3Pose(initialization));
+	ITMColorTracker::EvaluationPoint* x2 = nullptr;
 
-	if (x->getNumValidPoints()<100) { delete[] d; delete x; return false; }
+	if (x->getNumValidPoints() < 100)
+	{
+		delete[] d;
+		delete x;
+		return false;
+	}
 
 	do
 	{
-		const float *grad;
-		const float *B;
+		const float* grad;
+		const float* B;
 
 		grad = x->nabla_f();
 		B = x->hessian_GN();
 
 		bool success;
 		{
-			float *A = new float[numPara*numPara];
-			for (int i = 0; i < numPara*numPara; ++i) A[i] = B[i];
+			float* A = new float[numPara * numPara];
+			for (int i = 0; i < numPara * numPara; ++i) A[i] = B[i];
 			for (int i = 0; i < numPara; ++i)
 			{
-				float & ele = A[i*(numPara + 1)];
-				if (!(fabs(ele) < 1e-15f)) ele *= (1.0f + lambda); else ele = lambda*1e-10f;
+				float& ele = A[i * (numPara + 1)];
+				if (!(fabs(ele) < 1e-15f)) ele *= (1.0f + lambda); else ele = lambda * 1e-10f;
 			}
 
 			ORUtils::Cholesky cholA(A, numPara);
@@ -188,13 +211,17 @@ static inline bool minimizeLM(const ITMColorTracker & tracker, ORUtils::SE3Pose 
 		if (success)
 		{
 			float MAXnorm = 0.0;
-			for (int i = 0; i<numPara; i++) { float tmp = fabs(d[i]); if (tmp>MAXnorm) MAXnorm = tmp; }
+			for (int i = 0; i < numPara; i++)
+			{
+				float tmp = fabs(d[i]);
+				if (tmp > MAXnorm) MAXnorm = tmp;
+			}
 
 			if (MAXnorm < MIN_STEP) break;
 			for (int i = 0; i < numPara; i++) d[i] = -d[i];
 
 			// make step
-			ORUtils::SE3Pose *tmp_para = new ORUtils::SE3Pose(x->getParameter());
+			ORUtils::SE3Pose* tmp_para = new ORUtils::SE3Pose(x->getParameter());
 			tracker.ApplyDelta(x->getParameter(), &(d[0]), *tmp_para);
 
 			// check whether step reduces error function and
@@ -203,13 +230,16 @@ static inline bool minimizeLM(const ITMColorTracker & tracker, ORUtils::SE3Pose 
 
 			double rho = stepQuality(x, x2, &(d[0]), grad, B, numPara);
 			if (rho > TR_QUALITY_GAMMA1) lambda = lambda / TR_REGION_INCREASE;
-			else if (rho <= TR_QUALITY_GAMMA2) { success = false; lambda = lambda / TR_REGION_DECREASE; }
+			else if (rho <= TR_QUALITY_GAMMA2)
+			{
+				success = false;
+				lambda = lambda / TR_REGION_DECREASE;
+			}
 
 			if (x2->getNumValidPoints() < 100) success = false;
-		}
-		else
+		} else
 		{
-			x2 = NULL;
+			x2 = nullptr;
 			// can't compute a step quality here...
 			lambda = lambda / TR_REGION_DECREASE;
 		}
@@ -224,8 +254,7 @@ static inline bool minimizeLM(const ITMColorTracker & tracker, ORUtils::SE3Pose 
 			x = x2;
 
 			if (!continueIteration) break;
-		}
-		else if (x2 != NULL) delete x2;
+		} else delete x2;
 		if (step_counter++ >= MAX_STEPS - 1) break;
 	} while (true);
 

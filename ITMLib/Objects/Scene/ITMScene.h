@@ -2,57 +2,52 @@
 
 #pragma once
 
-#include "ITMLocalVBA.h"
-#include "ITMGlobalCache.h"
 #include "TSDF.h"
 #include "TSDF_CPU.h"
 #include "../../Utils/ITMSceneParams.h"
 
 namespace ITMLib
 {
-	/** \brief
-	Represents the 3D world model as a hash of small voxel
-	blocks
-	*/
-	template<class TVoxel>
-	class ITMScene
+/** \brief
+Represents the 3D world model as a hash of small voxel
+blocks
+*/
+template<class TVoxel>
+class ITMScene
+{
+public:
+	/** Scene parameters like voxel size etc. */
+	const ITMSceneParams* sceneParams = nullptr;
+
+	TSDF<IndexShort, TVoxel>* tsdf = nullptr;
+
+	TSDF<IndexDirectionalShort, TVoxel>* tsdfDirectional = nullptr;
+
+	void SaveToDirectory(const std::string& outputDirectory) const
 	{
-	public:
-		/** Scene parameters like voxel size etc. */
-		const ITMSceneParams *sceneParams;
+		std::cerr << "SaveToDirectory not implemented" << std::endl;
+	}
 
-		/** Hash table to reference the 8x8x8 blocks */
-		ITMVoxelBlockHash index;
+	void LoadFromDirectory(const std::string& outputDirectory)
+	{
+		std::cerr << "LoadFromDirectory not implemented" << std::endl;
+	}
 
-		TSDF<IndexDirectionalShort, TVoxel>* tsdf;
+	void Clear()
+	{
+		if (tsdf)
+			tsdf->clear();
+		if (tsdfDirectional)
+			tsdfDirectional->clear();
+	}
 
-		/** Current local content of the 8x8x8 voxel blocks -- stored host or device */
-		ITMLocalVBA<TVoxel> localVBA;
+	ITMScene(const ITMSceneParams* _sceneParams, bool _useSwapping, bool _directional, MemoryDeviceType _memoryType);
 
-		/** Global content of the 8x8x8 voxel blocks -- stored on host only */
-		ITMGlobalCache<TVoxel> *globalCache;
+	~ITMScene() = default;
 
-		void SaveToDirectory(const std::string &outputDirectory) const
-		{
-			localVBA.SaveToDirectory(outputDirectory);
-			index.SaveToDirectory(outputDirectory);
-		}
+	// Suppress the default copy constructor and assignment operator
+	ITMScene(const ITMScene&) = delete;
 
-		void LoadFromDirectory(const std::string &outputDirectory)
-		{
-			localVBA.LoadFromDirectory(outputDirectory);
-			index.LoadFromDirectory(outputDirectory);
-		}
-
-		ITMScene(const ITMSceneParams* _sceneParams, bool _useSwapping, bool _directional, MemoryDeviceType _memoryType);
-
-		~ITMScene(void)
-		{
-			if (globalCache != NULL) delete globalCache;
-		}
-
-		// Suppress the default copy constructor and assignment operator
-		ITMScene(const ITMScene&);
-		ITMScene& operator=(const ITMScene&);
-	};
+	ITMScene& operator=(const ITMScene&) = delete;
+};
 }

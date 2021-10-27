@@ -9,11 +9,9 @@ namespace ITMLib
 class ITMVisualisationEngine_CPU : public ITMVisualisationEngine
 {
 public:
-	explicit ITMVisualisationEngine_CPU(const std::shared_ptr<const ITMLibSettings>& settings)
-		: ITMVisualisationEngine(settings)
-	{}
+	explicit ITMVisualisationEngine_CPU(const std::shared_ptr<const ITMLibSettings>& settings);
 
-	virtual ~ITMVisualisationEngine_CPU() = default;
+	~ITMVisualisationEngine_CPU() override = default;
 
 	void FindSurface(const Scene* scene, const ORUtils::SE3Pose* pose,
 	                 const ITMIntrinsics* intrinsics, const ITMRenderState* renderState) const override;
@@ -38,13 +36,7 @@ public:
 	void RenderTrackingError(ITMUChar4Image* outRendering, const ITMTrackingState* trackingState,
 	                         const ITMView* view) const override;
 
-	ITMRenderState_VH* CreateRenderState(const Scene* scene, const Vector2i& imgSize) const override;
-
-	void ComputeRenderingTSDF(const Scene* scene, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
-	                          ITMRenderState* renderState) override;
-
-	int CountVisibleBlocks(const Scene* scene, const ITMRenderState* renderState, int minBlockId,
-	                       int maxBlockId) const override;
+	ITMRenderState* CreateRenderState(const Scene* scene, const Vector2i& imgSize) const override;
 
 	void CreateExpectedDepths(const Scene* scene, const ORUtils::SE3Pose* pose,
 	                          const ITMIntrinsics* intrinsics, ITMRenderState* renderState) override;
@@ -52,6 +44,9 @@ public:
 protected:
 	void GenericRaycast(const Scene* scene, const Vector2i& imgSize, const Matrix4f& invM,
 	                    const Vector4f& projParams, const ITMRenderState* renderState, bool updateVisibleList) const;
+
+	void ComputeRenderingTSDFImpl(const Scene* scene, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
+	                              ITMRenderState* renderState) override;
 };
 
 }

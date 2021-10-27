@@ -38,30 +38,45 @@ struct hash<ITMLib::Index<T>>
 namespace ITMLib
 {
 
-template <typename TIndex, typename TVoxel>
+template<typename TIndex, typename TVoxel>
 class TSDF_CPU : public TSDFBase<TIndex, TVoxel, std::unordered_map>
 {
 public:
 	~TSDF_CPU()
 	{
-//		ORcudaSafeCall(cudaFree(this->voxels));
-//		if (this->map.bucket_count() > 0)
-//			stdgpu::unordered_map<TIndex, TVoxel*>::destroyDeviceObject(this->map);
+		delete this->voxels;
 	}
 
-	void clear()
+	void allocate(const TIndex* blocks, size_t N) override
 	{
+		if (N <= 0)
+			return;
 
-	}
+		if (this->size() >= this->allocatedBlocksMax)
+		{
+			printf("warning: TSDF size exceeded (%zu/%zu allocated). stopped allocating.\n", this->size(),
+			       this->allocatedBlocksMax);
+			return;
+		}
 
-	size_t size()
-	{
-		return this->map.size();
-	}
+		for (size_t i = 0; i < N; i++)
+		{
+			const TIndex& block = blocks[i];
+			if (this->map.find(block) != this->map.end())
+				continue;
 
-	virtual void allocate(const TIndex* blocks, size_t N)
-	{
-		printf("error: not implemented\n");
+			if (block.getDirection() != TSDFDirection::NONE)
+			{
+				this->allocationStats.noAllocationsPerDirection[static_cast<TSDFDirection_type>(block.getDirection())]++;
+			} else
+			{
+				this->allocationStats.noAllocationsPerDirection[0]++;
+			}
+
+			size_t offset = this->allocationStats.noAllocations;
+			this->allocationStats.noAllocations++;
+			this->map.emplace(block, this->voxels + offset * SDF_BLOCK_SIZE3);
+		}
 	}
 
 	void resize(size_t newSize) override
@@ -70,15 +85,19 @@ public:
 			return;
 		this->allocatedBlocksMax = newSize;
 
-		if (this->voxels)
-			destroyHostArray(this->voxels);
-		this->voxels = createHostArray(newSize * SDF_BLOCK_SIZE3, TVoxel());
+		delete this->voxels;
+		this->voxels = (TVoxel*) malloc(newSize * SDF_BLOCK_SIZE3 * sizeof(TVoxel));
+		std::fill_n(this->voxels, newSize * SDF_BLOCK_SIZE3, TVoxel());
+
+		this->map.reserve(newSize);
 		this->map.clear();
+		this->allocationStats = AllocationStats();
 	}
 
-	MemoryDeviceType deviceType() override { return MemoryDeviceType::MEMORYDEVICE_CUDA; }
+	MemoryDeviceType deviceType() override
+	{ return MemoryDeviceType::MEMORYDEVICE_CUDA; }
 
-	explicit TSDF_CPU(size_t size)
+	explicit TSDF_CPU(size_t size = 1)
 	{
 		resize(size);
 	}
@@ -95,18 +114,18 @@ inline TVoxel readVoxel(bool& found, const std::unordered_map<TIndex, TVoxel*>& 
 	return TVoxel();
 #else
 	TIndex index;
-		unsigned short linearIdx;
-		voxelIdxToIndexAndOffset(index, linearIdx, voxelIdx, direction);
+	unsigned short linearIdx;
+	voxelIdxToIndexAndOffset(index, linearIdx, voxelIdx, direction);
 
-		auto it = tsdf.find(index);
-		if (it == tsdf.end())
-		{
-			found = false;
-			return TVoxel();
-		}
+	auto it = tsdf.find(index);
+	if (it == tsdf.end())
+	{
+		found = false;
+		return TVoxel();
+	}
 
-		found = true;
-		return it->second[linearIdx];
+	found = true;
+	return it->second[linearIdx];
 #endif
 }
 

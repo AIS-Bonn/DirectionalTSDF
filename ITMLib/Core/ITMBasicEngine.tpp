@@ -3,13 +3,14 @@
 #include <Trackers/Shared/ITMICPTracker_Shared.h>
 #include <thrust/reduce.h>
 #include <thrust/transform_reduce.h>
+
+#include <cmath>
 #include "ITMBasicEngine.h"
 
 #include "ITMLib/Engines/LowLevel/ITMLowLevelEngineFactory.h"
 #include "ITMLib/Engines/Meshing/ITMMeshingEngineFactory.h"
 #include "ITMLib/Engines/ViewBuilding/ITMViewBuilderFactory.h"
 #include "ITMLib/Engines/Visualisation/ITMVisualisationEngineFactory.h"
-#include "ITMLib/Objects/RenderStates/ITMRenderStateFactory.h"
 #include "ITMLib/Trackers/ITMTrackerFactory.h"
 #include "ITMLib/Utils/ITMTimer.h"
 
@@ -20,15 +21,15 @@
 
 using namespace ITMLib;
 
-ITMBasicEngine::ITMBasicEngine(const std::shared_ptr<const ITMLibSettings>& settings, const ITMRGBDCalib& calib, Vector2i imgSize_rgb, Vector2i imgSize_d)
-	:settings(settings)
+ITMBasicEngine::ITMBasicEngine(const std::shared_ptr<const ITMLibSettings>& settings, const ITMRGBDCalib& calib,
+                               Vector2i imgSize_rgb, Vector2i imgSize_d)
+	: settings(settings)
 {
 	if ((imgSize_d.x == -1) || (imgSize_d.y == -1)) imgSize_d = imgSize_rgb;
 
 	MemoryDeviceType memoryType = settings->GetMemoryType();
 	this->scene = new Scene(&settings->sceneParams, settings->swappingMode == ITMLibSettings::SWAPPINGMODE_ENABLED,
-	                        settings->fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL, memoryType);
-
+	                        settings->Directional(), memoryType);
 
 	const ITMLibSettings::DeviceType deviceType = settings->deviceType;
 
@@ -36,7 +37,7 @@ ITMBasicEngine::ITMBasicEngine(const std::shared_ptr<const ITMLibSettings>& sett
 	viewBuilder = ITMViewBuilderFactory::MakeViewBuilder(calib, deviceType);
 	visualisationEngine = ITMVisualisationEngineFactory::MakeVisualisationEngine(deviceType, settings);
 
-	meshingEngine = NULL;
+	meshingEngine = nullptr;
 	if (settings->createMeshingEngine)
 		meshingEngine = ITMMeshingEngineFactory::MakeMeshingEngine(deviceType);
 
@@ -44,22 +45,26 @@ ITMBasicEngine::ITMBasicEngine(const std::shared_ptr<const ITMLibSettings>& sett
 	denseMapper->ResetScene(scene);
 
 	imuCalibrator = new ITMIMUCalibrator_iPad();
-	tracker = ITMTrackerFactory::Instance().Make(imgSize_rgb, imgSize_d, settings, lowLevelEngine, imuCalibrator, scene->sceneParams);
+	tracker = ITMTrackerFactory::Instance().Make(imgSize_rgb, imgSize_d, settings, lowLevelEngine, imuCalibrator,
+	                                             scene->sceneParams);
 	trackingController = new ITMTrackingController(tracker, settings);
 
 	Vector2i trackedImageSize = trackingController->GetTrackedImageSize(imgSize_rgb, imgSize_d);
 
-	renderState_live = ITMRenderStateFactory::CreateRenderState(trackedImageSize, scene->sceneParams, memoryType);
-	renderState_freeview = NULL; //will be created if needed
+	renderState_live = new ITMRenderState(trackedImageSize, scene->sceneParams->viewFrustum_min,
+	                                      scene->sceneParams->viewFrustum_max, memoryType);
+	renderState_freeview = nullptr; //will be created if needed
 
 	trackingState = new ITMTrackingState(trackedImageSize, memoryType);
 	tracker->UpdateInitialPose(trackingState);
 
-	view = NULL; // will be allocated by the view builder
+	view = nullptr; // will be allocated by the view builder
 
 	if (settings->behaviourOnFailure == settings->FAILUREMODE_RELOCALISE)
-		relocaliser = new FernRelocLib::Relocaliser<float>(imgSize_d, Vector2f(settings->sceneParams.viewFrustum_min, settings->sceneParams.viewFrustum_max), 0.2f, 500, 4);
-	else relocaliser = NULL;
+		relocaliser = new FernRelocLib::Relocaliser<float>(imgSize_d, Vector2f(settings->sceneParams.viewFrustum_min,
+		                                                                       settings->sceneParams.viewFrustum_max), 0.2f,
+		                                                   500, 4);
+	else relocaliser = nullptr;
 
 	kfRaycast = new ITMUChar4Image(imgSize_d, memoryType);
 
@@ -75,7 +80,7 @@ ITMBasicEngine::ITMBasicEngine(const std::shared_ptr<const ITMLibSettings>& sett
 ITMBasicEngine::~ITMBasicEngine()
 {
 	delete renderState_live;
-	if (renderState_freeview != NULL) delete renderState_freeview;
+	delete renderState_freeview;
 
 	delete scene;
 
@@ -89,21 +94,21 @@ ITMBasicEngine::~ITMBasicEngine()
 	delete viewBuilder;
 
 	delete trackingState;
-	if (view != NULL) delete view;
+	delete view;
 
 	delete visualisationEngine;
 
-	if (relocaliser != NULL) delete relocaliser;
+	delete relocaliser;
 	delete kfRaycast;
 
-	if (meshingEngine != NULL) delete meshingEngine;
+	delete meshingEngine;
 }
 
-void ITMBasicEngine::SaveSceneToMesh(const char *objFileName)
+void ITMBasicEngine::SaveSceneToMesh(const char* objFileName)
 {
-	if (meshingEngine == NULL) return;
+	if (meshingEngine == nullptr) return;
 
-	ITMMesh *mesh = new ITMMesh();
+	auto* mesh = new ITMMesh();
 
 	meshingEngine->MeshScene(mesh, scene);
 	mesh->WriteSTL(objFileName);
@@ -128,13 +133,13 @@ void ITMBasicEngine::SaveToFile()
 	if (relocaliser) relocaliser->SaveToDirectory(relocaliserOutputDirectory);
 
 	scene->SaveToDirectory(sceneOutputDirectory);
-	visualisationEngine->SaveRenderTSDF(renderOutputDirectory);
 }
 
 void ITMBasicEngine::LoadFromFile()
 {
 	std::string saveInputDirectory = "State/";
-	std::string relocaliserInputDirectory = saveInputDirectory + "Relocaliser/", sceneInputDirectory = saveInputDirectory + "Scene/";
+	std::string relocaliserInputDirectory = saveInputDirectory + "Relocaliser/", sceneInputDirectory =
+		saveInputDirectory + "Scene/";
 
 	////TODO: add factory for relocaliser and rebuild using config from relocaliserOutputDirectory + "config.txt"
 	////TODO: add proper management of case when scene load fails (keep old scene or also reset relocaliser)
@@ -143,14 +148,17 @@ void ITMBasicEngine::LoadFromFile()
 
 	try // load relocaliser
 	{
-		FernRelocLib::Relocaliser<float> *relocaliser_temp = new FernRelocLib::Relocaliser<float>(view->depth->noDims, Vector2f(settings->sceneParams.viewFrustum_min, settings->sceneParams.viewFrustum_max), 0.2f, 500, 4);
+		auto* relocaliser_temp = new FernRelocLib::Relocaliser<float>(view->depth->noDims,
+		                                                              Vector2f(settings->sceneParams.viewFrustum_min,
+		                                                                       settings->sceneParams.viewFrustum_max), 0.2f,
+		                                                              500, 4);
 
 		relocaliser_temp->LoadFromDirectory(relocaliserInputDirectory);
 
 		delete relocaliser;
 		relocaliser = relocaliser_temp;
 	}
-	catch (std::runtime_error &e)
+	catch (std::runtime_error& e)
 	{
 		throw std::runtime_error("Could not load relocaliser: " + std::string(e.what()));
 	}
@@ -159,7 +167,7 @@ void ITMBasicEngine::LoadFromFile()
 	{
 		scene->LoadFromDirectory(sceneInputDirectory);
 	}
-	catch (std::runtime_error &e)
+	catch (std::runtime_error& e)
 	{
 		denseMapper->ResetScene(scene);
 		throw std::runtime_error("Could not load scene:" + std::string(e.what()));
@@ -245,7 +253,9 @@ static void QuaternionFromRotationMatrix(const double *matrix, double *q) {
 }
 #endif
 
-ITMTrackingState::TrackingResult ITMBasicEngine::ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement, const ORUtils::SE3Pose* pose)
+ITMTrackingState::TrackingResult
+ITMBasicEngine::ProcessFrame(ITMUChar4Image* rgbImage, ITMShortImage* rawDepthImage, ITMIMUMeasurement* imuMeasurement,
+                             const ORUtils::SE3Pose* pose)
 {
 	this->timeStats.Reset();
 	ITMTimer timer;
@@ -257,8 +267,11 @@ ITMTrackingState::TrackingResult ITMBasicEngine::ProcessFrame(ITMUChar4Image *rg
 //		settings->fusionParams.fusionMode != FusionMode::FUSIONMODE_VOXEL_PROJECTION or
 //		settings->fusionParams.fusionMetric == FusionMetric::FUSIONMETRIC_POINT_TO_PLANE);
 	// prepare image and turn it into a depth image
-	if (imuMeasurement == NULL) viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, computeNormals);
-	else viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, imuMeasurement, computeNormals);
+	if (imuMeasurement == nullptr)
+		viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, computeNormals);
+	else
+		viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, imuMeasurement,
+		                        computeNormals);
 
 	if (!mainProcessingActive) return ITMTrackingState::TRACKING_FAILED;
 
@@ -277,17 +290,18 @@ ITMTrackingState::TrackingResult ITMBasicEngine::ProcessFrame(ITMUChar4Image *rg
 	else consecutiveGoodFrames = 0;
 
 	ITMTrackingState::TrackingResult trackerResult = ITMTrackingState::TRACKING_GOOD;
-	switch (settings->behaviourOnFailure) {
-	case ITMLibSettings::FAILUREMODE_RELOCALISE:
-		trackerResult = trackingState->trackerResult;
-		break;
-	case ITMLibSettings::FAILUREMODE_STOP_INTEGRATION:
-		if (trackingState->trackerResult != ITMTrackingState::TRACKING_FAILED)
+	switch (settings->behaviourOnFailure)
+	{
+		case ITMLibSettings::FAILUREMODE_RELOCALISE:
 			trackerResult = trackingState->trackerResult;
-		else trackerResult = ITMTrackingState::TRACKING_POOR;
-		break;
-	default:
-		break;
+			break;
+		case ITMLibSettings::FAILUREMODE_STOP_INTEGRATION:
+			if (trackingState->trackerResult != ITMTrackingState::TRACKING_FAILED)
+				trackerResult = trackingState->trackerResult;
+			else trackerResult = ITMTrackingState::TRACKING_POOR;
+			break;
+		default:
+			break;
 	}
 
 	//relocalisation
@@ -297,21 +311,24 @@ ITMTrackingState::TrackingResult ITMBasicEngine::ProcessFrame(ITMUChar4Image *rg
 	{
 		if (trackerResult == ITMTrackingState::TRACKING_GOOD && relocalisationCount > 0) relocalisationCount--;
 
-		int NN; float distances;
+		int NN;
+		float distances;
 		view->depth->UpdateHostFromDevice();
 
 		//find and add keyframe, if necessary
-		bool hasAddedKeyframe = relocaliser->ProcessFrame(view->depth, trackingState->pose_d, 0, 1, &NN, &distances, trackerResult == ITMTrackingState::TRACKING_GOOD && relocalisationCount == 0);
+		bool hasAddedKeyframe = relocaliser->ProcessFrame(view->depth, trackingState->pose_d, 0, 1, &NN, &distances,
+		                                                  trackerResult == ITMTrackingState::TRACKING_GOOD &&
+		                                                  relocalisationCount == 0);
 
 		//frame not added and tracking failed -> we need to relocalise
 		if (!hasAddedKeyframe && trackerResult == ITMTrackingState::TRACKING_FAILED && trackingInitialised)
 		{
 			relocalisationCount = 10;
 
-			const FernRelocLib::PoseDatabase::PoseInScene & keyframe = relocaliser->RetrievePose(NN);
+			const FernRelocLib::PoseDatabase::PoseInScene& keyframe = relocaliser->RetrievePose(NN);
 			trackingState->pose_d->SetFrom(&keyframe.pose);
 
-			denseMapper->UpdateVisibleList(view, trackingState, scene, renderState_live, true);
+			denseMapper->UpdateVisibleList(view, trackingState, scene, renderState_live);
 			trackingController->Prepare(trackingState, scene, view, visualisationEngine, renderState_live);
 			trackingController->Track(trackingState, view);
 
@@ -325,7 +342,8 @@ ITMTrackingState::TrackingResult ITMBasicEngine::ProcessFrame(ITMUChar4Image *rg
 	bool didFusion = false;
 	if ((trackerResult != ITMTrackingState::TRACKING_FAILED || !trackingInitialised)
 	    && (fusionActive)
-	    && (relocalisationCount == 0)) {
+	    && (relocalisationCount == 0))
+	{
 		// fusion
 		denseMapper->ProcessFrame(view, trackingState, scene, renderState_live);
 		didFusion = true;
@@ -334,7 +352,8 @@ ITMTrackingState::TrackingResult ITMBasicEngine::ProcessFrame(ITMUChar4Image *rg
 		framesProcessed++;
 	}
 
-	if (trackerResult == ITMTrackingState::TRACKING_GOOD || trackerResult == ITMTrackingState::TRACKING_POOR || !trackingInitialised)
+	if (trackerResult == ITMTrackingState::TRACKING_GOOD || trackerResult == ITMTrackingState::TRACKING_POOR ||
+	    !trackingInitialised)
 	{
 		if (!didFusion) denseMapper->UpdateVisibleList(view, trackingState, scene, renderState_live);
 
@@ -344,12 +363,12 @@ ITMTrackingState::TrackingResult ITMBasicEngine::ProcessFrame(ITMUChar4Image *rg
 		if (addKeyframeIdx >= 0)
 		{
 			ORUtils::MemoryBlock<Vector4u>::MemoryCopyDirection memoryCopyDirection =
-				settings->deviceType == ITMLibSettings::DEVICE_CUDA ? ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CUDA : ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU;
+				settings->deviceType == ITMLibSettings::DEVICE_CUDA ? ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CUDA
+				                                                    : ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU;
 
-			kfRaycast->SetFrom(renderState_live->raycastImage, memoryCopyDirection);
+			kfRaycast->SetFrom(renderState_live->renderedImage, memoryCopyDirection);
 		}
-	}
-	else *trackingState->pose_d = oldPose;
+	} else *trackingState->pose_d = oldPose;
 
 #ifdef OUTPUT_TRAJECTORY_QUATERNIONS
 	const ORUtils::SE3Pose *p = trackingState->pose_d;
@@ -368,31 +387,18 @@ ITMTrackingState::TrackingResult ITMBasicEngine::ProcessFrame(ITMUChar4Image *rg
 //	this->timeStats.relocalization
 	this->timeStats.reconstruction = denseMapper->GetSceneReconstructionEngine()->GetTimeStats();
 
-  return trackerResult;
+	return trackerResult;
 }
 
-Vector2i ITMBasicEngine::GetImageSize(void) const
+Vector2i ITMBasicEngine::GetImageSize() const
 {
-	return renderState_live->raycastImage->noDims;
+	return renderState_live->renderedImage->noDims;
 }
 
 template<typename T>
-struct add_const_and_square : public thrust::unary_function<T,T>
+struct square : public thrust::unary_function<T, T>
 {
-	add_const_and_square(T v) : v(v) {}
-
-	__host__ __device__ T operator()(const T &x) const
-	{
-		return (x + v) * (x + v);
-	}
-
-	T v;
-};
-
-template<typename T>
-struct square : public thrust::unary_function<T,T>
-{
-	__host__ __device__ T operator()(const T &x) const
+	__host__ __device__ T operator()(const T& x) const
 	{
 		return x * x;
 	}
@@ -400,19 +406,23 @@ struct square : public thrust::unary_function<T,T>
 
 ITMRenderError ITMBasicEngine::ComputeICPError()
 {
-	denseMapper->GetSceneReconstructionEngine()->FindVisibleBlocks(scene, trackingState->pose_d, &(view->calib.intrinsics_d), renderState_live);
-	visualisationEngine->CreateExpectedDepths(scene, trackingState->pose_d, &(view->calib.intrinsics_d), renderState_live);
+	denseMapper->GetSceneReconstructionEngine()->FindVisibleBlocks(scene, trackingState->pose_d,
+	                                                               &(view->calib.intrinsics_d), renderState_live);
+	visualisationEngine->CreateExpectedDepths(scene, trackingState->pose_d, &(view->calib.intrinsics_d),
+	                                          renderState_live);
 	visualisationEngine->CreateICPMaps(scene, view, trackingState, renderState_live);
-//	visualisationEngine->RenderTrackingError(renderState_live->raycastImage, trackingState, view);
+//	visualisationEngine->RenderTrackingError(renderState_live->renderedImage, trackingState, view);
 
 	view->depth->UpdateHostFromDevice();
 	ORUtils::Image<ORUtils::Vector4<float>> locations(trackingState->pointCloud->locations->noDims, true, false);
 	ORUtils::Image<ORUtils::Vector4<float>> normals(trackingState->pointCloud->locations->noDims, true, false);
 
-	ORcudaSafeCall(cudaMemcpy(locations.GetData(MEMORYDEVICE_CPU), trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CUDA),
-													 locations.dataSize * sizeof(Vector4f), cudaMemcpyDeviceToHost));
-	ORcudaSafeCall(cudaMemcpy(normals.GetData(MEMORYDEVICE_CPU), trackingState->pointCloud->normals->GetData(MEMORYDEVICE_CUDA),
-	                          normals.dataSize * sizeof(Vector4f), cudaMemcpyDeviceToHost));
+	ORcudaSafeCall(
+		cudaMemcpy(locations.GetData(MEMORYDEVICE_CPU), trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CUDA),
+		           locations.dataSize * sizeof(Vector4f), cudaMemcpyDeviceToHost));
+	ORcudaSafeCall(
+		cudaMemcpy(normals.GetData(MEMORYDEVICE_CPU), trackingState->pointCloud->normals->GetData(MEMORYDEVICE_CUDA),
+		           normals.dataSize * sizeof(Vector4f), cudaMemcpyDeviceToHost));
 
 	trackingState->pointCloud->locations->UpdateHostFromDevice();
 	trackingState->pointCloud->normals->UpdateHostFromDevice();
@@ -421,11 +431,9 @@ ITMRenderError ITMBasicEngine::ComputeICPError()
 
 	const Vector4f* pointsRay = locations.GetData(MEMORYDEVICE_CPU);
 	const Vector4f* normalsRay = normals.GetData(MEMORYDEVICE_CPU);
-	const float* depthImage = view->depth->GetData(MEMORYDEVICE_CUDA);
 	const Matrix4f& depthImageInvPose = trackingState->pose_d->GetInvM();
 	const Matrix4f& sceneRenderingPose = trackingState->pose_pointCloud->GetM();
 	Vector2i imgSize = view->calib.intrinsics_d.imgSize;
-	const float maxError = this->settings->sceneParams.mu;
 
 	std::vector<float> errors, icpErrors;
 	for (int x = 0; x < imgSize.width; x++)
@@ -433,9 +441,6 @@ ITMRenderError ITMBasicEngine::ComputeICPError()
 		{
 
 			int locId = x + y * imgSize.width;
-
-			float d = depth[locId];
-			const Vector4f& pt = pointsRay[locId];
 
 			float A[6];
 			float error, icpError;
@@ -456,28 +461,30 @@ ITMRenderError ITMBasicEngine::ComputeICPError()
 			if (!isValidPoint)
 				continue;
 
-			errors.push_back(fabs(error));
-			icpErrors.push_back(fabs(icpError));
+			errors.push_back(std::fabs(error));
+			icpErrors.push_back(std::fabs(icpError));
 		}
 
 	ITMRenderError result;
 	result.MAE = thrust::reduce(errors.begin(), errors.end(), (float) 0, thrust::plus<float>()) / errors.size();
-	result.RMSE = sqrt(thrust::transform_reduce(errors.begin(), errors.end(),
-	                                            square<float>(),
-	                                            (float) 0,
-	                                            thrust::plus<float>()) / errors.size());
-	result.icpMAE = thrust::reduce(icpErrors.begin(), icpErrors.end(), (float) 0, thrust::plus<float>()) / icpErrors.size();
-	result.icpRMSE = sqrt(thrust::transform_reduce(icpErrors.begin(), icpErrors.end(),
-	                                               square<float>(),
-	                                               (float) 0,
-	                                               thrust::plus<float>()) / icpErrors.size());
+	result.RMSE = std::sqrt(thrust::transform_reduce(errors.begin(), errors.end(),
+	                                                 square<float>(),
+	                                                 (float) 0,
+	                                                 thrust::plus<float>()) / errors.size());
+	result.icpMAE =
+		thrust::reduce(icpErrors.begin(), icpErrors.end(), (float) 0, thrust::plus<float>()) / icpErrors.size();
+	result.icpRMSE = std::sqrt(thrust::transform_reduce(icpErrors.begin(), icpErrors.end(),
+	                                                    square<float>(),
+	                                                    (float) 0,
+	                                                    thrust::plus<float>()) / icpErrors.size());
 
 	return result;
 }
 
-void ITMBasicEngine::GetImage(ITMUChar4Image *out, GetImageType getImageType, ORUtils::SE3Pose *pose, const ITMIntrinsics *intrinsics, bool normalsFromSDF)
+void ITMBasicEngine::GetImage(ITMUChar4Image* out, GetImageType getImageType, ORUtils::SE3Pose* pose,
+                              const ITMIntrinsics* intrinsics, bool normalsFromSDF)
 {
-	if (view == NULL) return;
+	if (view == nullptr) return;
 
 	out->Clear();
 
@@ -485,86 +492,95 @@ void ITMBasicEngine::GetImage(ITMUChar4Image *out, GetImageType getImageType, OR
 
 	switch (getImageType)
 	{
-	case ITMMainEngine::InfiniTAM_IMAGE_ORIGINAL_RGB:
-		out->ChangeDims(view->rgb->noDims);
-		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA)
-			out->SetFrom(view->rgb, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);
-		else out->SetFrom(view->rgb, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);
-		break;
-	case ITMMainEngine::InfiniTAM_IMAGE_ORIGINAL_DEPTH:
-		out->ChangeDims(view->depth->noDims);
-		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA) view->depth->UpdateHostFromDevice();
-		ITMVisualisationEngine::DepthToUchar4(out, view->depth);
-		break;
-	case ITMMainEngine::InfiniTAM_IMAGE_SCENERAYCAST:
-	case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_VOLUME:
-	case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_NORMAL:
-	case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_CONFIDENCE:
-	case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_DEPTH:
+		case ITMMainEngine::InfiniTAM_IMAGE_ORIGINAL_RGB:
+			out->ChangeDims(view->rgb->noDims);
+			if (settings->deviceType == ITMLibSettings::DEVICE_CUDA)
+				out->SetFrom(view->rgb, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);
+			else out->SetFrom(view->rgb, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);
+			break;
+		case ITMMainEngine::InfiniTAM_IMAGE_ORIGINAL_DEPTH:
+			out->ChangeDims(view->depth->noDims);
+			if (settings->deviceType == ITMLibSettings::DEVICE_CUDA) view->depth->UpdateHostFromDevice();
+			ITMVisualisationEngine::DepthToUchar4(out, view->depth);
+			break;
+		case ITMMainEngine::InfiniTAM_IMAGE_SCENERAYCAST:
+		case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_VOLUME:
+		case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_NORMAL:
+		case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_CONFIDENCE:
+		case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_DEPTH:
 		{
-		// use current raycast or forward projection?
-		IITMVisualisationEngine::RenderRaycastSelection raycastType = IITMVisualisationEngine::RENDER_FROM_NEW_RAYCAST;
-		if (trackingState->age_pointCloud <= 0) raycastType = IITMVisualisationEngine::RENDER_FROM_OLD_RAYCAST;
-		else raycastType = IITMVisualisationEngine::RENDER_FROM_OLD_FORWARDPROJ;
+			// use current raycast or forward projection?
+			IITMVisualisationEngine::RenderRaycastSelection raycastType;
+			if (trackingState->age_pointCloud <= 0) raycastType = IITMVisualisationEngine::RENDER_FROM_OLD_RAYCAST;
+			else raycastType = IITMVisualisationEngine::RENDER_FROM_OLD_FORWARDPROJ;
 
-		visualisationEngine->RenderImage(scene, trackingState->pose_d, &view->calib.intrinsics_d, renderState_live, renderState_live->raycastImage, renderImageType, raycastType);
+			visualisationEngine->RenderImage(scene, trackingState->pose_d, &view->calib.intrinsics_d, renderState_live,
+			                                 renderState_live->renderedImage, renderImageType, raycastType);
 
-		ORUtils::Image<Vector4u> *srcImage = nullptr;
-		if (relocalisationCount != 0) srcImage = kfRaycast;
-		else srcImage = renderState_live->raycastImage;
+			ORUtils::Image<Vector4u>* srcImage;
+			if (relocalisationCount != 0) srcImage = kfRaycast;
+			else srcImage = renderState_live->renderedImage;
 
-		out->ChangeDims(srcImage->noDims);
-		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA)
-			out->SetFrom(srcImage, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);
-		else out->SetFrom(srcImage, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);
+			out->ChangeDims(srcImage->noDims);
+			if (settings->deviceType == ITMLibSettings::DEVICE_CUDA)
+				out->SetFrom(srcImage, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);
+			else out->SetFrom(srcImage, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);
 
-		break;
+			break;
 		}
-	case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_ICP_ERROR:
-	{
-		denseMapper->GetSceneReconstructionEngine()->FindVisibleBlocks(scene, trackingState->pose_d, &(view->calib.intrinsics_d), renderState_live);
-		visualisationEngine->CreateExpectedDepths(scene, trackingState->pose_d, &(view->calib.intrinsics_d), renderState_live);
-		visualisationEngine->CreateICPMaps(scene, view, trackingState, renderState_live);
-		visualisationEngine->RenderTrackingError(renderState_live->raycastImage, trackingState, view);
-		out->ChangeDims(renderState_live->raycastImage->noDims);
-		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA)
-			out->SetFrom(renderState_live->raycastImage, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);
-		else out->SetFrom(renderState_live->raycastImage, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);
-		break;
-	}
-	case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_SHADED:
-	case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME:
-	case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL:
-	case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_CONFIDENCE:
-	case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_DEPTH:
-	{
-		if (renderState_freeview == NULL)
+		case ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_ICP_ERROR:
 		{
-			renderState_freeview = ITMRenderStateFactory::CreateRenderState(out->noDims, scene->sceneParams, settings->GetMemoryType());
+			denseMapper->GetSceneReconstructionEngine()->FindVisibleBlocks(scene, trackingState->pose_d,
+			                                                               &(view->calib.intrinsics_d), renderState_live);
+			visualisationEngine->CreateExpectedDepths(scene, trackingState->pose_d, &(view->calib.intrinsics_d),
+			                                          renderState_live);
+			visualisationEngine->CreateICPMaps(scene, view, trackingState, renderState_live);
+			visualisationEngine->RenderTrackingError(renderState_live->renderedImage, trackingState, view);
+			out->ChangeDims(renderState_live->renderedImage->noDims);
+			if (settings->deviceType == ITMLibSettings::DEVICE_CUDA)
+				out->SetFrom(renderState_live->renderedImage, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);
+			else out->SetFrom(renderState_live->renderedImage, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);
+			break;
 		}
+		case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_SHADED:
+		case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME:
+		case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL:
+		case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_CONFIDENCE:
+		case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_DEPTH:
+		{
+			if (renderState_freeview == nullptr)
+			{
+				renderState_freeview = new ITMRenderState(out->noDims, scene->sceneParams->viewFrustum_min,
+				                                          scene->sceneParams->viewFrustum_max, settings->GetMemoryType());
+			}
 
-		denseMapper->GetSceneReconstructionEngine()->FindVisibleBlocks(scene, pose, &(view->calib.intrinsics_d), renderState_freeview);
-		visualisationEngine->CreateExpectedDepths(scene, pose, intrinsics, renderState_freeview);
-		visualisationEngine->RenderImage(scene, pose, intrinsics, renderState_freeview, renderState_freeview->raycastImage, renderImageType, IITMVisualisationEngine::RENDER_FROM_NEW_RAYCAST);
+			denseMapper->GetSceneReconstructionEngine()->FindVisibleBlocks(scene, pose, &(view->calib.intrinsics_d),
+			                                                               renderState_freeview);
+			visualisationEngine->CreateExpectedDepths(scene, pose, intrinsics, renderState_freeview);
+			visualisationEngine->RenderImage(scene, pose, intrinsics, renderState_freeview,
+			                                 renderState_freeview->renderedImage, renderImageType,
+			                                 IITMVisualisationEngine::RENDER_FROM_NEW_RAYCAST);
 
-		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA)
-			out->SetFrom(renderState_freeview->raycastImage, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);
-		else out->SetFrom(renderState_freeview->raycastImage, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);
-		break;
+			if (settings->deviceType == ITMLibSettings::DEVICE_CUDA)
+				out->SetFrom(renderState_freeview->renderedImage, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);
+			else out->SetFrom(renderState_freeview->renderedImage, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);
+			break;
+		}
+		case ITMMainEngine::InfiniTAM_IMAGE_UNKNOWN:
+			break;
 	}
-	case ITMMainEngine::InfiniTAM_IMAGE_UNKNOWN:
-		break;
-	};
 }
 
-void ITMBasicEngine::turnOnTracking() { trackingActive = true; }
+void ITMBasicEngine::turnOnIntegration()
+{ fusionActive = true; }
 
-void ITMBasicEngine::turnOffTracking() { trackingActive = false; }
+void ITMBasicEngine::turnOffIntegration()
+{ fusionActive = false; }
 
-void ITMBasicEngine::turnOnIntegration() { fusionActive = true; }
-
-void ITMBasicEngine::turnOffIntegration() { fusionActive = false; }
-
-void ITMBasicEngine::turnOnMainProcessing() { mainProcessingActive = true; }
-
-void ITMBasicEngine::turnOffMainProcessing() { mainProcessingActive = false; }
+const unsigned int* ITMBasicEngine::GetAllocationsPerDirection()
+{
+	if (settings->Directional())
+		return scene->tsdfDirectional->allocationStats.noAllocationsPerDirection;
+	else
+		return scene->tsdf->allocationStats.noAllocationsPerDirection;
+}

@@ -9,12 +9,10 @@ namespace ITMLib
 class ITMMeshingEngine_CPU : public ITMMeshingEngine
 {
 public:
-	void MeshScene(ITMMesh* mesh, const Scene* scene);
+	void MeshScene(ITMMesh* mesh, const Scene* scene) override;
 
-	ITMMeshingEngine_CPU(void)
-	{}
+	ITMMeshingEngine_CPU() = default;
 
-	~ITMMeshingEngine_CPU(void)
-	{}
+	~ITMMeshingEngine_CPU() override = default;
 };
 }

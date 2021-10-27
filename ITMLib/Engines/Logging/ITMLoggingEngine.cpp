@@ -20,16 +20,22 @@ void ITMLoggingEngine::Initialize(const std::string& outputDirectory)
 	fs::create_directories(m_outputDirectory);
 
 	m_timeStatsFile.open(m_outputDirectory + "/time_stats.txt");
+	if (not m_timeStatsFile.is_open())
+		std::cerr << "failed to open " << m_outputDirectory + "/time_stats.txt" << " for writing" << std::endl;
 	m_timeStatsFile.flags(std::ios::right);
 	m_timeStatsFile.setf(std::ios::fixed);
 	ITMTimeStats stats_dummy;
 	stats_dummy.PrintHeader(m_timeStatsFile);
 
 	m_trackingFile.open(m_outputDirectory + "/tracking.txt");
+	if (not m_trackingFile.is_open())
+		std::cerr << "failed to open " << m_outputDirectory + "/tracking.txt" << " for writing" << std::endl;
 	m_trackingFile << std::fixed << std::left << std::setprecision(10);
 	m_trackingFile << "# tx ty tz qx qy qz qw score result" << std::endl;
 
 	m_allocationsFile.open(m_outputDirectory + "/allocation.txt");
+	if (not m_allocationsFile.is_open())
+		std::cerr << "failed to open " << m_outputDirectory + "/allocation.txt" << " for writing" << std::endl;
 	m_allocationsFile << "# X_POS X_NEG Y_POS Y_NEG Z_POS Z_NEG" << std::endl;
 }
 

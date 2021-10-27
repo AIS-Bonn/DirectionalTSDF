@@ -16,7 +16,7 @@ class ITMVisualisationEngine_CUDA : public ITMVisualisationEngine
 public:
 	explicit ITMVisualisationEngine_CUDA(std::shared_ptr<const ITMLibSettings> settings);
 
-	~ITMVisualisationEngine_CUDA();
+	~ITMVisualisationEngine_CUDA() override;
 
 	void CreatePointCloud(const Scene* scene, const ITMView* view,
 	                      ITMTrackingState* trackingState, ITMRenderState* renderState,
@@ -41,16 +41,10 @@ public:
 	void RenderTrackingError(ITMUChar4Image* outRendering, const ITMTrackingState* trackingState,
 	                         const ITMView* view) const override;
 
-	ITMRenderState_VH* CreateRenderState(const Scene* scene, const Vector2i& imgSize) const;
-
-	void ComputeRenderingTSDF(const Scene* scene, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
-	                          ITMRenderState* renderState) override;
-
-	int CountVisibleBlocks(const Scene* scene, const ITMRenderState* renderState, int minBlockId,
-	                       int maxBlockId) const;
+	ITMRenderState* CreateRenderState(const Scene* scene, const Vector2i& imgSize) const override;
 
 	void CreateExpectedDepths(const Scene* scene, const ORUtils::SE3Pose* pose,
-	                          const ITMIntrinsics* intrinsics, ITMRenderState* renderState);
+	                          const ITMIntrinsics* intrinsics, ITMRenderState* renderState) override;
 
 protected:
 	uint* noTotalPoints_device;
@@ -58,11 +52,10 @@ protected:
 	void GenericRaycast(const Scene* scene, const Vector2i& imgSize, const Matrix4f& invM,
 	                    const Vector4f& projParams, const ITMRenderState* renderState, bool updateVisibleList) const;
 
-private:
-	TSDF<ITMIndexXYZ, ITMVoxel>* renderingTSDF;
-	stdgpu::unordered_map<Vector3s, Vector6f*>* combinedTSDF_device;
-	Vector6f* combinedTSDFWeights_device;
+	void ComputeRenderingTSDFImpl(const Scene* scene, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
+	                              ITMRenderState* renderState) override;
 
+private:
 	RenderingBlock* renderingBlockList_device;
 	uint* noTotalBlocks_device;
 	int* noVisibleEntries_device;

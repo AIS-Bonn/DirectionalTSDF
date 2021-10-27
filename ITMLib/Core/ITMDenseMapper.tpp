@@ -3,15 +3,14 @@
 #include "ITMDenseMapper.h"
 
 #include "ITMLib/Engines/Reconstruction/ITMSceneReconstructionEngineFactory.h"
-#include "ITMLib/Engines/Swapping/ITMSwappingEngineFactory.h"
-#include "ITMLib/Objects/RenderStates/ITMRenderState_VH.h"
+#include "ITMLib/Objects/RenderStates/ITMRenderState.h"
 #include "ITMLib/Utils/ITMTimer.h"
+
 using namespace ITMLib;
 
 ITMDenseMapper::ITMDenseMapper(const std::shared_ptr<const ITMLibSettings>& settings)
 {
 	sceneRecoEngine = ITMSceneReconstructionEngineFactory::MakeSceneReconstructionEngine(settings);
-	swappingEngine = settings->swappingMode != ITMLibSettings::SWAPPINGMODE_DISABLED ? ITMSwappingEngineFactory::MakeSwappingEngine<ITMVoxel>(settings->deviceType) : nullptr;
 
 	swappingMode = settings->swappingMode;
 }
@@ -19,49 +18,36 @@ ITMDenseMapper::ITMDenseMapper(const std::shared_ptr<const ITMLibSettings>& sett
 ITMDenseMapper::~ITMDenseMapper()
 {
 	delete sceneRecoEngine;
-	delete swappingEngine;
 }
 
-void ITMDenseMapper::ResetScene(Scene *scene) const
+void ITMDenseMapper::ResetScene(Scene* scene) const
 {
 	sceneRecoEngine->ResetScene(scene);
 }
 
-void ITMDenseMapper::ProcessFrame(const ITMView *view, const ITMTrackingState *trackingState, Scene *scene, ITMRenderState *renderState, bool resetVisibleList)
+void ITMDenseMapper::ProcessFrame(const ITMView* view, const ITMTrackingState* trackingState, Scene* scene,
+                                  ITMRenderState* renderState)
 {
 	sceneRecoEngine->GetTimeStats().Reset();
 
 	// allocation
-	sceneRecoEngine->AllocateSceneFromDepth(scene, view, trackingState, renderState, false, resetVisibleList);
+	sceneRecoEngine->AllocateSceneFromDepth(scene, view, trackingState);
 
 	sceneRecoEngine->FindVisibleBlocks(scene, trackingState->pose_d, &view->calib.intrinsics_d, renderState);
 
 	// integration
-	sceneRecoEngine->IntegrateIntoScene(scene, view, trackingState, renderState);
+	sceneRecoEngine->IntegrateIntoScene(scene, view, trackingState);
 
 	ITMTimer timer;
 	timer.Tick();
-	if (swappingEngine != NULL) {
-		// swapping: CPU -> GPU
-		if (swappingMode == ITMLibSettings::SWAPPINGMODE_ENABLED) swappingEngine->IntegrateGlobalIntoLocal(scene, renderState);
-
-		// swapping: GPU -> CPU
-		switch (swappingMode)
-		{
-		case ITMLibSettings::SWAPPINGMODE_ENABLED:
-			swappingEngine->SaveToGlobalMemory(scene, renderState);
-			break;
-		case ITMLibSettings::SWAPPINGMODE_DELETE:
-			swappingEngine->CleanLocalMemory(scene, renderState);
-			break;
-		case ITMLibSettings::SWAPPINGMODE_DISABLED:
-			break;
-		} 
+	if (swappingMode != ITMLibSettings::SWAPPINGMODE_DISABLED)
+	{
 	}
 	sceneRecoEngine->GetTimeStats().swapping += timer.Tock();
 }
 
-void ITMDenseMapper::UpdateVisibleList(const ITMView *view, const ITMTrackingState *trackingState, Scene *scene, ITMRenderState *renderState, bool resetVisibleList)
+void ITMDenseMapper::UpdateVisibleList(const ITMView* view, const ITMTrackingState* trackingState, Scene* scene,
+                                       ITMRenderState* renderState)
 {
-	sceneRecoEngine->AllocateSceneFromDepth(scene, view, trackingState, renderState, true, resetVisibleList);
+	sceneRecoEngine->FindVisibleBlocks(scene, trackingState->pose_d, &(view->calib.intrinsics_d), renderState);
 }

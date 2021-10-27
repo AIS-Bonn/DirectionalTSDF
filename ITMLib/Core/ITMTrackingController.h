@@ -12,85 +12,84 @@
 
 namespace ITMLib
 {
-	/** \brief
-	*/
-	class ITMTrackingController
+/** \brief
+*/
+class ITMTrackingController
+{
+private:
+	std::shared_ptr<const ITMLibSettings> settings;
+	ITMTracker* tracker;
+	ITMTrackingTimeStats timeStats;
+
+public:
+	void Track(ITMTrackingState* trackingState, const ITMView* view)
 	{
-	private:
-		std::shared_ptr<const ITMLibSettings> settings;
-		ITMTracker *tracker;
-		ITMTrackingTimeStats timeStats;
+		timeStats.Reset();
+		ITMTimer timer;
+		timer.Tick();
+		tracker->TrackCamera(trackingState, view);
+		timeStats.tracking = timer.Tock();
+	}
 
-	public:
-		void Track(ITMTrackingState *trackingState, const ITMView *view)
+	template<typename TVoxel>
+	void Prepare(ITMTrackingState* trackingState, const ITMScene<TVoxel>* scene, const ITMView* view,
+	             ITMVisualisationEngine* visualisationEngine, ITMRenderState* renderState)
+	{
+		ITMTimer timer;
+		timer.Tick();
+		if (!tracker->requiresPointCloudRendering())
+			return;
+
+		//render for tracking
+		bool requiresColourRendering = tracker->requiresColourRendering();
+		bool requiresFullRendering = trackingState->TrackerFarFromPointCloud() || !settings->useApproximateRaycast;
+
+		if (requiresColourRendering)
 		{
-			timeStats.Reset();
-			ITMTimer timer;
-			timer.Tick();
-			tracker->TrackCamera(trackingState, view);
-			timeStats.tracking = timer.Tock();
-		}
-
-		template <typename TVoxel>
-		void Prepare(ITMTrackingState *trackingState, const ITMScene<TVoxel> *scene, const ITMView *view,
-			ITMVisualisationEngine *visualisationEngine, ITMRenderState *renderState)
+			ORUtils::SE3Pose pose_rgb(view->calib.trafo_rgb_to_depth.calib_inv * trackingState->pose_d->GetM());
+			visualisationEngine->CreateExpectedDepths(scene, &pose_rgb, &(view->calib.intrinsics_rgb), renderState);
+			visualisationEngine->CreatePointCloud(scene, view, trackingState, renderState, settings->skipPoints);
+			trackingState->age_pointCloud = 0;
+		} else
 		{
-			ITMTimer timer;
-			timer.Tick();
-			if (!tracker->requiresPointCloudRendering())
-				return;
+			visualisationEngine->CreateExpectedDepths(scene, trackingState->pose_d, &(view->calib.intrinsics_d), renderState);
 
-			//render for tracking
-			bool requiresColourRendering = tracker->requiresColourRendering();
-			bool requiresFullRendering = trackingState->TrackerFarFromPointCloud() || !settings->useApproximateRaycast;
-
-			if (requiresColourRendering)
+			if (requiresFullRendering)
 			{
-				ORUtils::SE3Pose pose_rgb(view->calib.trafo_rgb_to_depth.calib_inv * trackingState->pose_d->GetM());
-				visualisationEngine->CreateExpectedDepths(scene, &pose_rgb, &(view->calib.intrinsics_rgb), renderState);
-				visualisationEngine->CreatePointCloud(scene, view, trackingState, renderState, settings->skipPoints);
-				trackingState->age_pointCloud = 0;
-			}
-			else
+				visualisationEngine->CreateICPMaps(scene, view, trackingState, renderState);
+				trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
+				if (trackingState->age_pointCloud == -1) trackingState->age_pointCloud = -2;
+				else trackingState->age_pointCloud = 0;
+			} else
 			{
-				visualisationEngine->CreateExpectedDepths(scene, trackingState->pose_d, &(view->calib.intrinsics_d), renderState);
-
-				if (requiresFullRendering)
-				{
-					visualisationEngine->CreateICPMaps(scene, view, trackingState, renderState);
-					trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
-					if (trackingState->age_pointCloud==-1) trackingState->age_pointCloud=-2;
-					else trackingState->age_pointCloud = 0;
-				}
-				else
-				{
-					visualisationEngine->ForwardRender(scene, view, trackingState, renderState);
-					trackingState->age_pointCloud++;
-				}
+				visualisationEngine->ForwardRender(scene, view, trackingState, renderState);
+				trackingState->age_pointCloud++;
 			}
-			float t = timer.Tock();
-			timeStats.rendering += t - visualisationEngine->renderingTSDFTime;
-			timeStats.renderingTSDF = visualisationEngine->renderingTSDFTime;
 		}
+		float t = timer.Tock();
+		timeStats.rendering += t - visualisationEngine->renderingTSDFTime;
+		timeStats.renderingTSDF = visualisationEngine->renderingTSDFTime;
+	}
 
-		ITMTrackingController(ITMTracker *tracker, const std::shared_ptr<const ITMLibSettings>& settings)
-		{
-			this->tracker = tracker;
-			this->settings = settings;
-		}
+	ITMTrackingController(ITMTracker* tracker, const std::shared_ptr<const ITMLibSettings>& settings)
+	{
+		this->tracker = tracker;
+		this->settings = settings;
+	}
 
-		const Vector2i& GetTrackedImageSize(const Vector2i& imgSize_rgb, const Vector2i& imgSize_d) const
-		{
-			return tracker->requiresColourRendering() ? imgSize_rgb : imgSize_d;
-		}
+	const Vector2i& GetTrackedImageSize(const Vector2i& imgSize_rgb, const Vector2i& imgSize_d) const
+	{
+		return tracker->requiresColourRendering() ? imgSize_rgb : imgSize_d;
+	}
 
-		// Suppress the default copy constructor and assignment operator
-		ITMTrackingController(const ITMTrackingController&);
-		ITMTrackingController& operator=(const ITMTrackingController&);
+	// Suppress the default copy constructor and assignment operator
+	ITMTrackingController(const ITMTrackingController&);
 
-		const ITMTrackingTimeStats &GetTimeStats() const
-		{
-			return timeStats;
-		}
-	};
+	ITMTrackingController& operator=(const ITMTrackingController&);
+
+	const ITMTrackingTimeStats& GetTimeStats() const
+	{
+		return timeStats;
+	}
+};
 }

@@ -15,91 +15,89 @@
 
 namespace ITMLib
 {
-	class ITMBasicEngine : public ITMMainEngine
-	{
-	private:
-		std::shared_ptr<const ITMLibSettings> settings;
+class ITMBasicEngine : public ITMMainEngine
+{
+private:
+	std::shared_ptr<const ITMLibSettings> settings;
 
-		bool trackingActive, fusionActive, mainProcessingActive, trackingInitialised;
-		int framesProcessed, consecutiveGoodFrames, relocalisationCount;
+	bool trackingActive, fusionActive, mainProcessingActive, trackingInitialised;
+	int framesProcessed, consecutiveGoodFrames, relocalisationCount;
 
-		ITMLowLevelEngine *lowLevelEngine;
-		ITMVisualisationEngine *visualisationEngine;
+	ITMLowLevelEngine* lowLevelEngine;
+	ITMVisualisationEngine* visualisationEngine;
 
-		ITMMeshingEngine *meshingEngine;
+	ITMMeshingEngine* meshingEngine;
 
-		ITMViewBuilder *viewBuilder;
-		ITMDenseMapper *denseMapper;
-		ITMTrackingController *trackingController;
+	ITMViewBuilder* viewBuilder;
+	ITMDenseMapper* denseMapper;
+	ITMTrackingController* trackingController;
 
-		Scene *scene;
-		ITMRenderState *renderState_live;
-		ITMRenderState *renderState_freeview;
+	Scene* scene;
+	ITMRenderState* renderState_live;
+	ITMRenderState* renderState_freeview;
 
-		ITMTracker *tracker;
-		ITMIMUCalibrator *imuCalibrator;
+	ITMTracker* tracker;
+	ITMIMUCalibrator* imuCalibrator;
 
-		FernRelocLib::Relocaliser<float> *relocaliser;
-		ITMUChar4Image *kfRaycast;
+	FernRelocLib::Relocaliser<float>* relocaliser;
+	ITMUChar4Image* kfRaycast;
 
-		/// Pointer for storing the current input frame
-		ITMView *view;
+	/// Pointer for storing the current input frame
+	ITMView* view;
 
-		/// Pointer to the current camera pose and additional tracking information
-		ITMTrackingState *trackingState;
+	/// Pointer to the current camera pose and additional tracking information
+	ITMTrackingState* trackingState;
 
-	public:
-		ITMView* GetView() override { return view; }
-		ITMTrackingState* GetTrackingState() override { return trackingState; }
+public:
+	ITMView* GetView() override
+	{ return view; }
 
-		ITMRenderState* GetRenderState() override
-		{ return renderState_live; }
+	ITMTrackingState* GetTrackingState() override
+	{ return trackingState; }
 
-		ITMRenderState* GetRenderStateFreeview() override
-		{ return renderState_freeview; }
+	ITMRenderState* GetRenderState() override
+	{ return renderState_live; }
 
-		virtual const unsigned int* GetAllocationsPerDirection() override
-		{ return scene->tsdf->allocationStats.noAllocationsPerDirection; }
+	ITMRenderState* GetRenderStateFreeview() override
+	{ return renderState_freeview; }
 
-		ITMRenderError ComputeICPError() override;
+	const unsigned int* GetAllocationsPerDirection() override;
 
-		/// Gives access to the internal world representation
-		Scene* GetScene() { return scene; }
+	ITMRenderError ComputeICPError() override;
 
-		ITMTrackingState::TrackingResult ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement = nullptr, const ORUtils::SE3Pose* pose = nullptr) override;
+	ITMTrackingState::TrackingResult
+	ProcessFrame(ITMUChar4Image* rgbImage, ITMShortImage* rawDepthImage, ITMIMUMeasurement* imuMeasurement,
+	             const ORUtils::SE3Pose* pose) override;
 
-		/// Extracts a mesh from the current scene and saves it to the model file specified by the file name
-		void SaveSceneToMesh(const char *fileName) override;
+	/// Extracts a mesh from the current scene and saves it to the model file specified by the file name
+	void SaveSceneToMesh(const char* fileName) override;
 
-		/// save and load the full scene and relocaliser (if any) to/from file
-		void SaveToFile() override;
-		void LoadFromFile() override;
+	/// save and load the full scene and relocaliser (if any) to/from file
+	void SaveToFile() override;
 
-		/// Get a result image as output
-		Vector2i GetImageSize() const override;
+	void LoadFromFile() override;
 
-		void GetImage(ITMUChar4Image *out, GetImageType getImageType, ORUtils::SE3Pose *pose = NULL, const ITMIntrinsics *intrinsics = NULL, bool normalsFromSDF=false) override;
+	/// Get a result image as output
+	[[nodiscard]] Vector2i GetImageSize() const override;
 
-		/// switch for turning tracking on/off
-		void turnOnTracking();
-		void turnOffTracking();
+	void GetImage(ITMUChar4Image* out, GetImageType getImageType, ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
+	              bool normalsFromSDF) override;
 
-		/// switch for turning integration on/off
-		void turnOnIntegration();
-		void turnOffIntegration();
+	/// switch for turning integration on/off
+	void turnOnIntegration();
 
-		/// switch for turning main processing on/off
-		void turnOnMainProcessing();
-		void turnOffMainProcessing();
+	void turnOffIntegration();
 
-		/// resets the scene and the tracker
-		void resetAll();
+	/// resets the scene and the tracker
+	void resetAll();
 
-		/** \brief Constructor
-			Omitting a separate image size for the depth images
-			will assume same resolution as for the RGB images.
-		*/
-		ITMBasicEngine(const std::shared_ptr<const ITMLibSettings>& settings, const ITMRGBDCalib& calib, Vector2i imgSize_rgb, Vector2i imgSize_d = Vector2i(-1, -1));
-		~ITMBasicEngine();
-	};
+	/** \brief Constructor
+		Omitting a separate image size for the depth images
+		will assume same resolution as for the RGB images.
+	*/
+	ITMBasicEngine(const std::shared_ptr<const ITMLibSettings>& settings, const ITMRGBDCalib& calib, Vector2i imgSize_rgb,
+	               Vector2i imgSize_d = Vector2i(-1, -1));
+
+	~ITMBasicEngine() override;
+};
 }

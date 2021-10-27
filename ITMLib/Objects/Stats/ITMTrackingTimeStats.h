@@ -28,12 +28,12 @@ struct ITMTrackingTimeStats : public ITMTimeStatsBase
 		return tracking + rendering;
 	}
 
-	void Print(std::ostream &stream) const override
+	void Print(std::ostream& stream) const override
 	{
 		stream << tracking << " " << rendering << " " << renderingTSDF;
 	}
 
-	void PrintHeader(std::ostream &stream) const override
+	void PrintHeader(std::ostream& stream) const override
 	{
 		stream << "tracking" << " " << "rendering" << " " << "renderingTSDF";
 	}

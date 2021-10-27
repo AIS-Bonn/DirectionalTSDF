@@ -7,7 +7,8 @@
 struct ITMRenderError
 {
 	ITMRenderError()
-	: MAE(0), RMSE(0), icpMAE(0), icpRMSE(0) { }
+		: MAE(0), RMSE(0), icpMAE(0), icpRMSE(0)
+	{}
 
 	/// mean absolute error
 	float MAE;

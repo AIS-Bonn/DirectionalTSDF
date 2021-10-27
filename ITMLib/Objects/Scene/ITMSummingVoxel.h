@@ -26,7 +26,7 @@ typedef struct
 	}
 
 	_CPU_AND_GPU_CODE_
-	inline void update(float sdf, float weight, const Vector3f& color=Vector3f(0, 0, 0), float colorWeight=0)
+	inline void update(float sdf, float weight, const Vector3f& color = Vector3f(0, 0, 0), float colorWeight = 0)
 	{
 #ifdef __CUDA_ARCH__
 		atomicAdd(&sdfSum, weight * sdf);

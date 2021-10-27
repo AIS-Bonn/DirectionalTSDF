@@ -7,52 +7,53 @@
 
 namespace ITMLib
 {
-	class ITMPointCloud
+class ITMPointCloud
+{
+public:
+	uint noTotalPoints;
+
+	ORUtils::Image<Vector4f>* locations, * normals, * colours;
+
+	explicit ITMPointCloud(Vector2i imgSize, MemoryDeviceType memoryType)
 	{
-	public:
-		uint noTotalPoints;
+		this->noTotalPoints = 0;
 
-		ORUtils::Image<Vector4f> *locations, *normals, *colours;
+		locations = new ORUtils::Image<Vector4f>(imgSize, memoryType);
+		colours = new ORUtils::Image<Vector4f>(imgSize, memoryType);
+		normals = new ORUtils::Image<Vector4f>(imgSize, memoryType);
+	}
 
-		explicit ITMPointCloud(Vector2i imgSize, MemoryDeviceType memoryType)
-		{
-			this->noTotalPoints = 0;
+	void Resize(const Vector2i size)
+	{
+		locations->ChangeDims(size);
+		colours->ChangeDims(size);
+		normals->ChangeDims(size);
+	}
 
-			locations = new ORUtils::Image<Vector4f>(imgSize, memoryType);
-			colours = new ORUtils::Image<Vector4f>(imgSize, memoryType);
-			normals = new ORUtils::Image<Vector4f>(imgSize, memoryType);
-		}
+	void UpdateHostFromDevice()
+	{
+		locations->UpdateHostFromDevice();
+		colours->UpdateHostFromDevice();
+		normals->UpdateHostFromDevice();
+	}
 
-		void Resize(const Vector2i size)
-		{
-			locations->ChangeDims(size);
-			colours->ChangeDims(size);
-			normals->ChangeDims(size);
-		}
+	void UpdateDeviceFromHost()
+	{
+		locations->UpdateDeviceFromHost();
+		colours->UpdateDeviceFromHost();
+		normals->UpdateDeviceFromHost();
+	}
 
-		void UpdateHostFromDevice()
-		{
-			locations->UpdateHostFromDevice();
-			colours->UpdateHostFromDevice();
-			normals->UpdateHostFromDevice();
-		}
+	~ITMPointCloud()
+	{
+		delete locations;
+		delete colours;
+		delete normals;
+	}
 
-		void UpdateDeviceFromHost()
-		{
-			locations->UpdateDeviceFromHost();
-			colours->UpdateDeviceFromHost();
-			normals->UpdateDeviceFromHost();
-		}
+	// Suppress the default copy constructor and assignment operator
+	ITMPointCloud(const ITMPointCloud&);
 
-		~ITMPointCloud()
-		{
-			delete locations;
-			delete colours;
-			delete normals;
-		}
-
-		// Suppress the default copy constructor and assignment operator
-		ITMPointCloud(const ITMPointCloud&);
-		ITMPointCloud& operator=(const ITMPointCloud&);
-	};
+	ITMPointCloud& operator=(const ITMPointCloud&);
+};
 }

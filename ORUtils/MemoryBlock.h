@@ -5,18 +5,12 @@
 #include "MemoryDeviceType.h"
 #include "PlatformIndependence.h"
 
-#ifndef __METALC__
-
 #ifndef COMPILE_WITHOUT_CUDA
 #include "CUDADefines.h"
-#endif
-
-#ifdef COMPILE_WITH_METAL
-#include "MetalContext.h"
-#endif
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdexcept>
 
 namespace ORUtils
 {
@@ -29,10 +23,10 @@ namespace ORUtils
 	protected:
 		bool isAllocated_CPU, isAllocated_CUDA, isMetalCompatible;
 		/** Pointer to memory on CPU host. */
-		DEVICEPTR(T)* data_cpu;
+		T* data_cpu;
 
 		/** Pointer to memory on GPU, if available. */
-		DEVICEPTR(T)* data_cuda;
+		T* data_cuda;
 
 #ifdef COMPILE_WITH_METAL
 		void *data_metalBuffer;
@@ -44,7 +38,7 @@ namespace ORUtils
 		size_t dataSize;
 
 		/** Get the data pointer on CPU or GPU. */
-		inline DEVICEPTR(T)* GetData(MemoryDeviceType memoryType)
+		inline T* GetData(MemoryDeviceType memoryType)
 		{
 			switch (memoryType)
 			{
@@ -56,7 +50,7 @@ namespace ORUtils
 		}
 
 		/** Get the data pointer on CPU or GPU. */
-		inline const DEVICEPTR(T)* GetData(MemoryDeviceType memoryType) const
+		inline const T* GetData(MemoryDeviceType memoryType) const
 		{
 			switch (memoryType)
 			{

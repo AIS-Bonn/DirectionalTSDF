@@ -147,6 +147,11 @@ MemoryDeviceType ITMLibSettings::GetMemoryType() const
 	return deviceType == ITMLibSettings::DEVICE_CUDA ? MEMORYDEVICE_CUDA : MEMORYDEVICE_CPU;
 }
 
+bool ITMLibSettings::Directional() const
+{
+	return fusionParams.tsdfMode == TSDFMODE_DIRECTIONAL;
+}
+
 ITMLibSettings::ITMLibSettings(const std::string& settingsFile)
 	: ITMLibSettings()
 {

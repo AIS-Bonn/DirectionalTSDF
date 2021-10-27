@@ -9,58 +9,59 @@
 
 namespace ITMLib
 {
-	class ITMRGBHierarchyLevel : public ITMHierarchyLevel
+class ITMRGBHierarchyLevel : public ITMHierarchyLevel
+{
+public:
+	ORUtils::Image<Vector4u>* rgb_current = nullptr;
+
+	ORUtils::Image<Vector4u>* rgb_prev = nullptr;
+	ORUtils::Image<Vector4s>* gX = nullptr, * gY = nullptr;
+
+	ITMRGBHierarchyLevel(Vector2i imgSize, int levelId, TrackerIterationType iterationType,
+	                     MemoryDeviceType memoryType, bool skipAllocation = false)
+		: ITMHierarchyLevel(levelId, iterationType, skipAllocation)
 	{
-	public:
-		ORUtils::Image<Vector4u> *rgb_current = nullptr;
-
-		ORUtils::Image<Vector4u> *rgb_prev = nullptr;
-		ORUtils::Image<Vector4s> *gX = nullptr, *gY = nullptr;
-
-		ITMRGBHierarchyLevel(Vector2i imgSize, int levelId, TrackerIterationType iterationType,
-			MemoryDeviceType memoryType, bool skipAllocation = false)
-			: ITMHierarchyLevel(levelId, iterationType, skipAllocation)
+		if (!skipAllocation)
 		{
-			if (!skipAllocation)
-			{
-				this->rgb_current = new ORUtils::Image<Vector4u>(imgSize, memoryType);
-				this->rgb_prev = new ORUtils::Image<Vector4u>(imgSize, memoryType);
-			}
-
-			this->gX = new ORUtils::Image<Vector4s>(imgSize, memoryType);
-			this->gY = new ORUtils::Image<Vector4s>(imgSize, memoryType);
+			this->rgb_current = new ORUtils::Image<Vector4u>(imgSize, memoryType);
+			this->rgb_prev = new ORUtils::Image<Vector4u>(imgSize, memoryType);
 		}
 
-		void UpdateHostFromDevice() override
-		{ 
-			this->rgb_current->UpdateHostFromDevice();
-			this->rgb_prev->UpdateHostFromDevice();
-			this->gX->UpdateHostFromDevice();
-			this->gY->UpdateHostFromDevice();
-		}
+		this->gX = new ORUtils::Image<Vector4s>(imgSize, memoryType);
+		this->gY = new ORUtils::Image<Vector4s>(imgSize, memoryType);
+	}
 
-		void UpdateDeviceFromHost() override
-		{ 
-			this->rgb_current->UpdateDeviceFromHost();
-			this->rgb_prev->UpdateDeviceFromHost();
-			this->gX->UpdateDeviceFromHost();
-			this->gY->UpdateDeviceFromHost();
-		}
+	void UpdateHostFromDevice() override
+	{
+		this->rgb_current->UpdateHostFromDevice();
+		this->rgb_prev->UpdateHostFromDevice();
+		this->gX->UpdateHostFromDevice();
+		this->gY->UpdateHostFromDevice();
+	}
 
-		~ITMRGBHierarchyLevel(void)
+	void UpdateDeviceFromHost() override
+	{
+		this->rgb_current->UpdateDeviceFromHost();
+		this->rgb_prev->UpdateDeviceFromHost();
+		this->gX->UpdateDeviceFromHost();
+		this->gY->UpdateDeviceFromHost();
+	}
+
+	~ITMRGBHierarchyLevel(void)
+	{
+		if (manageData)
 		{
-			if (manageData)
-			{
-				delete rgb_current;
-				delete rgb_prev;
-			}
-
-			delete gX;
-			delete gY;
+			delete rgb_current;
+			delete rgb_prev;
 		}
 
-		// Suppress the default copy constructor and assignment operator
-		ITMRGBHierarchyLevel(const ITMRGBHierarchyLevel&);
-		ITMRGBHierarchyLevel& operator=(const ITMRGBHierarchyLevel&);
-	};
+		delete gX;
+		delete gY;
+	}
+
+	// Suppress the default copy constructor and assignment operator
+	ITMRGBHierarchyLevel(const ITMRGBHierarchyLevel&);
+
+	ITMRGBHierarchyLevel& operator=(const ITMRGBHierarchyLevel&);
+};
 }

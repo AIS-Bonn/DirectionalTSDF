@@ -37,12 +37,12 @@ struct ITMTimeStats : public ITMTimeStatsBase
 		return preprocessing.GetSum() + tracking.GetSum() + relocalization.GetSum() + reconstruction.GetSum();
 	}
 
-	void Print(std::ostream &stream) const override
+	void Print(std::ostream& stream) const override
 	{
 		stream << preprocessing << " " << tracking << " " << relocalization << " " << reconstruction;
 	}
 
-	void PrintHeader(std::ostream &stream) const override
+	void PrintHeader(std::ostream& stream) const override
 	{
 		stream << "# ";
 		preprocessing.PrintHeader(stream);

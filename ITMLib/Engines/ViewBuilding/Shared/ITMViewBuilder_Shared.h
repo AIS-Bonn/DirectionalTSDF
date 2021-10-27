@@ -10,13 +10,13 @@
 namespace ITMLib
 {
 
-_CPU_AND_GPU_CODE_ inline void convertDisparityToDepth(DEVICEPTR(float) *d_out, int x, int y, const CONSTPTR(short) *d_in,
-	Vector2f disparityCalibParams, float fx_depth, Vector2i imgSize)
+_CPU_AND_GPU_CODE_ inline void convertDisparityToDepth(float* d_out, int x, int y, const short* d_in,
+                                                       Vector2f disparityCalibParams, float fx_depth, Vector2i imgSize)
 {
 	int locId = x + y * imgSize.x;
 
 	short disparity = d_in[locId];
-	float disparity_tmp = disparityCalibParams.x - (float)(disparity);
+	float disparity_tmp = disparityCalibParams.x - (float) (disparity);
 	float depth;
 
 	if (disparity_tmp == 0) depth = 0.0;
@@ -25,15 +25,17 @@ _CPU_AND_GPU_CODE_ inline void convertDisparityToDepth(DEVICEPTR(float) *d_out, 
 	d_out[locId] = (depth > 0) ? depth : -1.0f;
 }
 
-_CPU_AND_GPU_CODE_ inline void convertDepthAffineToFloat(DEVICEPTR(float) *d_out, int x, int y, const CONSTPTR(short) *d_in, Vector2i imgSize, Vector2f depthCalibParams)
+_CPU_AND_GPU_CODE_ inline void
+convertDepthAffineToFloat(float* d_out, int x, int y, const short* d_in, Vector2i imgSize, Vector2f depthCalibParams)
 {
 	int locId = x + y * imgSize.x;
 
 	short depth_in = d_in[locId];
-	d_out[locId] = ((depth_in <= 0)||(depth_in > 32000)) ? -1.0f : (float)depth_in * depthCalibParams.x + depthCalibParams.y;
+	d_out[locId] = ((depth_in <= 0) || (depth_in > 32000)) ? -1.0f : (float) depth_in * depthCalibParams.x +
+	                                                                 depthCalibParams.y;
 }
 
-_CPU_AND_GPU_CODE_ inline void filterDepth(DEVICEPTR(float)* imageData_out, const CONSTPTR(float)* imageData_in,
+_CPU_AND_GPU_CODE_ inline void filterDepth(float* imageData_out, const float* imageData_in,
                                            const float sigma_d, const float sigma_r, int x, int y, Vector2i imgDims)
 {
 	if (x >= imgDims.x or y >= imgDims.y)
@@ -56,8 +58,8 @@ _CPU_AND_GPU_CODE_ inline void filterDepth(DEVICEPTR(float)* imageData_out, cons
  * @param y
  * @param imgDims
  */
-_CPU_AND_GPU_CODE_ inline void filterNormals(Vector4f *normals_out, const Vector4f *normals_in,
-	float sigma_d, float sigma_r, int x, int y, Vector2i imgDims)
+_CPU_AND_GPU_CODE_ inline void filterNormals(Vector4f* normals_out, const Vector4f* normals_in,
+                                             float sigma_d, float sigma_r, int x, int y, Vector2i imgDims)
 {
 	if (x >= imgDims.x or y >= imgDims.y)
 		return;
@@ -66,7 +68,9 @@ _CPU_AND_GPU_CODE_ inline void filterNormals(Vector4f *normals_out, const Vector
 }
 
 
-_CPU_AND_GPU_CODE_ inline void computeNormalAndWeight(const CONSTPTR(float) *depth_in, DEVICEPTR(Vector4f) *normal_out, int x, int y, Vector2i imgDims, Vector4f intrinparam)
+_CPU_AND_GPU_CODE_ inline void
+computeNormalAndWeight(const float* depth_in, Vector4f* normal_out, int x, int y, Vector2i imgDims,
+                       Vector4f intrinparam)
 {
 	Vector3f outNormal;
 
@@ -84,11 +88,11 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndWeight(const CONSTPTR(float) *dep
 	Vector4f x_y = Vector4f(reprojectImagePoint(x, y, depth_in[(x) + y * imgDims.x], invProjParams_d),
 	                        depth_in[(x) + y * imgDims.x] > 0 ? 1 : 0);
 	Vector4f xp_y = Vector4f(reprojectImagePoint(x + 1, y, depth_in[(x + 1) + y * imgDims.x], invProjParams_d),
-	                        depth_in[(x + 1) + y * imgDims.x] > 0 ? 1 : 0);
+	                         depth_in[(x + 1) + y * imgDims.x] > 0 ? 1 : 0);
 	Vector4f xm_y = Vector4f(reprojectImagePoint(x - 1, y, depth_in[(x - 1) + y * imgDims.x], invProjParams_d),
 	                         depth_in[(x - 1) + y * imgDims.x] > 0 ? 1 : 0);
 	Vector4f x_yp = Vector4f(reprojectImagePoint(x, y + 1, depth_in[x + (y + 1) * imgDims.x], invProjParams_d),
-	                        depth_in[x + (y + 1) * imgDims.x] > 0 ? 1 : 0);
+	                         depth_in[x + (y + 1) * imgDims.x] > 0 ? 1 : 0);
 	Vector4f x_ym = Vector4f(reprojectImagePoint(x, y - 1, depth_in[x + (y - 1) * imgDims.x], invProjParams_d),
 	                         depth_in[x + (y - 1) * imgDims.x] > 0 ? 1 : 0);
 
@@ -146,7 +150,6 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndWeight(const CONSTPTR(float) *dep
 	}
 	normal_out[idx] = Vector4f((sum / weightSum).normalised(), 1.0f);
 	float theta = acos(outNormal.z);
-	float theta_diff = theta / (PI*0.5f - theta);
 }
 
 } // namespace ITMLib

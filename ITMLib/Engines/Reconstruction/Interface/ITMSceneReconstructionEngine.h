@@ -24,25 +24,19 @@ namespace ITMLib
 		an ITMLib::Objects::ITMScene and fuse new image information
 		into them.
 */
-class ITMSceneReconstructionEngine
+class IITMSceneReconstructionEngine
 {
 public:
-	explicit ITMSceneReconstructionEngine(std::shared_ptr<const ITMLibSettings> settings)
-		: settings(std::move(settings))
-	{ }
-
 	/** Clear and reset a scene to set up a new empty
 			one.
 	*/
 	virtual void ResetScene(Scene* scene) = 0;
 
 	/** Given a view with a new depth image, compute the
-			visible blocks, allocate them and update the hash
-			table so that the new image data can be integrated.
+			visible blocks, allocate in the TSDF so that the
+			new image data can be integrated.
 	*/
-	virtual void AllocateSceneFromDepth(Scene* scene, const ITMView* view, const ITMTrackingState* trackingState,
-	                                    const ITMRenderState* renderState, bool onlyUpdateVisibleList = false,
-	                                    bool resetVisibleList = false) = 0;
+	virtual void AllocateSceneFromDepth(Scene* scene, const ITMView* view, const ITMTrackingState* trackingState) = 0;
 
 	/** Given a scene, pose and projParams, compute the
 	visible subset of the scene and store it in an
@@ -55,47 +49,70 @@ public:
 	/** Update the voxel blocks by integrating depth and
 			possibly colour information from the given view.
 	*/
-	void IntegrateIntoScene(Scene* scene, const ITMView* view,
-	                        const ITMTrackingState* trackingState, const ITMRenderState* renderState)
+	virtual void IntegrateIntoScene(Scene* scene, const ITMView* view, const ITMTrackingState* trackingState) = 0;
+
+	IITMSceneReconstructionEngine() = default;
+
+	virtual ~IITMSceneReconstructionEngine() = default;
+
+	virtual ITMReconstructionTimeStats& GetTimeStats() = 0;
+
+	[[nodiscard]] virtual const ITMReconstructionTimeStats& GetTimeStats() const = 0;
+};
+
+template<typename TIndex>
+class ITMSceneReconstructionEngine : public IITMSceneReconstructionEngine
+{
+public:
+	explicit ITMSceneReconstructionEngine(std::shared_ptr<const ITMLibSettings> settings, MemoryDeviceType memoryDevice)
+		: settings(std::move(settings))
+	{
+		allocationFusionBlocksList = new ORUtils::MemoryBlock<TIndex>(10000, memoryDevice);
+	}
+
+	void IntegrateIntoScene(Scene* scene, const ITMView* view, const ITMTrackingState* trackingState) override
 	{
 		if (this->settings->fusionParams.fusionMode == FusionMode::FUSIONMODE_VOXEL_PROJECTION)
 		{
-			IntegrateIntoSceneVoxelProjection(scene, view, trackingState, renderState);
+			IntegrateIntoSceneVoxelProjection(scene, view, trackingState);
 		} else
 		{
-			IntegrateIntoSceneRayCasting(scene, view, trackingState, renderState);
+			IntegrateIntoSceneRayCasting(scene, view, trackingState);
 		}
 	}
 
-	ITMReconstructionTimeStats& GetTimeStats()
+	ITMReconstructionTimeStats& GetTimeStats() override
 	{
 		return timeStats;
 	}
 
-	const ITMReconstructionTimeStats& GetTimeStats() const
+	[[nodiscard]] const ITMReconstructionTimeStats& GetTimeStats() const override
 	{
 		return timeStats;
 	}
 
-	ITMSceneReconstructionEngine(void)
-	{}
+	ITMSceneReconstructionEngine() = default;
 
-	virtual ~ITMSceneReconstructionEngine(void)
-	{}
+	~ITMSceneReconstructionEngine() override = default;
 
 protected:
+	static const bool directional = std::is_same<TIndex, ITMIndexDirectional>::value;
+
 	std::shared_ptr<const ITMLibSettings> settings;
 
-	ORUtils::MemoryBlock<ITMIndex> *allocationBlocksList;
+	/** List of blocks used during allocation and fusion process.
+	 * During fusion the list may contain additional blocks. */
+	ORUtils::MemoryBlock<TIndex>* allocationFusionBlocksList{};
 
 	ITMReconstructionTimeStats timeStats;
 
+	size_t noAllocationBlocks = 0;
+	size_t noFusionBlocks = 0;
+
 	virtual void IntegrateIntoSceneVoxelProjection(Scene* scene, const ITMView* view,
-	                                               const ITMTrackingState* trackingState,
-	                                               const ITMRenderState* renderState) = 0;
+	                                               const ITMTrackingState* trackingState) = 0;
 
 	virtual void IntegrateIntoSceneRayCasting(Scene* scene, const ITMView* view,
-	                                          const ITMTrackingState* trackingState,
-	                                          const ITMRenderState* renderState) = 0;
+	                                          const ITMTrackingState* trackingState) = 0;
 };
 }

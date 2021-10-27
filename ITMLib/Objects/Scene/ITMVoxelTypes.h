@@ -5,6 +5,9 @@
 #include <limits>
 #include "../../Utils/ITMMath.h"
 
+namespace ITMLib
+{
+
 /** \brief
     Stores the information of a single voxel in the volume
 */
@@ -12,18 +15,26 @@ struct ITMVoxel_f_rgb
 {
 	typedef float WeightType;
 
-	_CPU_AND_GPU_CODE_ static float SDF_initialValue() { return 1.0f; }
-	_CPU_AND_GPU_CODE_ static float valueToFloat(float x) { return x; }
-	_CPU_AND_GPU_CODE_ static float floatToValue(float x) { return x; }
+	_CPU_AND_GPU_CODE_ static float SDF_initialValue()
+	{ return 1.0f; }
 
-	_CPU_AND_GPU_CODE_ static float weightToFloat(WeightType w, int maxW) {
+	_CPU_AND_GPU_CODE_ static float valueToFloat(float x)
+	{ return x; }
+
+	_CPU_AND_GPU_CODE_ static float floatToValue(float x)
+	{ return x; }
+
+	_CPU_AND_GPU_CODE_ static float weightToFloat(WeightType w, int maxW)
+	{
 		return static_cast<float>(w);
 	}
-	_CPU_AND_GPU_CODE_ static WeightType floatToWeight(float w, int maxW) {
+
+	_CPU_AND_GPU_CODE_ static WeightType floatToWeight(float w, int maxW)
+	{
 		return static_cast<WeightType>(w);
 	}
 
-	static const CONSTPTR(bool) hasColorInformation = true;
+	static const bool hasColorInformation = true;
 
 	/** Value of the truncated signed distance transformation. */
 	float sdf;
@@ -38,7 +49,7 @@ struct ITMVoxel_f_rgb
 	{
 		sdf = SDF_initialValue();
 		w_depth = 0;
-		clr = Vector3u((uchar)0);
+		clr = Vector3u((uchar) 0);
 		w_color = 0;
 	}
 };
@@ -50,18 +61,26 @@ struct ITMVoxel_s_rgb
 {
 	typedef ushort WeightType;
 
-	_CPU_AND_GPU_CODE_ static short SDF_initialValue() { return 32767; }
-	_CPU_AND_GPU_CODE_ static float valueToFloat(short x) { return (float)(x) / 32767.0f; }
-	_CPU_AND_GPU_CODE_ static short floatToValue(float x) { return (short)((x) * 32767.0f); }
+	_CPU_AND_GPU_CODE_ static short SDF_initialValue()
+	{ return 32767; }
 
-	_CPU_AND_GPU_CODE_ static float weightToFloat(WeightType w, int maxW) {
+	_CPU_AND_GPU_CODE_ static float valueToFloat(short x)
+	{ return (float) (x) / 32767.0f; }
+
+	_CPU_AND_GPU_CODE_ static short floatToValue(float x)
+	{ return (short) ((x) * 32767.0f); }
+
+	_CPU_AND_GPU_CODE_ static float weightToFloat(WeightType w, int maxW)
+	{
 		return static_cast<float>(w) * maxW / 65535.0f;
 	}
-	_CPU_AND_GPU_CODE_ static WeightType floatToWeight(float w, int maxW) {
+
+	_CPU_AND_GPU_CODE_ static WeightType floatToWeight(float w, int maxW)
+	{
 		return static_cast<WeightType>(round(w / maxW * 65535.0f));
 	}
 
-	static const CONSTPTR(bool) hasColorInformation = true;
+	static const bool hasColorInformation = true;
 
 	/** Value of the truncated signed distance transformation. */
 	short sdf;
@@ -78,7 +97,7 @@ struct ITMVoxel_s_rgb
 	{
 		sdf = SDF_initialValue();
 		w_depth = 0;
-		clr = Vector3u((uchar)0);
+		clr = Vector3u((uchar) 0);
 		w_color = 0;
 	}
 };
@@ -87,18 +106,26 @@ struct ITMVoxel_s
 {
 	typedef ushort WeightType;
 
-	_CPU_AND_GPU_CODE_ static short SDF_initialValue() { return 32767; }
-	_CPU_AND_GPU_CODE_ static float valueToFloat(float x) { return (float)(x) / 32767.0f; }
-	_CPU_AND_GPU_CODE_ static short floatToValue(float x) { return (short)((x) * 32767.0f); }
+	_CPU_AND_GPU_CODE_ static short SDF_initialValue()
+	{ return 32767; }
 
-	_CPU_AND_GPU_CODE_ static float weightToFloat(WeightType w, int maxW) {
+	_CPU_AND_GPU_CODE_ static float valueToFloat(float x)
+	{ return (float) (x) / 32767.0f; }
+
+	_CPU_AND_GPU_CODE_ static short floatToValue(float x)
+	{ return (short) ((x) * 32767.0f); }
+
+	_CPU_AND_GPU_CODE_ static float weightToFloat(WeightType w, int maxW)
+	{
 		return static_cast<float>(w) * maxW / 65535.0f;
 	}
-	_CPU_AND_GPU_CODE_ static WeightType floatToWeight(float w, int maxW) {
+
+	_CPU_AND_GPU_CODE_ static WeightType floatToWeight(float w, int maxW)
+	{
 		return static_cast<WeightType>(round(w / maxW * 65535.0f));
 	}
 
-	static const CONSTPTR(bool) hasColorInformation = false;
+	static const bool hasColorInformation = false;
 
 	/** Value of the truncated signed distance transformation. */
 	short sdf;
@@ -118,18 +145,26 @@ struct ITMVoxel_f
 {
 	typedef float WeightType;
 
-	_CPU_AND_GPU_CODE_ static float SDF_initialValue() { return 1.0f; }
-	_CPU_AND_GPU_CODE_ static float valueToFloat(float x) { return x; }
-	_CPU_AND_GPU_CODE_ static float floatToValue(float x) { return x; }
+	_CPU_AND_GPU_CODE_ static float SDF_initialValue()
+	{ return 1.0f; }
 
-	_CPU_AND_GPU_CODE_ static float weightToFloat(WeightType w, int maxW) {
+	_CPU_AND_GPU_CODE_ static float valueToFloat(float x)
+	{ return x; }
+
+	_CPU_AND_GPU_CODE_ static float floatToValue(float x)
+	{ return x; }
+
+	_CPU_AND_GPU_CODE_ static float weightToFloat(WeightType w, int maxW)
+	{
 		return static_cast<float>(w);
 	}
-	_CPU_AND_GPU_CODE_ static WeightType floatToWeight(float w, int maxW) {
+
+	_CPU_AND_GPU_CODE_ static WeightType floatToWeight(float w, int maxW)
+	{
 		return static_cast<WeightType>(w);
 	}
 
-	static const CONSTPTR(bool) hasColorInformation = false;
+	static const bool hasColorInformation = false;
 
 	/** Value of the truncated signed distance transformation. */
 	float sdf;
@@ -144,3 +179,5 @@ struct ITMVoxel_f
 		w_depth = 0;
 	}
 };
+
+} // namespace ITMLib

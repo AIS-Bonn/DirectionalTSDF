@@ -4,7 +4,6 @@ This repository contains an implementation of Directional TSDF (DTSDF) and is ba
 for your publications, please cite our work (see [Research](#3-research))
 
 * The original InfiniTAM code was heavily modified
-* CPU-only operation is currently defunct
 
 Previous maintainers and contributors are:
 

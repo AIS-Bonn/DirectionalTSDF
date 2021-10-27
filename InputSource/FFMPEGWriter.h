@@ -4,6 +4,8 @@
 
 #include "../ITMLib/Utils/ITMImageTypes.h"
 
+using namespace ITMLib;
+
 namespace InputSource {
 
 class FFMPEGWriter

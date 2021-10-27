@@ -27,9 +27,11 @@ public:
 		: levelId(levelId), iterationType(iterationType), manageData(!skipAllocation)
 	{}
 
-	ITMHierarchyLevel(const ITMHierarchyLevel&);
+	virtual ~ITMHierarchyLevel() = default;
 
-	ITMHierarchyLevel& operator=(const ITMHierarchyLevel&);
+	ITMHierarchyLevel(const ITMHierarchyLevel&) = delete;
+
+	ITMHierarchyLevel& operator=(const ITMHierarchyLevel&) = delete;
 
 	virtual void UpdateHostFromDevice() = 0;
 
