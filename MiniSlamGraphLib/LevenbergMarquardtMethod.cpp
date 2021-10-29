@@ -1,7 +1,7 @@
 // Copyright 2014-2017 Oxford University Innovation Limited and the authors of InfiniTAM
 
 #include "LevenbergMarquardtMethod.h"
-#include "../ORUtils/MathUtils.h"
+#include <ORUtils/MathUtils.h>
 
 #include <vector>
 #include <math.h>

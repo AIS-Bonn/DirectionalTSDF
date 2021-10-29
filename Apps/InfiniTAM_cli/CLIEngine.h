@@ -3,10 +3,10 @@
 #pragma once
 
 #include <Apps/AppEngine/AppEngine.h>
-#include "ITMLib/Utils/ITMLibSettings.h"
-#include "ITMLib/Utils/ITMImageTypes.h"
-#include "ORUtils/FileUtils.h"
-#include "ORUtils/NVTimer.h"
+#include <ITMLib/Utils/ITMLibSettings.h>
+#include <ITMLib/Utils/ITMImageTypes.h>
+#include <ORUtils/FileUtils.h>
+#include <ORUtils/NVTimer.h>
 
 namespace ITMLib
 {

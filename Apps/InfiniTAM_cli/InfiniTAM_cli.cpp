@@ -8,7 +8,7 @@
 
 #include "Apps/Utils/CLIUtils.h"
 
-#include "ITMLib/Core/ITMBasicEngine.h"
+#include <ITMLib/Core/ITMBasicEngine.h>
 
 using namespace InfiniTAM::Engine;
 using namespace InputSource;

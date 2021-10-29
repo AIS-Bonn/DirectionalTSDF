@@ -9,12 +9,11 @@ namespace fs = std::experimental::filesystem;
 
 #include <Apps/Utils/CLIUtils.h>
 #include <ITMLib/Core/ITMMainEngine.h>
-#include <ITMLib/Engines/Logging/ITMLoggingEngine.h>
-#include <ITMLib/Engines/ViewBuilding/Interface/ITMViewBuilder.h>
-#include <ITMLib/Engines/ViewBuilding/ITMViewBuilderFactory.h>
+#include <ITMLib/Engines/ITMLoggingEngine.h>
+#include <ITMLib/Engines/ITMViewBuilder.h>
+#include <ITMLib/Engines/ITMViewBuilderFactory.h>
 #include <ORUtils/NVTimer.h>
 #include <ORUtils/FileUtils.h>
-#include <ITMLib/Utils/ITMTimer.h>
 
 namespace InfiniTAM
 {

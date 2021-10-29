@@ -4,7 +4,7 @@
 
 #include "GraphEdge.h"
 
-#include "../ORUtils/SE3Pose.h"
+#include <ORUtils/SE3Pose.h>
 
 namespace MiniSlamGraph
 {

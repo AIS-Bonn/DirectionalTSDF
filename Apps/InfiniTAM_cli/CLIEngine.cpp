@@ -5,11 +5,11 @@
 #include <string.h>
 #include <Apps/Utils/CLIUtils.h>
 
-#include "InputSource/ImageSourceEngine.h"
-#include "InputSource/IMUSourceEngine.h"
-#include "ITMLib/Engines/Logging/ITMLoggingEngine.h"
-#include "ITMLib/Core/ITMMainEngine.h"
-#include "../../ORUtils/FileUtils.h"
+#include <InputSource/ImageSourceEngine.h>
+#include <InputSource/IMUSourceEngine.h>
+#include <ITMLib/Engines/ITMLoggingEngine.h>
+#include <ITMLib/Core/ITMMainEngine.h>
+#include <ORUtils/FileUtils.h>
 
 using namespace InfiniTAM::Engine;
 using namespace InputSource;

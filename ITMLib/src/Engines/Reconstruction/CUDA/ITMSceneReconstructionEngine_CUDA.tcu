@@ -1,0 +1,284 @@
+// Copyright 2014-2017 Oxford University Innovation Limited and the authors of InfiniTAM
+
+#pragma once
+
+#include <memory>
+#include <ITMLib/Utils/ITMLibSettings.h>
+#include <ITMLib/Utils/ITMSceneParams.h>
+#include <Utils/ITMTimer.h>
+#include <Objects/TSDF_CUDA.h>
+#include "ITMSceneReconstructionEngine_CUDA.h"
+
+#include "../Shared/ITMSceneReconstructionEngine_Shared.h"
+#include <ITMLib/Objects/RenderStates/ITMRenderState.h>
+#include <Utils/ITMCUDAUtils.h>
+#include "ITMSceneReconstructionHelpers_CUDA.h"
+#include <stdgpu/memory.h>
+#include <stdgpu/unordered_map.cuh>
+#include <stdgpu/unordered_set.cuh>
+
+using namespace ITMLib;
+
+template<typename TIndex>
+ITMSceneReconstructionEngine_CUDA<TIndex>::ITMSceneReconstructionEngine_CUDA(
+	const std::shared_ptr<const ITMLibSettings>& settings)
+	: ITMSceneReconstructionEngine<TIndex>(settings, MEMORYDEVICE_CUDA)
+{
+	summingVoxelMap = new TSDF_CUDA<TIndex, SummingVoxel>();
+}
+
+template<typename TIndex>
+void
+ITMSceneReconstructionEngine_CUDA<TIndex>::IntegrateIntoSceneRayCasting(
+	Scene* scene, const ITMView* view, const ITMTrackingState* trackingState)
+{
+	ITMTimer timer;
+	timer.Tick();
+
+	Matrix4f invM_d = trackingState->pose_d->GetInvM();
+	Vector4f projParams_d = view->calib.intrinsics_d.projectionParamsSimple.all;
+	Vector4f projParams_rgb = view->calib.intrinsics_rgb.projectionParamsSimple.all;
+
+	float* depth = view->depth->GetData(MEMORYDEVICE_CUDA);
+	Vector4f* depthNormals = view->depthNormal->GetData(MEMORYDEVICE_CUDA);
+	Vector4u* rgb = view->rgb->GetData(MEMORYDEVICE_CUDA);
+
+	Vector2i depthImgSize = view->depth->noDims;
+
+	Vector4f invProjParams_d = invertProjectionParams(projParams_d);
+
+	auto tsdf = GetTSDF(scene);
+
+	/// 1. Initialize summing voxel map (allocate and reset)
+	summingVoxelMap->resize(this->noAllocationBlocks);
+	summingVoxelMap->allocate(this->allocationFusionBlocksList->GetData(MEMORYDEVICE_CUDA), this->noAllocationBlocks);
+
+//	/// 2. Ray cast update for every pixel
+	dim3 blockSizeUpdate(16, 16);
+	dim3 gridSizeUpdate((int) ceil((float) depthImgSize.x / (float) blockSizeUpdate.x),
+	                    (int) ceil((float) depthImgSize.y / (float) blockSizeUpdate.y));
+	rayCastUpdate_device << < gridSizeUpdate, blockSizeUpdate >> > (
+		depthImgSize, view->rgb->noDims, depth, depthNormals, rgb, invM_d, trackingState->pose_d->GetM(),
+			invProjParams_d, projParams_rgb, this->settings->fusionParams, this->settings->sceneParams,
+			summingVoxelMap->getMap());
+	ORcudaKernelCheck;
+	this->timeStats.fusion += timer.Tock();
+
+	/// 3. Ray cast space carving for every pixel
+	timer.Tick();
+	if (this->settings->fusionParams.useSpaceCarving)
+	{
+		if (this->settings->fusionParams.carvingMode == CarvingMode::CARVINGMODE_RAY_CASTING)
+		{
+			rayCastCarveSpace_device << < gridSizeUpdate, blockSizeUpdate >> > (
+				depthImgSize, depth, depthNormals, invM_d, invProjParams_d, projParams_rgb, this->settings->fusionParams, this->settings->sceneParams,
+					tsdf->getMap(), summingVoxelMap->getMap());
+			ORcudaKernelCheck;
+		} else
+		{
+			Vector2i rgbImgSize = view->rgb->noDims;
+			Matrix4f M_d = trackingState->pose_d->GetM();
+			Matrix4f M_rgb = view->calib.trafo_rgb_to_depth.calib_inv * M_d;
+
+			dim3 blockSizeVoxelProjection(SDF_BLOCK_SIZE, SDF_BLOCK_SIZE, SDF_BLOCK_SIZE);
+			dim3 gridSizeVoxelProjection(this->noFusionBlocks);
+			voxelProjectionCarveSpace_device<false> << < gridSizeVoxelProjection, blockSizeVoxelProjection >> > (
+				tsdf->getMap(),
+					summingVoxelMap->getMap(),
+					this->allocationFusionBlocksList->GetData(MEMORYDEVICE_CUDA),
+					this->noAllocationBlocks,
+					rgb, rgbImgSize, depth, depthNormals,
+					depthImgSize, M_d, M_rgb, projParams_d,
+					projParams_rgb, this->settings->fusionParams,
+					this->settings->sceneParams);
+			ORcudaKernelCheck;
+		}
+	}
+	this->timeStats.carving = timer.Tock();
+
+	/// 4. Collect per summation voxels, update actual voxel
+	timer.Tick();
+	dim3 blockSizeCombine(SDF_BLOCK_SIZE, SDF_BLOCK_SIZE, SDF_BLOCK_SIZE);
+	dim3 gridSizeCombine(std::ceil(this->noFusionBlocks / 16.), 16);
+	rayCastCombine_device << < gridSizeCombine, blockSizeCombine >> > (
+		tsdf->getMap(),
+			summingVoxelMap->getMap(),
+			this->allocationFusionBlocksList->GetData(MEMORYDEVICE_CUDA),
+			this->noAllocationBlocks,
+			this->settings->sceneParams
+	);
+	ORcudaKernelCheck;
+
+	this->timeStats.fusion += timer.Tock();
+}
+
+template<typename TIndex>
+ITMSceneReconstructionEngine_CUDA<TIndex>::~ITMSceneReconstructionEngine_CUDA(void)
+{
+	delete summingVoxelMap;
+}
+
+template<typename TIndex>
+void ITMSceneReconstructionEngine_CUDA<TIndex>::ResetScene(Scene* scene)
+{
+	scene->Clear();
+}
+
+template<typename TIndex>
+void ITMSceneReconstructionEngine_CUDA<TIndex>::AllocateSceneFromDepth(Scene* scene,
+                                                                       const ITMView* view,
+                                                                       const ITMTrackingState* trackingState)
+{
+	ITMTimer timer;
+	timer.Tick();
+	Vector2i depthImgSize = view->depth->noDims;
+	float voxelSize = scene->sceneParams->voxelSize;
+
+	Matrix4f invM_d = trackingState->pose_d->GetInvM();
+	Vector4f invProjParams_d = invertProjectionParams(view->calib.intrinsics_d.projectionParamsSimple.all);
+
+	float mu = scene->sceneParams->mu;
+
+	float* depth = view->depth->GetData(MEMORYDEVICE_CUDA);
+	Vector4f* depthNormal = view->depthNormal->GetData(MEMORYDEVICE_CUDA);
+
+	dim3 cudaBlockSizeHV(16, 16);
+	dim3 gridSizeHV((int) ceil((float) depthImgSize.x / (float) cudaBlockSizeHV.x),
+	                (int) ceil((float) depthImgSize.y / (float) cudaBlockSizeHV.y));
+
+	auto tsdf = GetTSDF(scene);
+	if (tsdf->size() >= tsdf->allocatedBlocksMax)
+	{
+		printf("No more free blocks. Allocation stopped.\n");
+	}
+
+	auto allocationBlocks = stdgpu::unordered_set<TIndex>::createDeviceObject(1e6);
+	findAllocationBlocks_device<<<gridSizeHV, cudaBlockSizeHV>>>(allocationBlocks, depth, depthNormal, invM_d,
+	                                                             invProjParams_d, mu, depthImgSize, voxelSize,
+	                                                             scene->sceneParams->viewFrustum_min,
+	                                                             scene->sceneParams->viewFrustum_max,
+	                                                             this->settings->fusionParams);
+	ORcudaKernelCheck;
+	size_t N = allocationBlocks.size();
+	if (N > this->allocationFusionBlocksList->dataSize)
+		this->allocationFusionBlocksList->Resize(N);
+	this->noAllocationBlocks = N;
+	thrust::copy(allocationBlocks.device_range().begin(), allocationBlocks.device_range().end(),
+	             stdgpu::device_begin(this->allocationFusionBlocksList->GetData(MEMORYDEVICE_CUDA)));
+	tsdf->allocate(this->allocationFusionBlocksList->GetData(MEMORYDEVICE_CUDA), N);
+	stdgpu::unordered_set<TIndex>::destroyDeviceObject(allocationBlocks);
+
+	this->timeStats.allocation += timer.Tock();
+}
+
+template<typename TIndex>
+void ITMSceneReconstructionEngine_CUDA<TIndex>::IntegrateIntoSceneVoxelProjection(
+	Scene* scene, const ITMView* view,
+	const ITMTrackingState* trackingState)
+{
+	ITMTimer timer;
+	timer.Tick();
+
+	Vector2i rgbImgSize = view->rgb->noDims;
+	Vector2i depthImgSize = view->depth->noDims;
+	float voxelSize = scene->sceneParams->voxelSize;
+
+	Matrix4f M_d, M_rgb;
+	Vector4f projParams_d, projParams_rgb;
+
+	if (this->noFusionBlocks == 0) return;
+
+	M_d = trackingState->pose_d->GetM();
+	if (ITMVoxel::hasColorInformation) M_rgb = view->calib.trafo_rgb_to_depth.calib_inv * M_d;
+
+	projParams_d = view->calib.intrinsics_d.projectionParamsSimple.all;
+	projParams_rgb = view->calib.intrinsics_rgb.projectionParamsSimple.all;
+
+	float* depth = view->depth->GetData(MEMORYDEVICE_CUDA);
+	Vector4f* depthNormals = nullptr;
+	if (this->settings->fusionParams.useWeighting or
+	    this->settings->fusionParams.fusionMetric == FUSIONMETRIC_POINT_TO_PLANE)
+		depthNormals = view->depthNormal->GetData(MEMORYDEVICE_CUDA);
+	Vector4u* rgb = view->rgb->GetData(MEMORYDEVICE_CUDA);
+
+	stdgpu::unordered_map<TIndex, ITMVoxel*> tsdf;
+	if (this->directional)
+		tsdf = dynamic_cast<TSDF_CUDA<TIndex, ITMVoxel>*>(scene->tsdfDirectional)->getMap();
+	else
+		tsdf = dynamic_cast<TSDF_CUDA<TIndex, ITMVoxel>*>(scene->tsdf)->getMap();
+
+
+	dim3 cudaBlockSize(SDF_BLOCK_SIZE, SDF_BLOCK_SIZE, SDF_BLOCK_SIZE);
+	dim3 gridSize(this->noFusionBlocks);
+
+	if (scene->sceneParams->stopIntegratingAtMaxW)
+	{
+		integrateIntoScene_device<true> << < gridSize, cudaBlockSize >> > (tsdf, this->allocationFusionBlocksList->GetData(
+			MEMORYDEVICE_CUDA),
+			rgb, rgbImgSize, depth, depthNormals, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize,
+			this->settings->fusionParams, this->settings->sceneParams);
+		ORcudaKernelCheck;
+	} else
+	{
+		integrateIntoScene_device<false> << < gridSize, cudaBlockSize >> > (tsdf, this->allocationFusionBlocksList->GetData(
+			MEMORYDEVICE_CUDA),
+			rgb, rgbImgSize, depth, depthNormals, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize,
+			this->settings->fusionParams, this->settings->sceneParams);
+		ORcudaKernelCheck;
+	}
+
+	this->timeStats.fusion = timer.Tock();
+}
+
+template<typename TIndex>
+void ITMSceneReconstructionEngine_CUDA<TIndex>::FindVisibleBlocks(const Scene* scene, const ORUtils::SE3Pose* pose,
+                                                                  const ITMIntrinsics* intrinsics,
+                                                                  ITMRenderState* renderState)
+{
+	ITMTimer timer;
+	timer.Tick();
+
+	auto tsdf = GetTSDF(scene)->getMap();
+
+	stdgpu::unordered_set<ITMIndex> visibleBlocks = stdgpu::unordered_set<ITMIndex>::createDeviceObject(
+		MAX(renderState->AllocatedSize(), this->allocationFusionBlocksList->dataSize * 2)
+	);
+
+	if (this->noFusionBlocks > 0.8 * this->allocationFusionBlocksList->dataSize)
+	{
+		this->allocationFusionBlocksList->Resize(2 * this->allocationFusionBlocksList->dataSize);
+	}
+	auto* fusionBlocksCounter_device = createDeviceArray<unsigned long long>(1, 0);
+	thrust::for_each(thrust::device, tsdf.device_range().begin(), tsdf.device_range().end(),
+	                 findVisibleBlocksFunctor<TIndex, stdgpu::unordered_set>(
+		                 visibleBlocks,
+		                 this->allocationFusionBlocksList->GetData(MEMORYDEVICE_CUDA),
+		                 this->allocationFusionBlocksList->dataSize,
+		                 fusionBlocksCounter_device,
+		                 pose->GetM(),
+		                 intrinsics->projectionParamsSimple.all,
+		                 renderState->renderingRangeImage->noDims,
+		                 *(scene->sceneParams)));
+
+	renderState->Resize(visibleBlocks.size());
+	thrust::copy(visibleBlocks.device_range().begin(), visibleBlocks.device_range().end(),
+	             stdgpu::device_begin(renderState->GetVisibleBlocks()));
+	renderState->noVisibleEntries = visibleBlocks.size();
+
+	ORcudaSafeCall(cudaMemcpy(&this->noFusionBlocks, fusionBlocksCounter_device, sizeof(this->noFusionBlocks),
+	                          cudaMemcpyDeviceToHost));
+	this->noFusionBlocks = MIN(this->noFusionBlocks, this->allocationFusionBlocksList->dataSize);
+
+	destroyDeviceArray(fusionBlocksCounter_device);
+	stdgpu::unordered_set<ITMIndex>::destroyDeviceObject(visibleBlocks);
+	this->timeStats.buildingVisibilityList += timer.Tock();
+}
+
+template<typename TIndex>
+TSDF_CUDA<TIndex, ITMVoxel>* ITMSceneReconstructionEngine_CUDA<TIndex>::GetTSDF(const Scene* scene)
+{
+	if (this->directional)
+		return dynamic_cast<TSDF_CUDA<TIndex, ITMVoxel>*>(scene->tsdfDirectional);
+	else
+		return dynamic_cast<TSDF_CUDA<TIndex, ITMVoxel>*>(scene->tsdf);
+}

@@ -3,29 +3,19 @@
 #include "UIEngine.h"
 
 #include <string.h>
-#ifdef __APPLE__
-#include <GLUT/glut.h>
-#else
 #include <GL/glut.h>
-#endif
 
 #ifdef FREEGLUT
 #include <GL/freeglut.h>
-#include <ITMLib/Engines/ViewBuilding/ITMViewBuilderFactory.h>
+#include <ITMLib/Engines/ITMViewBuilderFactory.h>
 #include <ITMLib/Utils/ITMProjectionUtils.h>
-#include <ITMLib/Engines/Reconstruction/Shared/ITMFusionWeight.hpp>
-
-#else
-#if (!defined USING_CMAKE) && (defined _MSC_VER)
-#pragma comment(lib, "glut64")
-#endif
 #endif
 
-#include "../../ITMLib/ITMLibDefines.h"
-#include "../../ITMLib/Core/ITMBasicEngine.h"
+#include <ITMLib/ITMLibDefines.h>
+#include <ITMLib/Core/ITMBasicEngine.h>
 
-#include "../../ORUtils/FileUtils.h"
-#include "../../InputSource/FFMPEGWriter.h"
+#include <ORUtils/FileUtils.h>
+#include <InputSource/FFMPEGWriter.h>
 
 using namespace InfiniTAM::Engine;
 using namespace InputSource;
