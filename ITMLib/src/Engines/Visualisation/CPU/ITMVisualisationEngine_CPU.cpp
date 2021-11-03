@@ -285,20 +285,8 @@ void ITMVisualisationEngine_CPU::CreateICPMaps(const Scene* scene,
 	trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
 
 	Vector3f lightSource = Vector3f(invM.getColumn(3)) / scene->sceneParams->voxelSize;
-	Vector4f* normalsMap = trackingState->pointCloud->normals->GetData(MEMORYDEVICE_CPU);
-	Vector4f* pointsMap = trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CPU);
-	Vector4f* pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CPU);
-	Vector4f* normalsRay = renderState->raycastNormals->GetData(MEMORYDEVICE_CPU);
-	float voxelSize = scene->sceneParams->voxelSize;
-
-#ifdef WITH_OPENMP
-#pragma omp parallel for
-#endif
-	for (int y = 0; y < imgSize.y; y++)
-		for (int x = 0; x < imgSize.x; x++)
-		{
-			processPixelICP<true>(pointsMap, normalsMap, pointsRay, normalsRay, imgSize, x, y, voxelSize, lightSource);
-		}
+	trackingState->pointCloud->locations->SetFrom(renderState->raycastResult, ORUtils::CPU_TO_CPU);
+	trackingState->pointCloud->normals->SetFrom(renderState->raycastNormals, ORUtils::CPU_TO_CPU);
 }
 
 void ITMVisualisationEngine_CPU::ForwardRender(const Scene* scene,
@@ -402,24 +390,42 @@ void ITMVisualisationEngine_CPU::GenericRaycast(const Scene* scene, const Vector
 		}
 
 	Vector4f* normals = renderState->raycastNormals->GetData(MEMORYDEVICE_CPU);
+
+	if (settings->useSDFNormals)
+	{
 #ifdef WITH_OPENMP
 #pragma omp parallel for
 #endif
-	for (int y = 0; y < imgSize.y; y++)
-		for (int x = 0; x < imgSize.x; x++)
-		{
-			int locId = x + y * imgSize.x;
-			bool foundPoint = true;
-			Vector3f normal;
-			computeNormal<false>(pointsRay, scene->sceneParams->voxelSize, imgSize, x, y, foundPoint, normal);
-
-			if (not foundPoint)
+		for (int y = 0; y < imgSize.y; y++)
+			for (int x = 0; x < imgSize.x; x++)
 			{
-				normals[locId] = Vector4f(0, 0, 0, -1);
-				continue;
+				computeSDFNormals(
+					normals,
+					renderState->raycastResult->GetData(MEMORYDEVICE_CPU),
+					GetRenderingTSDF(scene)->toCPU()->getMap(),
+					imgSize, x, y, scene->sceneParams->oneOverVoxelSize, Vector3f(invM.getColumn(3)));
 			}
-			normals[locId] = Vector4f(normal, 1);
-		}
+	} else
+	{
+#ifdef WITH_OPENMP
+#pragma omp parallel for
+#endif
+		for (int y = 0; y < imgSize.y; y++)
+			for (int x = 0; x < imgSize.x; x++)
+			{
+				int locId = x + y * imgSize.x;
+				bool foundPoint = true;
+				Vector3f normal;
+				computeNormal<false>(pointsRay, scene->sceneParams->voxelSize, imgSize, x, y, foundPoint, normal);
+
+				if (not foundPoint)
+				{
+					normals[locId] = Vector4f(0, 0, 0, -1);
+					continue;
+				}
+				normals[locId] = Vector4f(normal, 1);
+			}
+	}
 }
 
 void ITMVisualisationEngine_CPU::FindSurface(const Scene* scene,

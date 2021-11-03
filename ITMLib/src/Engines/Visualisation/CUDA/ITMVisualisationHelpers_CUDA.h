@@ -33,10 +33,6 @@ forwardProject_device(Vector4f* forwardProjection, const Vector4f* pointsRay, Ve
                       Vector4f projParams, float voxelSize);
 
 __global__ void
-renderICP_device(Vector4f* pointsMap, Vector4f* normalsMap, const Vector4f* pointsRay, const Vector4f* normalsRay,
-                 float voxelSize, Vector2i imgSize, Vector3f lightSource);
-
-__global__ void
 renderDepthShaded_ImageNormals_device(Vector4u* outRendering, const Vector4f* pointsRay, const Vector4f* normalsRay,
                                       Vector2i imgSize, Vector3f lightSource);
 
@@ -103,6 +99,18 @@ __global__ void renderDepthShaded_device(Vector4u* outRendering, const Vector4f*
 	int locId = x + y * imgSize.x;
 
 	processPixelDepthShaded_SDFNormals(outRendering[locId], ptsRay[locId], tsdf, oneOverVoxelSize, lightSource);
+}
+
+template<class TIndex, class TVoxel, template<typename, typename...> class Map, typename... Args>
+__global__ void computeSDFNormals_device(Vector4f* normalsMap, const Vector4f* pointsMap,
+                                         const Map<TIndex, TVoxel*, Args...> tsdf,
+                                         float oneOverVoxelSize, Vector2i imgSize, Vector3f lightSource)
+{
+	int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
+
+	if (x >= imgSize.x || y >= imgSize.y) return;
+
+	computeSDFNormals(normalsMap, pointsMap, tsdf, imgSize, x, y, oneOverVoxelSize, lightSource);
 }
 
 template<class TIndex, class TVoxel, template<typename, typename...> class Map, typename... Args>

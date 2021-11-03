@@ -147,7 +147,7 @@ void ITMICPTracker::SetEvaluationData(ITMTrackingState* trackingState, const ITM
 
 		// Convert RGB to intensity
 		viewHierarchy_intensity->GetLevel(0)->intensity_prev->SetFrom(
-			viewHierarchy_intensity->GetLevel(0)->intensity_current, ORUtils::MemoryBlock<float>::CUDA_TO_CUDA);
+			viewHierarchy_intensity->GetLevel(0)->intensity_current, ORUtils::CUDA_TO_CUDA);
 		lowLevelEngine->ConvertColourToIntensity(viewHierarchy_intensity->GetLevel(0)->intensity_current, view->rgb);
 
 		// Compute first level gradients

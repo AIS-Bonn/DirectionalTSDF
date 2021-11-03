@@ -118,17 +118,6 @@ forwardProject_device(Vector4f* forwardProjection, const Vector4f* pointsRay, Ve
 }
 
 __global__ void
-renderICP_device(Vector4f* pointsMap, Vector4f* normalsMap, const Vector4f* pointsRay, const Vector4f* normalsRay,
-                 float voxelSize, Vector2i imgSize, Vector3f lightSource)
-{
-	int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
-
-	if (x >= imgSize.x || y >= imgSize.y) return;
-
-	processPixelICP<true>(pointsMap, normalsMap, pointsRay, normalsRay, imgSize, x, y, voxelSize, lightSource);
-}
-
-__global__ void
 renderDepthShaded_ImageNormals_device(Vector4u* outRendering, const Vector4f* pointsRay, const Vector4f* normalsRay,
                                       Vector2i imgSize, Vector3f lightSource)
 {

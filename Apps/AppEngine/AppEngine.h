@@ -37,7 +37,6 @@ protected:
 	char *outFolder;
 
 	int currentFrameNo;
-	bool normalsFromSDF;
 
 //	void CollectICPErrorImages();
 	std::vector<std::pair<ITMUChar4Image*, ITMShortImage*>> inputImages;
@@ -126,7 +125,7 @@ protected:
 			mainEngine->GetTrackingState()->pose_d->SetFrom(pose);
 
 			mainEngine->GetImage(outputImage, ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_ICP_ERROR,
-			                     pose, &view->calib.intrinsics_d, normalsFromSDF);
+			                     pose, &view->calib.intrinsics_d, appData->internalSettings->useSDFNormals);
 
 			sprintf(str, "%s/recording/error_%04zu.ppm", outFolder, i);
 			SaveImageToFile(outputImage, str);
@@ -181,20 +180,20 @@ protected:
 			mainEngine->GetTrackingState()->pose_d->SetFrom(pose);
 
 			mainEngine->GetImage(outputImage, ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_ICP_ERROR,
-			                     pose, &mainEngine->GetView()->calib.intrinsics_d, normalsFromSDF);
+			                     pose, &mainEngine->GetView()->calib.intrinsics_d, appData->internalSettings->useSDFNormals);
 
 
 			if (appData->internalSettings->deviceType == ITMLibSettings::DEVICE_CUDA)
 			{
 				points->SetFrom(mainEngine->GetTrackingState()->pointCloud->locations,
-				                ORUtils::MemoryBlock<Vector4f>::CUDA_TO_CPU);
+				                ORUtils::CUDA_TO_CPU);
 				normals->SetFrom(mainEngine->GetTrackingState()->pointCloud->locations,
-				                ORUtils::MemoryBlock<Vector4f>::CUDA_TO_CPU);
+				                ORUtils::CUDA_TO_CPU);
 			} else{
 				points->SetFrom(mainEngine->GetTrackingState()->pointCloud->locations,
-				                ORUtils::MemoryBlock<Vector4f>::CPU_TO_CPU);
+				                ORUtils::CPU_TO_CPU);
 				normals->SetFrom(mainEngine->GetTrackingState()->pointCloud->locations,
-				                 ORUtils::MemoryBlock<Vector4f>::CPU_TO_CPU);
+				                 ORUtils::CPU_TO_CPU);
 			}
 
 		sprintf(str, "%s/cloud_%04zu.pcd", outFolder, i);
@@ -213,9 +212,7 @@ protected:
 	virtual bool _processFrame() = 0;
 
 public:
-	AppEngine()
-		: normalsFromSDF(false)
-	{}
+	AppEngine() = default;
 
 	virtual ~AppEngine()
 	{
@@ -256,10 +253,10 @@ public:
 		// Safe input images
 		inputImages.emplace_back();
 //	inputImages.back().first = new ITMUChar4Image(true, false);
-//	inputImages.back().first->SetFrom(inputRGBImage, ITMUChar4Image::CPU_TO_CPU);
+//	inputImages.back().first->SetFrom(inputRGBImage, ORUtils::CPU_TO_CPU);
 		inputImages.back().first = inputRGBImage; // not required for error renderings, so only store reference
 		inputImages.back().second = new ITMShortImage(true, false);
-		inputImages.back().second->SetFrom(inputRawDepthImage, ITMShortImage::CPU_TO_CPU);
+		inputImages.back().second->SetFrom(inputRawDepthImage, ORUtils::CPU_TO_CPU);
 		trackingPoses.push_back(*mainEngine->GetTrackingState()->pose_d);
 
 		sdkResetTimer(&timer_instant);

@@ -70,9 +70,9 @@ public:
 		if (memoryType == MEMORYDEVICE_CUDA)
 		{
 #ifndef COMPILE_WITHOUT_CUDA
-			renderingRangeImage->SetFrom(buffImage, ORUtils::MemoryBlock<Vector2f>::CPU_TO_CUDA);
+			renderingRangeImage->SetFrom(buffImage, ORUtils::CPU_TO_CUDA);
 #endif
-		} else renderingRangeImage->SetFrom(buffImage, ORUtils::MemoryBlock<Vector2f>::CPU_TO_CPU);
+		} else renderingRangeImage->SetFrom(buffImage, ORUtils::CPU_TO_CPU);
 
 		delete buffImage;
 

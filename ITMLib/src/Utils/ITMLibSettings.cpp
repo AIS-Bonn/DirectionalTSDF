@@ -82,6 +82,8 @@ ITMLibSettings::ITMLibSettings()
 	/// enable or disable bilateral depth filtering
 	useBilateralFilter = false;
 
+	useSDFNormals = false;
+
 	/// what to do on tracker failure: ignore, relocalise or stop integration - not supported in loop closure version
 	behaviourOnFailure = FAILUREMODE_RELOCALISE;
 
@@ -170,6 +172,7 @@ ITMLibSettings::ITMLibSettings(const std::string& settingsFile)
 	swappingMode = SwappingModeFromString(root["swappingMode"].as<std::string>());
 	behaviourOnFailure = FailureModeFromString(root["behaviourOnFailure"].as<std::string>());
 	useBilateralFilter = root["useBilateralFilter"].as<bool>();
+	useSDFNormals = root["useSDFNormals"].as<bool>();
 	skipPoints = root["skipPoints"].as<bool>();
 	useApproximateRaycast = root["useApproximateRaycast"].as<bool>();
 

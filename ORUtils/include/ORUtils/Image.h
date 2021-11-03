@@ -19,17 +19,11 @@ namespace ORUtils
 		/** Expose public MemoryBlock<T> member variables. */
 		using MemoryBlock<T>::dataSize;
 
-		/** Expose public MemoryBlock<T> datatypes. */
-		using typename MemoryBlock<T>::MemoryCopyDirection;
-		using MemoryBlock<T>::CPU_TO_CPU;
-		using MemoryBlock<T>::CPU_TO_CUDA;
-		using MemoryBlock<T>::CUDA_TO_CPU;
-		using MemoryBlock<T>::CUDA_TO_CUDA;
-
 		/** Expose public MemoryBlock<T> member functions. */
 		using MemoryBlock<T>::Clear;
 		using MemoryBlock<T>::GetData;
 		using MemoryBlock<T>::GetElement;
+		using MemoryBlock<T>::SetFrom;
 #ifdef COMPILE_WITH_METAL
 		using MemoryBlock<T>::GetMetalBuffer();
 #endif

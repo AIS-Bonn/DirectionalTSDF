@@ -29,6 +29,7 @@ ELSE()
 ENDIF()
 ADD_LIBRARY(ITMLib::${targetname} ALIAS ${targetname})
 TARGET_SOURCES(${targetname} PRIVATE ${sources})
+TARGET_LINK_LIBRARIES(${targetname} ${PNG_LIBRARIES})
 
 TARGET_INCLUDE_DIRECTORIES(${targetname}
   PUBLIC

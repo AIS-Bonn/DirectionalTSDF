@@ -1,9 +1,6 @@
 # Device to run on
 deviceType: cuda  # [cpu, cuda]
 
-# library mode
-libMode: voxel  # [voxel, surfel]
-
 # enables or disables loop closure (voxel mode only)
 useLoopClosure: false
 
@@ -18,6 +15,9 @@ behaviourOnFailure: relocalise  # [ignore, relocalise, stopIntegration]
 
 # enable or disable bilateral filtering of depth images
 useBilateralFilter: true
+
+# Whether to infer normals from SDF (slower) or neighboring points for tracking
+useSDFNormals: true
 
 # skips every other point when using the colour renderer for creating a point cloud
 skipPoints: false

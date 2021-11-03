@@ -155,9 +155,9 @@ void UIEngine::glutDisplayFunction()
 	UIEngine *uiEngine = UIEngine::Instance();
 
 	// get updated images from processing thread
-	uiEngine->mainEngine->GetImage(uiEngine->outImage[0], uiEngine->outImageType[0], &uiEngine->freeviewPose, &uiEngine->freeviewIntrinsics, uiEngine->normalsFromSDF);
+	uiEngine->mainEngine->GetImage(uiEngine->outImage[0], uiEngine->outImageType[0], &uiEngine->freeviewPose, &uiEngine->freeviewIntrinsics, uiEngine->appData->internalSettings->useSDFNormals);
 
-	for (int w = 1; w < NUM_WIN; w++) uiEngine->mainEngine->GetImage(uiEngine->outImage[w], uiEngine->outImageType[w], nullptr, nullptr, uiEngine->normalsFromSDF);
+	for (int w = 1; w < NUM_WIN; w++) uiEngine->mainEngine->GetImage(uiEngine->outImage[w], uiEngine->outImageType[w], nullptr, nullptr, uiEngine->appData->internalSettings->useSDFNormals);
 
 	// do the actual drawing
 	glClear(GL_COLOR_BUFFER_BIT);
@@ -237,7 +237,7 @@ void UIEngine::glutDisplayFunction()
 		        "Esc: exit \t h/?: help \t free view: %s \t colour mode: %s \t normals: %s \t fusion: %s",
 		        uiEngine->freeviewActive ?  "on" : "off",
 		        uiEngine->colourModes_main[uiEngine->currentColourMode].name,
-		        uiEngine->normalsFromSDF ? "from SDF" : "from points",
+		        uiEngine->appData->internalSettings->useSDFNormals ? "from SDF" : "from points",
 		        uiEngine->integrationActive ? "on" : "off");
 		safe_glutBitmapString(GLUT_BITMAP_HELVETICA_18, (const char*) str);
 	}
@@ -417,7 +417,7 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 		uiEngine->needsRefresh = true;
 		break;
 	case 'x':
-		uiEngine->normalsFromSDF = !uiEngine->normalsFromSDF;
+		uiEngine->appData->internalSettings->useSDFNormals = !uiEngine->appData->internalSettings->useSDFNormals;
 		uiEngine->needsRefresh = true;
 		break;
 	case 't':
@@ -521,7 +521,7 @@ void UIEngine::printPixelInformation(int x, int y)
 		if (appData->internalSettings->deviceType == ITMLibSettings::DEVICE_CUDA)
 		{
 			ORUtils::Image<Vector4f> image(mainEngine->GetRenderStateFreeview()->raycastResult->noDims, MEMORYDEVICE_CPU);
-			image.SetFrom(mainEngine->GetRenderStateFreeview()->raycastResult, image.CUDA_TO_CPU);
+			image.SetFrom(mainEngine->GetRenderStateFreeview()->raycastResult, ORUtils::CUDA_TO_CPU);
 			point = image.GetData(MEMORYDEVICE_CPU)[mainEngine->GetImageSize().width * idx_image.y + idx_image.x];
 		}
 		else
@@ -532,7 +532,7 @@ void UIEngine::printPixelInformation(int x, int y)
 		if (appData->internalSettings->deviceType == ITMLibSettings::DEVICE_CUDA)
 		{
 			ORUtils::Image<Vector4f> image(mainEngine->GetRenderState()->raycastResult->noDims, MEMORYDEVICE_CPU);
-			image.SetFrom(mainEngine->GetRenderState()->raycastResult, image.CUDA_TO_CPU);
+			image.SetFrom(mainEngine->GetRenderState()->raycastResult, ORUtils::CUDA_TO_CPU);
 			point = image.GetData(MEMORYDEVICE_CPU)[mainEngine->GetImageSize().width * idx_image.y + idx_image.x];
 		}
 		else
@@ -722,7 +722,6 @@ void UIEngine::_initialise(int argc, char** argv, AppData* appData, ITMMainEngin
 	this->helpActive = false;
 	this->renderAxesActive = true;
 	this->currentColourMode = 0;
-	this->normalsFromSDF = false;
 	memset(keysPressed, false, sizeof(keysPressed));
 	this->colourModes_main.push_back(UIColourMode("shaded greyscale", ITMMainEngine::InfiniTAM_IMAGE_SCENERAYCAST));
 	this->colourModes_main.push_back(UIColourMode("integrated colours", ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_VOLUME));
@@ -947,7 +946,7 @@ bool UIEngine::_processFrame()
 //		SaveNormalDirectionImage(mainEngine->GetView(), str, mainEngine->GetTrackingState()->pose_d->GetInvM(), appData->internalSettings->deviceType);
 //
 //		sprintf(str, "%s/recording/depth_color%04d.pgm", outFolder, currentFrameNo);
-//		mainEngine->GetImage(outImage[0], ITMMainEngine::GetImageType::InfiniTAM_IMAGE_ORIGINAL_DEPTH, &freeviewPose, &freeviewIntrinsics, normalsFromSDF);
+//		mainEngine->GetImage(outImage[0], ITMMainEngine::GetImageType::InfiniTAM_IMAGE_ORIGINAL_DEPTH, &freeviewPose, &freeviewIntrinsics, uiEngine->appData->internalSettings->useSDFNormals);
 //		SaveImageToFile(outImage[0], str);
 
 //		sprintf(str, "%s/recording/error%04d.ppm", outFolder, currentFrameNo);

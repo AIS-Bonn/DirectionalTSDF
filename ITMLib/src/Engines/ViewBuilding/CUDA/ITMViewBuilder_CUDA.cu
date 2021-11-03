@@ -63,8 +63,8 @@ void ITMViewBuilder_CUDA::UpdateView(ITMView** view_ptr, ITMUChar4Image* rgbImag
 
 	ITMView* view = *view_ptr;
 
-	view->rgb->SetFrom(rgbImage, MemoryBlock<Vector4u>::CPU_TO_CUDA);
-	this->shortImage->SetFrom(rawDepthImage, MemoryBlock<short>::CPU_TO_CUDA);
+	view->rgb->SetFrom(rgbImage, ORUtils::CPU_TO_CUDA);
+	this->shortImage->SetFrom(rawDepthImage, ORUtils::CPU_TO_CUDA);
 
 	switch (view->calib.disparityCalib.GetType())
 	{
@@ -84,7 +84,7 @@ void ITMViewBuilder_CUDA::UpdateView(ITMView** view_ptr, ITMUChar4Image* rgbImag
 	this->DepthFiltering(this->floatImage, view->depth);
 	if (useBilateralFilter)
 	{ // user filtered depth image
-		view->depth->SetFrom(this->floatImage, MemoryBlock<float>::CUDA_TO_CUDA);
+		view->depth->SetFrom(this->floatImage, ORUtils::CUDA_TO_CUDA);
 	}
 	timeStats.bilateralFilter = timer.Tock();
 

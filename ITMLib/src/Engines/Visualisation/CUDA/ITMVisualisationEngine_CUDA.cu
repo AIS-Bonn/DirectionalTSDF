@@ -133,7 +133,7 @@ void ITMVisualisationEngine_CUDA::GenericRaycast(const Scene* scene, const Vecto
                                                  const Vector4f& projParams, const ITMRenderState* renderState,
                                                  bool updateVisibleList) const
 {
-	dim3 cudaBlockSize(16, 12);
+	dim3 cudaBlockSize(8, 8);
 	dim3 gridSize((int) ceil((float) imgSize.x / (float) cudaBlockSize.x),
 	              (int) ceil((float) imgSize.y / (float) cudaBlockSize.y));
 
@@ -151,11 +151,22 @@ void ITMVisualisationEngine_CUDA::GenericRaycast(const Scene* scene, const Vecto
 	);
 	ORcudaKernelCheck;
 
-	computePointCloudNormals_device<ITMVoxel> << < gridSize, cudaBlockSize >> > (
-		renderState->raycastNormals->GetData(MEMORYDEVICE_CUDA),
-			renderState->raycastResult->GetData(MEMORYDEVICE_CUDA),
-			imgSize, scene->sceneParams->voxelSize);
-	ORcudaKernelCheck;
+	if (settings->useSDFNormals)
+	{
+		computeSDFNormals_device << < gridSize, cudaBlockSize >> > (
+			renderState->raycastNormals->GetData(MEMORYDEVICE_CUDA),
+				renderState->raycastResult->GetData(MEMORYDEVICE_CUDA),
+				GetRenderingTSDF(scene)->toCUDA()->getMap(),
+				scene->sceneParams->oneOverVoxelSize, imgSize, Vector3f(invM.getColumn(3)));
+		ORcudaKernelCheck;
+	} else
+	{
+		computePointCloudNormals_device<ITMVoxel> << < gridSize, cudaBlockSize >> > (
+			renderState->raycastNormals->GetData(MEMORYDEVICE_CUDA),
+				renderState->raycastResult->GetData(MEMORYDEVICE_CUDA),
+				imgSize, scene->sceneParams->voxelSize);
+		ORcudaKernelCheck;
+	}
 }
 
 void ITMVisualisationEngine_CUDA::RenderImage(const Scene* scene,
@@ -312,7 +323,7 @@ void ITMVisualisationEngine_CUDA::CreatePointCloud(const Scene* scene,
 	Vector4f* colours = trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CUDA);
 	Vector4f* pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CUDA);
 
-	dim3 cudaBlockSize(16, 16);
+	dim3 cudaBlockSize(8, 8);
 	dim3 gridSize = getGridSize(imgSize, cudaBlockSize);
 
 	renderPointCloud_device << < gridSize, cudaBlockSize >> > (locations, colours, noTotalPoints_device, pointsRay,
@@ -343,20 +354,8 @@ void ITMVisualisationEngine_CUDA::CreateICPMaps(const Scene* scene,
 
 	GenericRaycast(scene, imgSize, invM, view->calib.intrinsics_d.projectionParamsSimple.all, renderState, true);
 	trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
-
-	Vector4f* pointsMap = trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CUDA);
-	Vector4f* normalsMap = trackingState->pointCloud->normals->GetData(MEMORYDEVICE_CUDA);
-	Vector4f* pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CUDA);
-	Vector4f* normalsRay = renderState->raycastNormals->GetData(MEMORYDEVICE_CUDA);
-	Vector3f lightSource = Vector3f(invM.getColumn(3));
-
-	dim3 cudaBlockSize(16, 12);
-	dim3 gridSize((int) ceil((float) imgSize.x / (float) cudaBlockSize.x),
-	              (int) ceil((float) imgSize.y / (float) cudaBlockSize.y));
-
-	renderICP_device << < gridSize, cudaBlockSize >> > (pointsMap, normalsMap, pointsRay, normalsRay,
-		scene->sceneParams->voxelSize, imgSize, lightSource);
-	ORcudaKernelCheck;
+	trackingState->pointCloud->locations->SetFrom(renderState->raycastResult, ORUtils::CUDA_TO_CUDA);
+	trackingState->pointCloud->normals->SetFrom(renderState->raycastNormals, ORUtils::CUDA_TO_CUDA);
 }
 
 void ITMVisualisationEngine_CUDA::RenderTrackingError(ITMUChar4Image* outRendering,
@@ -372,7 +371,7 @@ void ITMVisualisationEngine_CUDA::RenderTrackingError(ITMUChar4Image* outRenderi
 	Vector2i imgSize = view->calib.intrinsics_d.imgSize;
 	const float maxError = this->settings->sceneParams.mu;
 
-	dim3 cudaBlockSize(16, 12);
+	dim3 cudaBlockSize(8, 8);
 	dim3 gridSize((int) ceil((float) imgSize.x / (float) cudaBlockSize.x),
 	              (int) ceil((float) imgSize.y / (float) cudaBlockSize.y));
 	renderPixelError_device<ITMVoxel> << < gridSize, cudaBlockSize >> > (

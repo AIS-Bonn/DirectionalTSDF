@@ -33,8 +33,8 @@ void ITMViewBuilder_CPU::UpdateView(ITMView** view_ptr, ITMUChar4Image* rgbImage
 	}
 	ITMView* view = *view_ptr;
 
-	view->rgb->SetFrom(rgbImage, MemoryBlock<Vector4u>::CPU_TO_CPU);
-	this->shortImage->SetFrom(rawDepthImage, MemoryBlock<short>::CPU_TO_CPU);
+	view->rgb->SetFrom(rgbImage, ORUtils::CPU_TO_CPU);
+	this->shortImage->SetFrom(rawDepthImage, ORUtils::CPU_TO_CPU);
 
 	switch (view->calib.disparityCalib.GetType())
 	{
@@ -55,7 +55,7 @@ void ITMViewBuilder_CPU::UpdateView(ITMView** view_ptr, ITMUChar4Image* rgbImage
 	timeStats.bilateralFilter = timer.Tock();
 	if (useBilateralFilter)
 	{
-		view->depth->SetFrom(this->floatImage, MemoryBlock<float>::CPU_TO_CPU);
+		view->depth->SetFrom(this->floatImage, ORUtils::CPU_TO_CPU);
 	}
 
 	if (computeNormals)

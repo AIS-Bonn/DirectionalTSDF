@@ -148,7 +148,7 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndAngleTSDF(bool& foundPoint, const
 {
 	if (!foundPoint) return;
 
-	outNormal = computeSingleNormalFromSDF(tsdf, point * oneOverVoxelSize).normalised();
+	outNormal = computeSingleNormalFromSDF(tsdf, point * oneOverVoxelSize);
 
 	Vector3f lightDirection = (point - lightSource).normalised();
 	angle = dot(outNormal, -lightDirection);
@@ -367,7 +367,7 @@ _CPU_AND_GPU_CODE_ inline bool castRayDefaultTSDF(Vector4f& pt_out,
 	float sdfValue = 1.0f, confidence = 0;
 	float totalLength, stepLength, totalLengthMax, stepScale;
 
-	pt_out = Vector4f(0, 0, 0, 0);
+	pt_out = Vector4f(0, 0, 0, -1);
 
 	stepScale = sceneParams.mu * sceneParams.oneOverVoxelSize;
 
@@ -492,32 +492,29 @@ inline void insertionSort(const T* in, T* out, int* outIds, size_t length)
 
 }
 
-template<bool useSmoothing>
-_CPU_AND_GPU_CODE_ inline void processPixelICP(Vector4f* pointsMap, Vector4f* normalsMap,
-                                               const Vector4f* pointsRay, const Vector4f* normalsRay,
-                                               const Vector2i& imgSize,
-                                               const int& x, const int& y, float voxelSize,
-                                               const Vector3f& lightSource)
+template<class TIndex, class TVoxel, template<typename, typename...> class Map, typename... Args>
+_CPU_AND_GPU_CODE_ inline void computeSDFNormals(Vector4f* normalsMap, const Vector4f* pointsMap,
+                                                 const Map<TIndex, TVoxel*, Args...>& tsdf,
+                                                 const Vector2i& imgSize,
+                                                 const int& x, const int& y, float oneOverVoxelSize,
+                                                 const Vector3f& lightSource)
 {
 	Vector3f outNormal;
 	float angle;
 
 	int locId = x + y * imgSize.x;
-	Vector4f point = pointsRay[locId];
+	Vector4f point = pointsMap[locId];
 
 	bool foundPoint = point.w > 0.0f;
 
-	computeNormalAndAngle<useSmoothing>(pointsRay, normalsRay, lightSource, imgSize, x, y, foundPoint, outNormal, angle);
+	computeNormalAndAngleTSDF(foundPoint, point.toVector3(), tsdf, oneOverVoxelSize, lightSource, outNormal, angle);
 
 	if (foundPoint)
 	{
-		pointsMap[locId] = Vector4f(point.toVector3(), point.w);
-		normalsMap[locId] = Vector4f(outNormal, 0);
+		normalsMap[locId] = Vector4f(outNormal, 1);
 	} else
 	{
-		Vector4f out4(0, 0, 0, -1);
-		pointsMap[locId] = out4;
-		normalsMap[locId] = out4;
+		normalsMap[locId] = Vector4f(0, 0, 0, -1);
 	}
 }
 
@@ -697,7 +694,7 @@ processPixelError(Vector4u* outRendering, const Vector4f* pointsRay, const Vecto
 	                                                             pointsRay, normalsRay, 100.0);
 //	float angle = -(sceneRenderingPose * normalsRay[locId]).z;
 
-	if (!isValidPoint)
+	if (!isValidPoint or (normalsRay[locId].x == 0 and normalsRay[locId].y == 0 and normalsRay[locId].z == 0))
 	{// or angle <= 0.0) {
 		if (depth[locId] > 0)
 			outRendering[locId] = Vector4u(127, 127, 127, 255);

@@ -362,9 +362,9 @@ ITMBasicEngine::ProcessFrame(ITMUChar4Image* rgbImage, ITMShortImage* rawDepthIm
 
 		if (addKeyframeIdx >= 0)
 		{
-			ORUtils::MemoryBlock<Vector4u>::MemoryCopyDirection memoryCopyDirection =
-				settings->deviceType == ITMLibSettings::DEVICE_CUDA ? ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CUDA
-				                                                    : ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU;
+			ORUtils::MemoryCopyDirection memoryCopyDirection =
+				settings->deviceType == ITMLibSettings::DEVICE_CUDA ? ORUtils::CUDA_TO_CUDA
+				                                                    : ORUtils::CPU_TO_CPU;
 
 			kfRaycast->SetFrom(renderState_live->renderedImage, memoryCopyDirection);
 		}
@@ -415,7 +415,7 @@ ITMRenderError ITMBasicEngine::ComputeICPError()
 
 	view->depth->UpdateHostFromDevice();
 	ORUtils::Image<ORUtils::Vector4<float>> locations(trackingState->pointCloud->locations->noDims, true, false);
-	ORUtils::Image<ORUtils::Vector4<float>> normals(trackingState->pointCloud->locations->noDims, true, false);
+	ORUtils::Image<ORUtils::Vector4<float>> normals(trackingState->pointCloud->normals->noDims, true, false);
 
 	ORcudaSafeCall(
 		cudaMemcpy(locations.GetData(MEMORYDEVICE_CPU), trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CUDA),
@@ -495,8 +495,8 @@ void ITMBasicEngine::GetImage(ITMUChar4Image* out, GetImageType getImageType, OR
 		case ITMMainEngine::InfiniTAM_IMAGE_ORIGINAL_RGB:
 			out->ChangeDims(view->rgb->noDims);
 			if (settings->deviceType == ITMLibSettings::DEVICE_CUDA)
-				out->SetFrom(view->rgb, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);
-			else out->SetFrom(view->rgb, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);
+				out->SetFrom(view->rgb, ORUtils::CUDA_TO_CPU);
+			else out->SetFrom(view->rgb, ORUtils::CPU_TO_CPU);
 			break;
 		case ITMMainEngine::InfiniTAM_IMAGE_ORIGINAL_DEPTH:
 			out->ChangeDims(view->depth->noDims);
@@ -523,8 +523,8 @@ void ITMBasicEngine::GetImage(ITMUChar4Image* out, GetImageType getImageType, OR
 
 			out->ChangeDims(srcImage->noDims);
 			if (settings->deviceType == ITMLibSettings::DEVICE_CUDA)
-				out->SetFrom(srcImage, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);
-			else out->SetFrom(srcImage, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);
+				out->SetFrom(srcImage, ORUtils::CUDA_TO_CPU);
+			else out->SetFrom(srcImage, ORUtils::CPU_TO_CPU);
 
 			break;
 		}
@@ -538,8 +538,8 @@ void ITMBasicEngine::GetImage(ITMUChar4Image* out, GetImageType getImageType, OR
 			visualisationEngine->RenderTrackingError(renderState_live->renderedImage, trackingState, view);
 			out->ChangeDims(renderState_live->renderedImage->noDims);
 			if (settings->deviceType == ITMLibSettings::DEVICE_CUDA)
-				out->SetFrom(renderState_live->renderedImage, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);
-			else out->SetFrom(renderState_live->renderedImage, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);
+				out->SetFrom(renderState_live->renderedImage, ORUtils::CUDA_TO_CPU);
+			else out->SetFrom(renderState_live->renderedImage, ORUtils::CPU_TO_CPU);
 			break;
 		}
 		case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_SHADED:
@@ -562,8 +562,8 @@ void ITMBasicEngine::GetImage(ITMUChar4Image* out, GetImageType getImageType, OR
 			                                 IITMVisualisationEngine::RENDER_FROM_NEW_RAYCAST);
 
 			if (settings->deviceType == ITMLibSettings::DEVICE_CUDA)
-				out->SetFrom(renderState_freeview->renderedImage, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);
-			else out->SetFrom(renderState_freeview->renderedImage, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);
+				out->SetFrom(renderState_freeview->renderedImage, ORUtils::CUDA_TO_CPU);
+			else out->SetFrom(renderState_freeview->renderedImage, ORUtils::CPU_TO_CPU);
 			break;
 		}
 		case ITMMainEngine::InfiniTAM_IMAGE_UNKNOWN:

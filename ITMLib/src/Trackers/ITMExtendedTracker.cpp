@@ -205,7 +205,7 @@ void ITMExtendedTracker::SetEvaluationData(ITMTrackingState* trackingState, cons
 
 		// Convert RGB to intensity
 		viewHierarchy_Intensity->GetLevel(0)->intensity_prev->SetFrom(
-			viewHierarchy_Intensity->GetLevel(0)->intensity_current, ORUtils::MemoryBlock<float>::CUDA_TO_CUDA);
+			viewHierarchy_Intensity->GetLevel(0)->intensity_current, ORUtils::CUDA_TO_CUDA);
 
 		lowLevelEngine->ConvertColourToIntensity(viewHierarchy_Intensity->GetLevel(0)->intensity_current, view->rgb);
 

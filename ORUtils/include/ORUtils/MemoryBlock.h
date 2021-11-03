@@ -14,9 +14,10 @@
 
 namespace ORUtils
 {
-	/** \brief
-	Represents memory blocks, templated on the data type
-	*/
+	enum MemoryCopyDirection { CPU_TO_CPU, CPU_TO_CUDA, CUDA_TO_CPU, CUDA_TO_CUDA };
+/** \brief
+Represents memory blocks, templated on the data type
+*/
 	template <typename T>
 	class MemoryBlock
 	{
@@ -32,8 +33,6 @@ namespace ORUtils
 		void *data_metalBuffer;
 #endif
 	public:
-		enum MemoryCopyDirection { CPU_TO_CPU, CPU_TO_CUDA, CUDA_TO_CPU, CUDA_TO_CUDA };
-
 		/** Total number of allocated entries in the data array. */
 		size_t dataSize;
 

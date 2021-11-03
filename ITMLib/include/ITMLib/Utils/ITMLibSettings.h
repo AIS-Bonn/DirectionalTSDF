@@ -49,6 +49,9 @@ public:
 
 	bool useBilateralFilter;
 
+	/// Whether to infer normals from SDF (slower) or neighboring points for tracking
+	bool useSDFNormals;
+
 	/// For ITMColorTracker: skip every other point in energy function evaluation.
 	bool skipPoints;
 

@@ -15,6 +15,9 @@ IF(${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")
 ENDIF()
 
 SET(CFLAGS_WARN "-Wall -Wextra -Wno-unused-parameter -Wno-strict-aliasing")
+IF (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  SET(CFLAGS_WARN -Wno-misleading-indentation ${CFLAGS_WARN})
+ENDIF()
 SET(CMAKE_CXX_FLAGS "-fPIC -march=native ${CFLAGS_WARN} ${CMAKE_CXX_FLAGS}")
 
 IF(CMAKE_BUILD_TYPE STREQUAL "Debug")
