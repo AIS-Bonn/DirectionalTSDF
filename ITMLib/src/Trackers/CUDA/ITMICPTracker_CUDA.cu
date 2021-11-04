@@ -284,7 +284,7 @@ void ITMLib::ITMICPTracker_CUDA::ComputeDepthPointAndIntensity(ITMFloat4Image* p
 
 template<bool shortIteration, bool rotationOnly>
 __device__ void
-RGBTrackerOneLevel_g_rt_device_main(ITMICPTracker_RGBKernelParameters para)
+RGBTrackerOneLevel_g_rt_device_main(ITMICPTracker_RGBKernelParameters& para)
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
 
