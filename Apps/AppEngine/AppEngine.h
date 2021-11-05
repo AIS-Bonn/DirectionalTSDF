@@ -5,6 +5,7 @@
 #pragma once
 
 #include <experimental/filesystem>
+
 namespace fs = std::experimental::filesystem;
 
 #include <Apps/Utils/CLIUtils.h>
@@ -27,14 +28,15 @@ protected:
 	ITMLib::ITMMainEngine* mainEngine;
 	ITMLib::ITMLoggingEngine statisticsEngine;
 
-	ITMUChar4Image *inputRGBImage; ITMShortImage *inputRawDepthImage;
-	const ORUtils::SE3Pose *inputPose;
-	ITMLib::ITMIMUMeasurement *inputIMUMeasurement;
+	ITMUChar4Image* inputRGBImage;
+	ITMShortImage* inputRawDepthImage;
+	const ORUtils::SE3Pose* inputPose;
+	ITMLib::ITMIMUMeasurement* inputIMUMeasurement;
 
-	StopWatchInterface *timer_instant;
-	StopWatchInterface *timer_average;
+	StopWatchInterface* timer_instant;
+	StopWatchInterface* timer_average;
 
-	char *outFolder;
+	char* outFolder;
 
 	int currentFrameNo;
 
@@ -52,7 +54,8 @@ protected:
 		                                                                     appData->internalSettings->deviceType);
 		// needs to be called once with view=nullptr for initialization
 		viewBuilder->UpdateView(&view, inputImages.front().first, inputImages.front().second,
-		                        appData->internalSettings->useBilateralFilter);
+		                        appData->internalSettings->useDepthFilter, appData->internalSettings->useBilateralFilter);
+
 		view = mainEngine->GetView();
 
 		ITMUChar4Image* outputImage = new ITMUChar4Image(inputImages.front().first->noDims, true, false);
@@ -76,6 +79,7 @@ protected:
 			ITMShortImage* depthImage = inputImages.at(i).second;
 
 			viewBuilder->UpdateView(&view, rgbImage, depthImage,
+			                        appData->internalSettings->useDepthFilter,
 			                        appData->internalSettings->useBilateralFilter);
 
 			ORUtils::SE3Pose* pose = &trackingPoses.at(i);
@@ -100,6 +104,7 @@ protected:
 		                                                                     appData->internalSettings->deviceType);
 		// needs to be called once with view=nullptr for initialization
 		viewBuilder->UpdateView(&view, inputImages.front().first, inputImages.front().second,
+		                        appData->internalSettings->useDepthFilter,
 		                        appData->internalSettings->useBilateralFilter);
 		view = mainEngine->GetView();
 
@@ -119,6 +124,7 @@ protected:
 			ITMShortImage* depthImage = inputImages.at(i).second;
 
 			viewBuilder->UpdateView(&view, rgbImage, depthImage,
+			                        appData->internalSettings->useDepthFilter,
 			                        appData->internalSettings->useBilateralFilter);
 
 			ORUtils::SE3Pose* pose = &trackingPoses.at(i);
@@ -139,7 +145,7 @@ protected:
 	 * Collect and store point cloud renderings from every N-th pose
 	 * @param N
 	 */
-	inline void CollectPointClouds(int N=1)
+	inline void CollectPointClouds(int N = 1)
 	{
 		if (inputImages.empty())
 			return;
@@ -149,6 +155,7 @@ protected:
 		                                                                     appData->internalSettings->deviceType);
 		// needs to be called once with view=nullptr for initialization
 		viewBuilder->UpdateView(&view, inputImages.front().first, inputImages.front().second,
+		                        appData->internalSettings->useDepthFilter,
 		                        appData->internalSettings->useBilateralFilter);
 		view = mainEngine->GetView();
 
@@ -174,6 +181,7 @@ protected:
 			ITMShortImage* depthImage = inputImages.at(i).second;
 
 			viewBuilder->UpdateView(&view, rgbImage, depthImage,
+			                        appData->internalSettings->useDepthFilter,
 			                        appData->internalSettings->useBilateralFilter);
 
 			ORUtils::SE3Pose* pose = &trackingPoses.at(i);
@@ -188,15 +196,16 @@ protected:
 				points->SetFrom(mainEngine->GetTrackingState()->pointCloud->locations,
 				                ORUtils::CUDA_TO_CPU);
 				normals->SetFrom(mainEngine->GetTrackingState()->pointCloud->locations,
-				                ORUtils::CUDA_TO_CPU);
-			} else{
+				                 ORUtils::CUDA_TO_CPU);
+			} else
+			{
 				points->SetFrom(mainEngine->GetTrackingState()->pointCloud->locations,
 				                ORUtils::CPU_TO_CPU);
 				normals->SetFrom(mainEngine->GetTrackingState()->pointCloud->locations,
 				                 ORUtils::CPU_TO_CPU);
 			}
 
-		sprintf(str, "%s/cloud_%04zu.pcd", outFolder, i);
+			sprintf(str, "%s/cloud_%04zu.pcd", outFolder, i);
 			SavePointCloudToPCL(
 				points->GetData(MEMORYDEVICE_CPU), normals->GetData(MEMORYDEVICE_CPU),
 				inputImages.front().second->noDims, *pose, str);
@@ -208,7 +217,8 @@ protected:
 		free(viewBuilder);
 	}
 
-	virtual void _initialise(int argc, char** argv, AppData* appData, ITMMainEngine *mainEngine) = 0;
+	virtual void _initialise(int argc, char** argv, AppData* appData, ITMMainEngine* mainEngine) = 0;
+
 	virtual bool _processFrame() = 0;
 
 public:
@@ -235,7 +245,8 @@ public:
 		if (!appData->imageSource->hasMoreImages()) return false;
 		appData->imageSource->getImages(inputRGBImage, inputRawDepthImage);
 
-		if (appData->imuSource != nullptr) {
+		if (appData->imuSource != nullptr)
+		{
 			if (!appData->imuSource->hasMoreMeasurements()) return false;
 			else appData->imuSource->getMeasurement(inputIMUMeasurement);
 		}
@@ -265,7 +276,8 @@ public:
 
 		if (not _processFrame()) return false;
 
-		sdkStopTimer(&timer_instant); sdkStopTimer(&timer_average);
+		sdkStopTimer(&timer_instant);
+		sdkStopTimer(&timer_average);
 
 		statisticsEngine.LogTimeStats(mainEngine->GetTimeStats());
 		statisticsEngine.LogPose(*mainEngine->GetTrackingState());
@@ -276,7 +288,7 @@ public:
 		return true;
 	}
 
-	inline void Initialise(int argc, char** argv, AppData* appData, ITMMainEngine *mainEngine)
+	inline void Initialise(int argc, char** argv, AppData* appData, ITMMainEngine* mainEngine)
 	{
 		this->appData = appData;
 		this->mainEngine = mainEngine;
@@ -301,14 +313,13 @@ public:
 
 		_initialise(argc, argv, appData, mainEngine);
 
-		#ifndef COMPILE_WITHOUT_CUDA
-				ORcudaSafeCall(cudaThreadSynchronize());
-		#endif
+#ifndef COMPILE_WITHOUT_CUDA
+		ORcudaSafeCall(cudaThreadSynchronize());
+#endif
 
 		printf("initialised.\n");
 	}
 };
-
 
 
 } // namespace Engine

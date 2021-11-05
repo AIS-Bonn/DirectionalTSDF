@@ -15,7 +15,7 @@ ITMViewBuilder_CPU::ITMViewBuilder_CPU(const ITMRGBDCalib& calib) : ITMViewBuild
 ITMViewBuilder_CPU::~ITMViewBuilder_CPU() = default;
 
 void ITMViewBuilder_CPU::UpdateView(ITMView** view_ptr, ITMUChar4Image* rgbImage, ITMShortImage* rawDepthImage,
-                                    bool useBilateralFilter, bool computeNormals)
+                                    bool useDepthFilter, bool useBilateralFilter, bool computeNormals)
 {
 	timeStats.Reset();
 	ITMTimer timer;
@@ -40,10 +40,10 @@ void ITMViewBuilder_CPU::UpdateView(ITMView** view_ptr, ITMUChar4Image* rgbImage
 	{
 		case ITMDisparityCalib::TRAFO_KINECT:
 			this->ConvertDisparityToDepth(view->depth, this->shortImage, &(view->calib.intrinsics_d),
-			                              view->calib.disparityCalib.GetParams());
+			                              view->calib.disparityCalib.GetParams(), useDepthFilter);
 			break;
 		case ITMDisparityCalib::TRAFO_AFFINE:
-			this->ConvertDepthAffineToFloat(view->depth, this->shortImage, view->calib.disparityCalib.GetParams());
+			this->ConvertDepthAffineToFloat(view->depth, this->shortImage, view->calib.disparityCalib.GetParams(), useDepthFilter);
 			break;
 		default:
 			break;
@@ -51,7 +51,7 @@ void ITMViewBuilder_CPU::UpdateView(ITMView** view_ptr, ITMUChar4Image* rgbImage
 	timeStats.copyImages = timer.Tock();
 
 	timer.Tick();
-	this->DepthFiltering(this->floatImage, view->depth);
+	this->DepthBilateralFiltering(this->floatImage, view->depth);
 	timeStats.bilateralFilter = timer.Tock();
 	if (useBilateralFilter)
 	{
@@ -62,13 +62,13 @@ void ITMViewBuilder_CPU::UpdateView(ITMView** view_ptr, ITMUChar4Image* rgbImage
 	{
 		timer.Tick();
 		this->ComputeNormalAndWeights(this->normals, this->floatImage, view->calib.intrinsics_d.projectionParamsSimple.all);
-		this->NormalFiltering(view->depthNormal, this->normals);
+		this->NormalBilateralFiltering(view->depthNormal, this->normals);
 		timeStats.normalEstimation = timer.Tock();
 	}
 }
 
 void ITMViewBuilder_CPU::UpdateView(ITMView** view_ptr, ITMUChar4Image* rgbImage, ITMShortImage* depthImage,
-                                    bool useBilateralFilter, ITMIMUMeasurement* imuMeasurement, bool computeNormals)
+                                    bool useDepthFilter, bool useBilateralFilter, ITMIMUMeasurement* imuMeasurement, bool computeNormals)
 {
 	if (*view_ptr == nullptr)
 	{
@@ -82,12 +82,12 @@ void ITMViewBuilder_CPU::UpdateView(ITMView** view_ptr, ITMUChar4Image* rgbImage
 	ITMViewIMU* imuView = (ITMViewIMU*) (*view_ptr);
 	imuView->imu->SetFrom(imuMeasurement);
 
-	this->UpdateView(view_ptr, rgbImage, depthImage, useBilateralFilter, computeNormals);
+	this->UpdateView(view_ptr, rgbImage, depthImage, useDepthFilter, useBilateralFilter, computeNormals);
 }
 
 void ITMViewBuilder_CPU::ConvertDisparityToDepth(ITMFloatImage* depth_out, const ITMShortImage* depth_in,
                                                  const ITMIntrinsics* depthIntrinsics,
-                                                 Vector2f disparityCalibParams)
+                                                 Vector2f disparityCalibParams, bool filterDepth)
 {
 	Vector2i imgSize = depth_in->noDims;
 
@@ -98,11 +98,11 @@ void ITMViewBuilder_CPU::ConvertDisparityToDepth(ITMFloatImage* depth_out, const
 
 	for (int y = 0; y < imgSize.y; y++)
 		for (int x = 0; x < imgSize.x; x++)
-			convertDisparityToDepth(d_out, x, y, d_in, disparityCalibParams, fx_depth, imgSize);
+			convertDisparityToDepth(d_out, x, y, d_in, disparityCalibParams, fx_depth, imgSize, filterDepth);
 }
 
 void ITMViewBuilder_CPU::ConvertDepthAffineToFloat(ITMFloatImage* depth_out, const ITMShortImage* depth_in,
-                                                   const Vector2f depthCalibParams)
+                                                   const Vector2f depthCalibParams, bool filterDepth)
 {
 	Vector2i imgSize = depth_in->noDims;
 
@@ -111,10 +111,10 @@ void ITMViewBuilder_CPU::ConvertDepthAffineToFloat(ITMFloatImage* depth_out, con
 
 	for (int y = 0; y < imgSize.y; y++)
 		for (int x = 0; x < imgSize.x; x++)
-			convertDepthAffineToFloat(d_out, x, y, d_in, imgSize, depthCalibParams);
+			convertDepthAffineToFloat(d_out, x, y, d_in, imgSize, depthCalibParams, filterDepth);
 }
 
-void ITMViewBuilder_CPU::DepthFiltering(ITMFloatImage* image_out, const ITMFloatImage* image_in)
+void ITMViewBuilder_CPU::DepthBilateralFiltering(ITMFloatImage* image_out, const ITMFloatImage* image_in)
 {
 	Vector2i imgSize = image_in->noDims;
 
@@ -125,7 +125,7 @@ void ITMViewBuilder_CPU::DepthFiltering(ITMFloatImage* image_out, const ITMFloat
 
 	for (int y = 2; y < imgSize.y - 2; y++)
 		for (int x = 2; x < imgSize.x - 2; x++)
-			filterDepth(imout, imin, 5.0, 0.025, x, y, imgSize);
+			filterDepthBilateral(imout, imin, 5.0, 0.025, x, y, imgSize);
 }
 
 void ITMViewBuilder_CPU::ComputeNormalAndWeights(ITMFloat4Image* normal_out, const ITMFloatImage* depth_in,
@@ -142,7 +142,7 @@ void ITMViewBuilder_CPU::ComputeNormalAndWeights(ITMFloat4Image* normal_out, con
 			computeNormalAndWeight(depthData_in, normalData_out, x, y, imgDims, intrinsic);
 }
 
-void ITMViewBuilder_CPU::NormalFiltering(ITMFloat4Image* normals_out, const ITMFloat4Image* normals_in)
+void ITMViewBuilder_CPU::NormalBilateralFiltering(ITMFloat4Image* normals_out, const ITMFloat4Image* normals_in)
 {
 	Vector2i imgDims = normals_in->noDims;
 
@@ -151,7 +151,7 @@ void ITMViewBuilder_CPU::NormalFiltering(ITMFloat4Image* normals_out, const ITMF
 
 	for (int y = 0; y < imgDims.y; y++)
 		for (int x = 0; x < imgDims.x; x++)
-			filterNormals(n_out, n_in, 2.5, 5, x, y, imgDims);
+			filterNormalsBilateral(n_out, n_in, 2.5, 5, x, y, imgDims);
 
 //	for (int y = 2; y < imgDims.y - 2; y++) for (int x = 2; x < imgDims.x - 2; x++)
 //		normalizeNormals(normalData, x, y);

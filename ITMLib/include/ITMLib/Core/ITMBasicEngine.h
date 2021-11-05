@@ -80,7 +80,7 @@ public:
 	/// Get a result image as output
 	[[nodiscard]] Vector2i GetImageSize() const override;
 
-	void GetImage(ITMUChar4Image* out, GetImageType getImageType, ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
+	void GetImage(ITMUChar4Image* out, const GetImageType getImageType, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
 	              bool normalsFromSDF) override;
 
 	/// switch for turning integration on/off

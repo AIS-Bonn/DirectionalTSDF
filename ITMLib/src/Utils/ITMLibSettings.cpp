@@ -79,6 +79,8 @@ ITMLibSettings::ITMLibSettings()
 	/// enables or disables approximate raycast
 	useApproximateRaycast = false;
 
+	useDepthFilter = false;
+
 	/// enable or disable bilateral depth filtering
 	useBilateralFilter = false;
 
@@ -171,6 +173,7 @@ ITMLibSettings::ITMLibSettings(const std::string& settingsFile)
 	createMeshingEngine = root["createMeshingEngine"].as<bool>();
 	swappingMode = SwappingModeFromString(root["swappingMode"].as<std::string>());
 	behaviourOnFailure = FailureModeFromString(root["behaviourOnFailure"].as<std::string>());
+	useDepthFilter = root["useDepthFilter"].as<bool>();
 	useBilateralFilter = root["useBilateralFilter"].as<bool>();
 	useSDFNormals = root["useSDFNormals"].as<bool>();
 	skipPoints = root["skipPoints"].as<bool>();

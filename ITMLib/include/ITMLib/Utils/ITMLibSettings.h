@@ -47,6 +47,10 @@ public:
 
 	bool useApproximateRaycast;
 
+	/// Whether to apply pre-filter do depth image
+	bool useDepthFilter;
+
+	/// Whether to bilateral filter do depth image
 	bool useBilateralFilter;
 
 	/// Whether to infer normals from SDF (slower) or neighboring points for tracking

@@ -136,7 +136,7 @@ namespace InputSource {
 
 		void loadIntoCache() const;
 		mutable size_t cachedFrameNo;
-		size_t currentFrameNo;
+		mutable size_t currentFrameNo;
 		mutable bool cacheIsValid;
 
 		PathGenerator pathGenerator;

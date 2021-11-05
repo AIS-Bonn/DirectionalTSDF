@@ -268,9 +268,9 @@ ITMBasicEngine::ProcessFrame(ITMUChar4Image* rgbImage, ITMShortImage* rawDepthIm
 //		settings->fusionParams.fusionMetric == FusionMetric::FUSIONMETRIC_POINT_TO_PLANE);
 	// prepare image and turn it into a depth image
 	if (imuMeasurement == nullptr)
-		viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, computeNormals);
+		viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useDepthFilter, settings->useBilateralFilter, computeNormals);
 	else
-		viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, imuMeasurement,
+		viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useDepthFilter, settings->useBilateralFilter, imuMeasurement,
 		                        computeNormals);
 
 	if (!mainProcessingActive) return ITMTrackingState::TRACKING_FAILED;
@@ -481,7 +481,7 @@ ITMRenderError ITMBasicEngine::ComputeICPError()
 	return result;
 }
 
-void ITMBasicEngine::GetImage(ITMUChar4Image* out, GetImageType getImageType, ORUtils::SE3Pose* pose,
+void ITMBasicEngine::GetImage(ITMUChar4Image* out, const GetImageType getImageType, const ORUtils::SE3Pose* pose,
                               const ITMIntrinsics* intrinsics, bool normalsFromSDF)
 {
 	if (view == nullptr) return;

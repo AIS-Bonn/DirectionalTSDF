@@ -13,6 +13,9 @@ swappingMode: disabled # [disabled, enabled, delete]
 # what to do on tracker failure: ignore, relocalise or stop integration - not supported in loop closure version
 behaviourOnFailure: relocalise  # [ignore, relocalise, stopIntegration]
 
+# enable or disable pre-filtering of depth images (removes extreme outliers)
+useDepthFilter: true
+
 # enable or disable bilateral filtering of depth images
 useBilateralFilter: true
 

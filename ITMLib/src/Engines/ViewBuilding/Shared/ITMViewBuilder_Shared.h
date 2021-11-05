@@ -11,7 +11,8 @@ namespace ITMLib
 {
 
 _CPU_AND_GPU_CODE_ inline void convertDisparityToDepth(float* d_out, int x, int y, const short* d_in,
-                                                       Vector2f disparityCalibParams, float fx_depth, Vector2i imgSize)
+                                                       Vector2f disparityCalibParams, float fx_depth, Vector2i imgSize,
+                                                       bool filterDepth)
 {
 	int locId = x + y * imgSize.x;
 
@@ -22,21 +23,74 @@ _CPU_AND_GPU_CODE_ inline void convertDisparityToDepth(float* d_out, int x, int 
 	if (disparity_tmp == 0) depth = 0.0;
 	else depth = 8.0f * disparityCalibParams.y * fx_depth / disparity_tmp;
 
+	if (filterDepth)
+	{
+		d_out[locId] = -1.0f;
+		const int ids[8] = {(x + -1) + (y + 0) * imgSize.x, (x + 1) + (y + 0) * imgSize.x, (x + -1) + (y + 1) * imgSize.x,
+		                    (x + 0) + (y + 1) * imgSize.x, (x + 1) + (y + 1) * imgSize.x, (x + -1) + (y + -1) * imgSize.x,
+		                    (x + 0) + (y + -1) * imgSize.x, (x + 1) + (y + -1) * imgSize.x};
+		// not enough neighbors
+		uint8_t noNeighbors = 0;
+		for (int id : ids)
+		{
+			noNeighbors += d_in[id] > 0;
+		}
+		if (noNeighbors < 2)
+			return;
+
+		// no neighboring pixels support depth jump
+		uint8_t support = 0;
+		for (int id : ids)
+		{
+			float depth_ = 8.0f * disparityCalibParams.y * fx_depth / (disparityCalibParams.x - (float) (d_in[id]));
+			support += d_in[id] > 0 and std::abs(depth_ - depth) < 0.5;
+		}
+		if (support < 3)
+			return;
+	}
+
 	d_out[locId] = (depth > 0) ? depth : -1.0f;
 }
 
 _CPU_AND_GPU_CODE_ inline void
-convertDepthAffineToFloat(float* d_out, int x, int y, const short* d_in, Vector2i imgSize, Vector2f depthCalibParams)
+convertDepthAffineToFloat(float* d_out, int x, int y, const short* d_in, Vector2i imgSize, Vector2f depthCalibParams,
+													bool filterDepth)
 {
 	int locId = x + y * imgSize.x;
 
 	short depth_in = d_in[locId];
+
+	if (filterDepth)
+	{
+		d_out[locId] = -1.0f;
+		const int ids[8] = {(x + -1) + (y + 0) * imgSize.x, (x + 1) + (y + 0) * imgSize.x, (x + -1) + (y + 1) * imgSize.x,
+		                    (x + 0) + (y + 1) * imgSize.x, (x + 1) + (y + 1) * imgSize.x, (x + -1) + (y + -1) * imgSize.x,
+		                    (x + 0) + (y + -1) * imgSize.x, (x + 1) + (y + -1) * imgSize.x};
+		// not enough neighbors
+		uint8_t noNeighbors = 0;
+		for (int id : ids)
+		{
+			noNeighbors += d_in[id] > 0;
+		}
+		if (noNeighbors < 2)
+			return;
+
+		// no neighboring pixels support depth jump
+		uint8_t support = 0;
+		for (int id : ids)
+		{
+			support += d_in[id] > 0 and std::abs(d_in[id] - depth_in) * depthCalibParams.x + depthCalibParams.y < 0.2;
+		}
+		if (support < 3)
+			return;
+	}
+
 	d_out[locId] = ((depth_in <= 0) || (depth_in > 32000)) ? -1.0f : (float) depth_in * depthCalibParams.x +
 	                                                                 depthCalibParams.y;
 }
 
-_CPU_AND_GPU_CODE_ inline void filterDepth(float* imageData_out, const float* imageData_in,
-                                           const float sigma_d, const float sigma_r, int x, int y, Vector2i imgDims)
+_CPU_AND_GPU_CODE_ inline void filterDepthBilateral(float* imageData_out, const float* imageData_in,
+                                                    const float sigma_d, const float sigma_r, int x, int y, Vector2i imgDims)
 {
 	if (x >= imgDims.x or y >= imgDims.y)
 		return;
@@ -58,8 +112,8 @@ _CPU_AND_GPU_CODE_ inline void filterDepth(float* imageData_out, const float* im
  * @param y
  * @param imgDims
  */
-_CPU_AND_GPU_CODE_ inline void filterNormals(Vector4f* normals_out, const Vector4f* normals_in,
-                                             float sigma_d, float sigma_r, int x, int y, Vector2i imgDims)
+_CPU_AND_GPU_CODE_ inline void filterNormalsBilateral(Vector4f* normals_out, const Vector4f* normals_in,
+                                                      float sigma_d, float sigma_r, int x, int y, Vector2i imgDims)
 {
 	if (x >= imgDims.x or y >= imgDims.y)
 		return;

@@ -96,7 +96,7 @@ ImageFileReader<PathGenerator>::~ImageFileReader()
 }
 
 template <typename PathGenerator>
-void ImageFileReader<PathGenerator>::loadIntoCache(void) const
+void ImageFileReader<PathGenerator>::loadIntoCache() const
 {
 	if (currentFrameNo == cachedFrameNo) return;
 	cachedFrameNo = currentFrameNo;
@@ -106,6 +106,12 @@ void ImageFileReader<PathGenerator>::loadIntoCache(void) const
 	std::string rgbPath = pathGenerator.getRgbImagePath(currentFrameNo);
 	if (!ReadImageFromFile(cached_rgb, rgbPath.c_str()))
 	{
+		if (currentFrameNo == 0)
+		{ // if failed for 0, check if dataset count starts at 1
+			currentFrameNo++;
+			loadIntoCache();
+			return;
+		}
 		if (cached_rgb->noDims.x > 0) cacheIsValid = false;
 		printf("error reading file '%s'\n", rgbPath.c_str());
 	}
@@ -121,7 +127,7 @@ void ImageFileReader<PathGenerator>::loadIntoCache(void) const
 }
 
 template <typename PathGenerator>
-bool ImageFileReader<PathGenerator>::hasMoreImages(void) const
+bool ImageFileReader<PathGenerator>::hasMoreImages() const
 {
 	loadIntoCache();
 	return cacheIsValid;
