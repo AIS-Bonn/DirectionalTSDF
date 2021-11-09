@@ -30,7 +30,7 @@ class CLIEngine : public AppEngine
 
 private:
 	void _initialise(int argc, char**argv, AppData* appData, ITMLib::ITMMainEngine* mainEngine) override;
-	bool _processFrame() override;
+	bool _postFusion() override;
 
 	static CLIEngine* instance;
 

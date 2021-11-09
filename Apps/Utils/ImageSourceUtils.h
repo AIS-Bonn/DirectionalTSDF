@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <InputSource/PointCloudSourceEngine.h>
 #include "ITMLib/Utils/ITMLibSettings.h"
 #include "InputSource/IMUSourceEngine.h"
 #include "InputSource/OpenNIEngine.h"
@@ -164,3 +165,11 @@ static inline void CreateTUMImageSource(ImageSourceEngine*& imageSource, IMUSour
 	imuSource = nullptr;
 }
 
+static inline void CreatePointCloudImageSource(PointCloudSourceEngine*& pointCloudSource, IMUSourceEngine*& imuSource,
+																							 const std::string& calibrationFile, const std::string& datasetDirectory)
+{
+//	TUMPathGenerator pathGenerator(datasetDirectory);
+	pointCloudSource = new PointCloudSourceEngine(datasetDirectory);
+
+	imuSource = nullptr;
+}

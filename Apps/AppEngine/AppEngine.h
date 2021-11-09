@@ -28,6 +28,7 @@ protected:
 	ITMLib::ITMMainEngine* mainEngine;
 	ITMLib::ITMLoggingEngine statisticsEngine;
 
+	ITMPointCloud* inputPointCloud;
 	ITMUChar4Image* inputRGBImage;
 	ITMShortImage* inputRawDepthImage;
 	const ORUtils::SE3Pose* inputPose;
@@ -219,7 +220,7 @@ protected:
 
 	virtual void _initialise(int argc, char** argv, AppData* appData, ITMMainEngine* mainEngine) = 0;
 
-	virtual bool _processFrame() = 0;
+	virtual bool _postFusion() = 0;
 
 public:
 	AppEngine() = default;
@@ -235,6 +236,7 @@ public:
 			delete imgs.second;
 		}
 
+		delete inputPointCloud;
 		delete inputRGBImage;
 		delete inputRawDepthImage;
 		delete inputIMUMeasurement;
@@ -242,39 +244,55 @@ public:
 
 	inline bool ProcessFrame()
 	{
-		if (!appData->imageSource->hasMoreImages()) return false;
-		appData->imageSource->getImages(inputRGBImage, inputRawDepthImage);
-
-		if (appData->imuSource != nullptr)
+		if (appData->pointCloudSource)
 		{
-			if (!appData->imuSource->hasMoreMeasurements()) return false;
-			else appData->imuSource->getMeasurement(inputIMUMeasurement);
+			if (!appData->pointCloudSource->hasMoreData()) return false;
+			appData->pointCloudSource->getPointCloud(inputPointCloud);
+		} else
+		{
+			if (!appData->imageSource->hasMoreImages()) return false;
+			appData->imageSource->getImages(inputRGBImage, inputRawDepthImage);
+
+			if (appData->imuSource != nullptr)
+			{
+				if (!appData->imuSource->hasMoreMeasurements()) return false;
+				else appData->imuSource->getMeasurement(inputIMUMeasurement);
+			}
+
+			inputPose = nullptr;
+			if (appData->trajectorySource != nullptr)
+			{
+				if (!appData->trajectorySource->hasMorePoses()) return false;
+				inputPose = appData->trajectorySource->getPose();
+			} else if (currentFrameNo == 0)
+			{
+				inputPose = &appData->initialPose;
+			}
+
+			// Safe input images (for ICP error computation)
+//			inputImages.emplace_back();
+//			inputImages.back().first = new ITMUChar4Image(true, false);
+//			inputImages.back().first->SetFrom(inputRGBImage, ORUtils::CPU_TO_CPU);
+//			inputImages.back().first = inputRGBImage; // not required for error renderings, so only store reference
+//			inputImages.back().second = new ITMShortImage(true, false);
+//			inputImages.back().second->SetFrom(inputRawDepthImage, ORUtils::CPU_TO_CPU);
+//			trackingPoses.push_back(*mainEngine->GetTrackingState()->pose_d);
+
+			sdkResetTimer(&timer_instant);
+			sdkStartTimer(&timer_instant);
+			sdkStartTimer(&timer_average);
+
+			// Actual frame processing
+			if (appData->imuSource != nullptr)
+				mainEngine->ProcessFrame(inputRGBImage, inputRawDepthImage, inputIMUMeasurement, inputPose);
+			else mainEngine->ProcessFrame(inputRGBImage, inputRawDepthImage, nullptr, inputPose);
 		}
 
-		inputPose = nullptr;
-		if (appData->trajectorySource != nullptr)
-		{
-			if (!appData->trajectorySource->hasMorePoses()) return false;
-			inputPose = appData->trajectorySource->getPose();
-		} else if (currentFrameNo == 0)
-		{
-			inputPose = &appData->initialPose;
-		}
+#ifndef COMPILE_WITHOUT_CUDA
+		ORcudaSafeCall(cudaThreadSynchronize());
+#endif
 
-		// Safe input images
-		inputImages.emplace_back();
-//	inputImages.back().first = new ITMUChar4Image(true, false);
-//	inputImages.back().first->SetFrom(inputRGBImage, ORUtils::CPU_TO_CPU);
-		inputImages.back().first = inputRGBImage; // not required for error renderings, so only store reference
-		inputImages.back().second = new ITMShortImage(true, false);
-		inputImages.back().second->SetFrom(inputRawDepthImage, ORUtils::CPU_TO_CPU);
-		trackingPoses.push_back(*mainEngine->GetTrackingState()->pose_d);
-
-		sdkResetTimer(&timer_instant);
-		sdkStartTimer(&timer_instant);
-		sdkStartTimer(&timer_average);
-
-		if (not _processFrame()) return false;
+		if (not _postFusion()) return false;
 
 		sdkStopTimer(&timer_instant);
 		sdkStopTimer(&timer_average);
@@ -303,6 +321,7 @@ public:
 
 		this->statisticsEngine.Initialize(std::string(outFolder));
 		bool allocateGPU = appData->internalSettings->deviceType == ITMLibSettings::DEVICE_CUDA;
+		inputPointCloud = new ITMPointCloud;
 		inputRGBImage = new ITMUChar4Image(appData->imageSource->getRGBImageSize(), true, allocateGPU);
 		inputRawDepthImage = new ITMShortImage(appData->imageSource->getDepthImageSize(), true, allocateGPU);
 		inputIMUMeasurement = new ITMIMUMeasurement();

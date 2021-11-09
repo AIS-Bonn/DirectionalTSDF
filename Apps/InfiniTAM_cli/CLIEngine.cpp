@@ -49,16 +49,8 @@ void CLIEngine::Shutdown()
 	delete instance;
 }
 
-bool CLIEngine::_processFrame()
+bool CLIEngine::_postFusion()
 {
-	//actual processing on the mailEngine
-	if (appData->imuSource != nullptr) mainEngine->ProcessFrame(inputRGBImage, inputRawDepthImage, inputIMUMeasurement, inputPose);
-	else mainEngine->ProcessFrame(inputRGBImage, inputRawDepthImage, nullptr, inputPose);
-
-#ifndef COMPILE_WITHOUT_CUDA
-	ORcudaSafeCall(cudaThreadSynchronize());
-#endif
-
 	float processedTime_inst = sdkGetTimerValue(&timer_instant);
 	float processedTime_avg = sdkGetAverageTimerValue(&timer_average);
 

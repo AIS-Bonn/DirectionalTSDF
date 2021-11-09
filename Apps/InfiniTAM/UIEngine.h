@@ -66,7 +66,7 @@ namespace InfiniTAM
 			InputSource::FFMPEGWriter *outputVideoWriter;
 
 			void _initialise(int argc, char** argv, AppData* appData, ITMLib::ITMMainEngine *mainEngine) override;
-			bool _processFrame() override;
+			bool _postFusion() override;
 
 			void printPixelInformation(int x, int y);
 
@@ -87,9 +87,6 @@ namespace InfiniTAM
 
 			static void displayAxes();
 			static void displayHelp();
-
-			/** Check if programm is stuck (e.g. infinit-loop in CUDA code) and exit, if necessary */
-			static void checkStuck(int value);
 
 			const Vector2i & getWindowSize(void) const
 			{ return winSize; }

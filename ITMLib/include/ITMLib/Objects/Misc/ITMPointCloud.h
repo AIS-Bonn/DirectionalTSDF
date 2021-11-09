@@ -12,9 +12,13 @@ class ITMPointCloud
 public:
 	uint noTotalPoints;
 
-	ORUtils::Image<Vector4f>* locations, * normals, * colours;
+	ORUtils::Image<Vector4f>* locations = nullptr;
+	ORUtils::Image<Vector4f>* normals = nullptr;
+	ORUtils::Image<Vector4f>* colours = nullptr;
 
-	explicit ITMPointCloud(Vector2i imgSize, MemoryDeviceType memoryType)
+	ITMPointCloud() = default;
+
+	ITMPointCloud(Vector2i imgSize, MemoryDeviceType memoryType)
 	{
 		this->noTotalPoints = 0;
 
@@ -50,9 +54,6 @@ public:
 		delete colours;
 		delete normals;
 	}
-
-	// Suppress the default copy constructor and assignment operator
-	ITMPointCloud(const ITMPointCloud&);
 
 	ITMPointCloud& operator=(const ITMPointCloud&);
 };

@@ -877,16 +877,9 @@ void SaveErrorImage(const ITMView *view, const std::string& path, ITMLibSettings
 	free(errorImage);
 }
 
-bool UIEngine::_processFrame()
+bool UIEngine::_postFusion()
 {
-	glutTimerFunc(5000, UIEngine::checkStuck, currentFrameNo);
-
-	ITMTrackingState::TrackingResult trackerResult;
-	//actual processing on the mailEngine
-	if (appData->imuSource != nullptr) trackerResult = mainEngine->ProcessFrame(inputRGBImage, inputRawDepthImage, inputIMUMeasurement, inputPose);
-	else trackerResult = mainEngine->ProcessFrame(inputRGBImage, inputRawDepthImage, nullptr, inputPose);
-
-	trackingResult = (int)trackerResult;
+	trackingResult = (int) mainEngine->GetTrackingState()->trackerResult;
 
 	if (isRecording)
 	{
@@ -1005,15 +998,4 @@ void UIEngine::Shutdown()
 	delete saveImage;
 	delete instance;
 	instance = nullptr;
-}
-
-void UIEngine::checkStuck(int frameNoBefore)
-{
-	UIEngine *uiEngine = UIEngine::Instance();
-
-	if (uiEngine->currentFrameNo <= frameNoBefore)
-	{
-		printf("Stuck while processing frame. Exiting program.");
-		exit(-2);
-	}
 }

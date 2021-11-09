@@ -11,3 +11,5 @@ set(STDGPU_BUILD_EXAMPLES OFF CACHE INTERNAL "")
 # Exclude the tests from the build
 set(STDGPU_BUILD_TESTS OFF CACHE INTERNAL "")
 add_subdirectory(stdgpu)
+
+add_subdirectory(tinyply)

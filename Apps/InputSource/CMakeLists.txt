@@ -48,6 +48,7 @@ PicoFlexxEngine.cpp
 RealSenseEngine.cpp
 RealSense2Engine.cpp
 TrajectorySourceEngine.cpp
+PointCloudSourceEngine.cpp
 )
 
 SET(headers
@@ -64,6 +65,7 @@ PicoFlexxEngine.h
 RealSenseEngine.h
 RealSense2Engine.h
 TrajectorySourceEngine.h
+PointCloudSourceEngine.h
 )
 
 #############################
@@ -82,7 +84,7 @@ IF(WITH_CUDA)
 ELSE()
   ADD_LIBRARY(${targetname} STATIC ${sources} ${headers} ${templates})
 ENDIF()
-TARGET_LINK_LIBRARIES(${targetname} ITMLib::ITMLib)
+TARGET_LINK_LIBRARIES(${targetname} ITMLib::ITMLib tinyply)
 
 TARGET_INCLUDE_DIRECTORIES(${targetname}
   PUBLIC

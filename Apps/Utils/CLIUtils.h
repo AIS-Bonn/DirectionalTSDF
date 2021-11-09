@@ -9,16 +9,18 @@
 
 #include <CLI/CLI11.hpp>
 
-#include "ITMLib/Utils/ITMLibSettings.h"
-#include "InputSource/ImageSourceEngine.h"
+#include <ITMLib/Utils/ITMLibSettings.h>
+#include <InputSource/ImageSourceEngine.h>
 #include "ImageSourceUtils.h"
-#include "InputSource/TrajectorySourceEngine.h"
+#include <InputSource/TrajectorySourceEngine.h>
+#include <InputSource/PointCloudSourceEngine.h>
 
 using namespace InputSource;
 using namespace ITMLib;
 
 struct AppData
 {
+	PointCloudSourceEngine* pointCloudSource;
 	ImageSourceEngine* imageSource;
 	IMUSourceEngine* imuSource;
 	TrajectorySourceEngine* trajectorySource;
@@ -70,6 +72,13 @@ inline int ParseCLIOptions(int argc, char** argv,
 		->excludes(deviceOption, tumOption)
 		->type_name("RGB DEPTH [IMU]")
 		->expected(-2);
+	auto pointCloudOption = app.add_option("--point_cloud", datasetDirectory,
+	                                "Use point cloud dataset (e.g. PLY)")
+		->excludes(deviceOption)
+		->excludes(rawOption)
+		->excludes(tumOption)
+		->check(CLI::ExistingDirectory)
+		->type_name("DIRECTORY");
 	auto videoOption = app.add_option("--video", videoPaths,
 	                                  "Use video dataset (e.g. rgb.avi depth.avi)")
 		->excludes(deviceOption, rawOption, tumOption)
@@ -116,6 +125,9 @@ inline int ParseCLIOptions(int argc, char** argv,
 		const std::string rgbFile = videoPaths.at(0);
 		const std::string depthFile = videoPaths.at(1);
 		CreateFFMPEGImageSource(appData.imageSource, appData.imuSource, calibrationFile, rgbFile, depthFile);
+	} else if (pointCloudOption->count())
+	{
+		CreatePointCloudImageSource(appData.pointCloudSource, appData.imuSource, calibrationFile, datasetDirectory);
 	} else
 	{ // Assume device mode
 		std::string deviceType = "auto";

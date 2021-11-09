@@ -24,9 +24,9 @@ int main(int argc, char** argv)
 	IMUSourceEngine* imuSource = appData.imuSource;
 	std::shared_ptr<ITMLibSettings> internalSettings = appData.internalSettings;
 
-	if (not imageSource)
+	if (not imageSource and not appData.pointCloudSource)
 	{
-		std::cout << "failed to open any image stream" << std::endl;
+		std::cout << "failed to open any input stream" << std::endl;
 		return -1;
 	}
 
