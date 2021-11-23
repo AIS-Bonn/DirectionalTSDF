@@ -35,6 +35,10 @@ public:
 
 	int CountValidDepths(const ITMFloatImage* image_in) const override;
 
+	void ComputePointCloudCenter(Vector3f& center, size_t& noValidPoints, const ITMFloat4Image* cloud) const override;
+
+	void ComputeDepthCloudCenter(Vector3f& center, size_t& noValidPoints, const ITMFloatImage* depth, Vector4f intrinsics) const override;
+
 	ITMLowLevelEngine_CPU();
 
 	~ITMLowLevelEngine_CPU() override;

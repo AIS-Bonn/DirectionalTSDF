@@ -36,6 +36,10 @@ public:
 
 	virtual int CountValidDepths(const ITMFloatImage* image_in) const = 0;
 
+	virtual void ComputePointCloudCenter(Vector3f& center, size_t& noValidPoints, const ITMFloat4Image* cloud) const = 0;
+
+	virtual void ComputeDepthCloudCenter(Vector3f& center, size_t& noValidPoints, const ITMFloatImage* depth, Vector4f intrinsics) const = 0;
+
 	ITMLowLevelEngine(void)
 	{}
 

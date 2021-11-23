@@ -2,6 +2,7 @@
 
 #include "ITMLowLevelEngine_CPU.h"
 
+#include <ITMLib/Utils/ITMProjectionUtils.h>
 #include "../Shared/ITMLowLevelEngine_Shared.h"
 
 using namespace ITMLib;
@@ -181,4 +182,51 @@ int ITMLowLevelEngine_CPU::CountValidDepths(const ITMFloatImage* image_in) const
 	for (int i = 0; i < image_in->noDims.x * image_in->noDims.y; ++i) if (imageData_in[i] > 0.0) noValidPoints++;
 
 	return noValidPoints;
+}
+
+void
+ITMLowLevelEngine_CPU::ComputePointCloudCenter(Vector3f& center, size_t& noValidPoints,
+                                               const ITMFloat4Image* cloud) const
+{
+	noValidPoints = 0;
+	center = Vector3f(0, 0, 0);
+	const Vector4f* points = cloud->GetData(MEMORYDEVICE_CPU);
+
+	for (int y = 0; y < cloud->noDims.y; y++)
+		for (int x = 0; x < cloud->noDims.x; x++)
+		{
+			int idx = PixelCoordsToIndex(x, y, cloud->noDims);
+			const Vector4f& point = points[idx];
+			if (point.w >= 0.f && point.z >= 1e-3f)
+			{
+				noValidPoints++;
+				center += point.toVector3();
+			}
+		}
+
+	if (noValidPoints > 0)
+		center /= noValidPoints;
+}
+
+void ITMLowLevelEngine_CPU::ComputeDepthCloudCenter(Vector3f& center, size_t& noValidPoints, const ITMFloatImage* depth,
+                                                    Vector4f intrinsics) const
+{
+	noValidPoints = 0;
+	center = Vector3f(0, 0, 0);
+	const float* depthData = depth->GetData(MEMORYDEVICE_CPU);
+
+	Vector4f invProjParams = invertProjectionParams(intrinsics);
+	for (int y = 0; y < depth->noDims.y; y++)
+		for (int x = 0; x < depth->noDims.x; x++)
+		{
+			int idx = PixelCoordsToIndex(x, y, depth->noDims);
+			if (depthData[idx] > 1e-3)
+			{
+				noValidPoints++;
+				center += reprojectImagePoint(x, y, depthData[idx], invProjParams);
+			}
+		}
+
+	if (noValidPoints > 0)
+		center /= noValidPoints;
 }

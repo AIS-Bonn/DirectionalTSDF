@@ -3,7 +3,9 @@
 #include "ITMLowLevelEngine_CUDA.h"
 
 #include "../Shared/ITMLowLevelEngine_Shared.h"
+#include <ITMLib/Utils/ITMProjectionUtils.h>
 #include <Utils/ITMCUDAUtils.h>
+
 #include <ORUtils/CUDADefines.h>
 
 using namespace ITMLib;
@@ -43,6 +45,20 @@ __global__ void gradientY_device(Vector4s* grad, const Vector4u* image, Vector2i
 __global__ void gradientXY_device(Vector2f* grad, const float* image, Vector2i imgSize);
 
 __global__ void countValidDepths_device(const float* imageData_in, int imgSizeTotal, int* counterTempData_device);
+
+struct PointCloudAccumulator
+{
+	int noPoints;
+	Vector3f pointSum;
+};
+
+__global__
+void
+computePointCloudCenter_device(PointCloudAccumulator* accumulator, const Vector4f* cloud, Vector2i imageSize);
+
+__global__
+void computeDepthCloudCenter_device(PointCloudAccumulator* accumulator, const float* depth, Vector2i imageSize,
+                                    Vector4f intrinsics);
 
 // host methods
 
@@ -252,7 +268,136 @@ int ITMLowLevelEngine_CUDA::CountValidDepths(const ITMFloatImage* image_in) cons
 	return *counterTempData_host;
 }
 
+void ITMLowLevelEngine_CUDA::ComputePointCloudCenter(Vector3f& center, size_t& noValidPoints,
+                                                     const ITMFloat4Image* cloud) const
+{
+	PointCloudAccumulator* accumulator_device;
+	ORcudaSafeCall(cudaMalloc((void**) &accumulator_device, sizeof(PointCloudAccumulator)));
+	ORcudaSafeCall(cudaMemset(accumulator_device, 0, sizeof(PointCloudAccumulator)));
+
+	Vector2i imageSize = cloud->noDims;
+
+	dim3 blockSize(16, 16);
+	dim3 gridSize((int) ceil((float) imageSize.x / (float) blockSize.x),
+	              (int) ceil((float) imageSize.y / (float) blockSize.y));
+	computePointCloudCenter_device <<<gridSize, blockSize>>>(accumulator_device, cloud->GetData(MEMORYDEVICE_CUDA),
+	                                                         imageSize);
+
+	PointCloudAccumulator accumulator_host;
+	ORcudaSafeCall(
+		cudaMemcpy(&accumulator_host, accumulator_device, sizeof(PointCloudAccumulator), cudaMemcpyDeviceToHost));
+	noValidPoints = accumulator_host.noPoints;
+	center = accumulator_host.pointSum;
+	if (noValidPoints > 0) center /= noValidPoints;
+
+	ORcudaSafeCall(cudaFree(accumulator_device));
+}
+
+void
+ITMLowLevelEngine_CUDA::ComputeDepthCloudCenter(Vector3f& center, size_t& noValidPoints, const ITMFloatImage* depth,
+                                                Vector4f intrinsics) const
+{
+	PointCloudAccumulator* accumulator_device;
+	ORcudaSafeCall(cudaMalloc((void**) &accumulator_device, sizeof(PointCloudAccumulator)));
+	ORcudaSafeCall(cudaMemset(accumulator_device, 0, sizeof(PointCloudAccumulator)));
+
+	Vector2i imageSize = depth->noDims;
+
+	dim3 blockSize(16, 16);
+	dim3 gridSize((int) ceil((float) imageSize.x / (float) blockSize.x),
+	              (int) ceil((float) imageSize.y / (float) blockSize.y));
+
+	computeDepthCloudCenter_device <<<gridSize, blockSize>>>(accumulator_device, depth->GetData(MEMORYDEVICE_CUDA),
+	                                                         imageSize, invertProjectionParams(intrinsics));
+
+	PointCloudAccumulator accumulator_host;
+	ORcudaSafeCall(
+		cudaMemcpy(&accumulator_host, accumulator_device, sizeof(PointCloudAccumulator), cudaMemcpyDeviceToHost));
+	noValidPoints = accumulator_host.noPoints;
+	center = accumulator_host.pointSum;
+	if (noValidPoints > 0) center /= noValidPoints;
+
+	ORcudaSafeCall(cudaFree(accumulator_device));
+}
+
 // device functions
+
+__global__
+void computePointCloudCenter_device(PointCloudAccumulator* accumulator, const Vector4f* cloud, const Vector2i imageSize)
+{
+	int x = threadIdx.x + blockIdx.x * blockDim.x;
+	int y = threadIdx.y + blockIdx.y * blockDim.y;
+	int idx = PixelCoordsToIndex(x, y, imageSize);
+
+	int locId_local = threadIdx.x + threadIdx.y * blockDim.x;
+
+	__shared__ float dim_shared1[256];
+	__shared__ float dim_shared2[256];
+	__shared__ float dim_shared3[256];
+	__shared__ bool blockHasValidPoint;
+
+	blockHasValidPoint = false;
+	__syncthreads();
+
+	Vector3f point(0, 0, 0);
+	bool isValidPoint = false;
+
+	if (x < imageSize.width && y < imageSize.height)
+	{
+		const Vector4f& point_ = cloud[idx];
+		if (point_.w >= 0.f && point_.z >= 1e-3f)
+		{
+			point = point_.toVector3();
+			blockHasValidPoint = true;
+			isValidPoint = true;
+		}
+	}
+
+	__syncthreads();
+	if (!blockHasValidPoint) return;
+
+	parallelReduce(accumulator->noPoints, (int) isValidPoint, locId_local, dim_shared1);
+	parallelReduceVector3(accumulator->pointSum, point, locId_local, dim_shared1, dim_shared2, dim_shared3);
+}
+
+__global__
+void computeDepthCloudCenter_device(PointCloudAccumulator* accumulator, const float* depth,
+                                    const Vector2i imageSize, const Vector4f invProjParams)
+{
+	int x = threadIdx.x + blockIdx.x * blockDim.x;
+	int y = threadIdx.y + blockIdx.y * blockDim.y;
+	int idx = PixelCoordsToIndex(x, y, imageSize);
+
+	int locId_local = threadIdx.x + threadIdx.y * blockDim.x;
+
+	__shared__ float dim_shared1[256];
+	__shared__ float dim_shared2[256];
+	__shared__ float dim_shared3[256];
+	__shared__ bool blockHasValidPoint;
+
+	blockHasValidPoint = false;
+	__syncthreads();
+
+	Vector3f point(0, 0, 0);
+	bool isValidPoint = false;
+
+	if (x < imageSize.width && y < imageSize.height)
+	{
+		const float depthValue = depth[idx];
+		if (depthValue > 1e-3)
+		{
+			point = reprojectImagePoint(x, y, depthValue, invProjParams);
+			blockHasValidPoint = true;
+			isValidPoint = true;
+		}
+	}
+
+	__syncthreads();
+	if (!blockHasValidPoint) return;
+
+	parallelReduce(accumulator->noPoints, (int) isValidPoint, locId_local, dim_shared1);
+	parallelReduceVector3(accumulator->pointSum, point, locId_local, dim_shared1, dim_shared2, dim_shared3);
+}
 
 __global__ void convertColourToIntensity_device(float* imageData_out, Vector2i dims, const Vector4u* imageData_in)
 {

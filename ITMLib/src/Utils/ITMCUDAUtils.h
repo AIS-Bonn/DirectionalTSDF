@@ -38,6 +38,103 @@ inline __device__ void warpReduce3(volatile float* sdata, int tid)
 	sdata[3 * tid + 2] += sdata[3 * (tid + 1) + 2];
 }
 
+/**
+ * Three layer parallel tree reduction for Vector3 types
+ * @tparam T target type
+ * @tparam S type of shared variable (so other types can be reused, i.e. use shared float for reduction of int)
+ * @param target storage target of reduction
+ * @param source value to add
+ * @param locId_local local Id inside block
+ * @param shared shared variable array
+ */
+template<typename T, typename S>
+__device__
+inline void parallelReduce(T& target, const T& source, const int locId_local,
+                           volatile S* shared)
+{
+	shared[locId_local] = static_cast<S>(source);
+	__syncthreads();
+
+	if (locId_local < 128) shared[locId_local] += shared[locId_local + 128];
+	__syncthreads();
+	if (locId_local < 64) shared[locId_local] += shared[locId_local + 64];
+	__syncthreads();
+
+	if (locId_local < 32) warpReduce(shared, locId_local);
+	__syncthreads();
+
+	if (locId_local == 0) atomicAdd(&target, static_cast<T>(shared[0]));
+}
+
+/**
+ * Three layer parallel tree reduction for arrays of 3 values
+ * @tparam T array type
+ * @param target storage target of reduction
+ * @param source array to add
+ * @param locId_local local Id inside block
+ * @param shared1 shared variable array for first parameter
+ * @param shared2 shared variable array for second parameter
+ * @param shared3 shared variable array for third parameter
+ */
+template<typename T>
+__device__
+inline void parallelReduceArray3(T* target, const T* source, const int locId_local,
+                                  volatile T* shared1, volatile T* shared2, volatile T* shared3)
+{
+	shared1[locId_local] = source[0];
+	shared2[locId_local] = source[1];
+	shared3[locId_local] = source[2];
+	__syncthreads();
+
+	if (locId_local < 128)
+	{
+		shared1[locId_local] += shared1[locId_local + 128];
+		shared2[locId_local] += shared2[locId_local + 128];
+		shared3[locId_local] += shared3[locId_local + 128];
+	}
+	__syncthreads();
+	if (locId_local < 64)
+	{
+		shared1[locId_local] += shared1[locId_local + 64];
+		shared2[locId_local] += shared2[locId_local + 64];
+		shared3[locId_local] += shared3[locId_local + 64];
+	}
+	__syncthreads();
+
+	if (locId_local < 32)
+	{
+		warpReduce(shared1, locId_local);
+		warpReduce(shared2, locId_local);
+		warpReduce(shared3, locId_local);
+	}
+	__syncthreads();
+
+	if (locId_local == 0)
+	{
+		atomicAdd(&(target[0]), shared1[0]);
+		atomicAdd(&(target[1]), shared2[0]);
+		atomicAdd(&(target[2]), shared3[0]);
+	}
+}
+
+/**
+ * Three layer parallel tree reduction for Vector3 types
+ * @tparam T vector type
+ * @param target storage target of reduction
+ * @param source value to add
+ * @param locId_local local Id inside block
+ * @param shared1 shared variable array for first parameter
+ * @param shared2 shared variable array for second parameter
+ * @param shared3 shared variable array for third parameter
+ */
+template<typename T>
+__device__
+inline void parallelReduceVector3(ORUtils::Vector3<T>& target, const ORUtils::Vector3<T>& source, const int locId_local,
+                                  volatile T* shared1, volatile T* shared2, volatile T* shared3)
+{
+	parallelReduceArray3(target.v, source.v, locId_local, shared1, shared2, shared3);
+}
+
 template<typename T>
 __device__ int computePrefixSum_device(uint element, T* sum, int localSize, int localId)
 {

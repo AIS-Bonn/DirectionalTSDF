@@ -102,4 +102,10 @@ inline int hash(int seed, int value)
 	return (seed * value) % 16235657;
 }
 
+_CPU_AND_GPU_CODE_
+inline int PixelCoordsToIndex(int x, int y, const Vector2i& imgSize)
+{
+	return x + y * imgSize.width;
+}
+
 } // namespace ITMLib
