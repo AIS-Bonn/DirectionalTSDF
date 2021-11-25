@@ -12,8 +12,8 @@ public:
 	struct AccuCell;
 
 private:
-	AccuCell* accu_host;
-	AccuCell* accu_device;
+	AccuCell* accu_host = nullptr;
+	AccuCell* accu_device = nullptr;
 
 protected:
 	int ComputeGandH_Depth(float& f, float* nabla, float* hessian, Matrix4f approxInvPose) override;

@@ -11,11 +11,16 @@
 #include <ITMLib/Objects/Tracking/ITMSceneHierarchyLevel.h>
 #include <ITMLib/Objects/Tracking/TrackerIterationType.h>
 
+#include <Eigen/Dense>
+
 #include <ORUtils/HomkerMap.h>
 #include <ORUtils/SVMClassifier.h>
 
 namespace ITMLib
 {
+
+typedef double EigenT;
+
 /** Base class for engine performing ICP based tracking.
 		A typical example would be the original KinectFusion
 		tracking algorithm.
@@ -70,15 +75,15 @@ private:
 
 	void SetEvaluationParams(int levelId);
 
-	void ComputeDelta(float* delta, float* nabla, float* hessian, bool shortIteration) const;
+	void ComputeDelta(Eigen::Matrix<EigenT, 6, 1>& delta, Eigen::Matrix<EigenT, 6, 1>& nabla, Eigen::Matrix<EigenT, 6, 6>& hessian, bool shortIteration) const;
 
-	void ApplyDelta(const Matrix4f& para_old, const float* delta, Matrix4f& para_new) const;
+	void ApplyDelta(const Matrix4f& para_old, const Eigen::Matrix<EigenT, 6, 1>& delta, Matrix4f& para_new) const;
 
-	bool HasConverged(float* step) const;
+	bool HasConverged(const Eigen::Matrix<EigenT, 6, 1>& delta) const;
 
 	void SetEvaluationData(ITMTrackingState* trackingState, const ITMView* view);
 
-	void UpdatePoseQuality(int noValidPoints_old, float* hessian_good, float f_old);
+	void UpdatePoseQuality(int noValidPoints_old, const Eigen::Matrix<EigenT, 6, 6>& hessian_good, float f_old);
 
 	ORUtils::HomkerMap* map;
 	ORUtils::SVMClassifier* svmClassifier;

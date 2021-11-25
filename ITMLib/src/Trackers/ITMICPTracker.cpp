@@ -2,8 +2,10 @@
 
 #include <ITMLib/Trackers/ITMICPTracker.h>
 #include <ORUtils/Cholesky.h>
+#include <ORUtils/EigenConversion.h>
 
 #include <cmath>
+#include <iostream>
 
 using namespace ITMLib;
 
@@ -216,90 +218,59 @@ void ITMICPTracker::SetEvaluationParams(int levelId)
 	this->iterationType = viewHierarchy_depth->GetLevel(levelId)->iterationType;
 }
 
-void ITMICPTracker::ComputeDelta(float* step, float* nabla, float* hessian, bool shortIteration) const
-{
-	for (int i = 0; i < 6; i++) step[i] = 0;
 
+void ITMICPTracker::ComputeDelta(Eigen::Matrix<EigenT, 6, 1>& delta, Eigen::Matrix<EigenT, 6, 1>& nabla,
+                                 Eigen::Matrix<EigenT, 6, 6>& hessian, bool shortIteration) const
+{
+	delta.setZero();
 	if (shortIteration)
 	{
-		float smallHessian[3 * 3];
-		for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) smallHessian[r + c * 3] = hessian[r + c * 6];
-
-		ORUtils::Cholesky cholA(smallHessian, 3);
-		cholA.Backsub(step, nabla);
+		Eigen::Matrix<EigenT, 3, 3> H = hessian.block<3, 3>(0, 0);
+		Eigen::Matrix<EigenT, 3, 1> g = nabla.block<3, 1>(0, 0);
+		delta.block<3, 1>(0, 0) = H.llt().solve(-g);
 	} else
 	{
-		ORUtils::Cholesky cholA(hessian, 6);
-		cholA.Backsub(step, nabla);
+		delta = hessian.llt().solve(-nabla); // negative, because error term of form || J x + r ||^2
 	}
 }
 
-bool ITMICPTracker::HasConverged(float* step) const
+bool ITMICPTracker::HasConverged(const Eigen::Matrix<EigenT, 6, 1>& delta) const
 {
-	float stepLength = 0.0f;
-	for (int i = 0; i < 6; i++) stepLength += step[i] * step[i];
-
-	if (sqrt(stepLength) / 6 < parameters.smallStepSizeCriterion) return true; //converged
-
-	return false;
+	return (delta.norm() / 6) < parameters.smallStepSizeCriterion;
 }
 
-void ITMICPTracker::ApplyDelta(const Matrix4f& para_old, const float* delta, Matrix4f& para_new) const
+template<class Derived>
+inline Eigen::Matrix<typename Derived::Scalar, 3, 3> VectorToSkewSymmetricMatrix(const Eigen::MatrixBase<Derived>& vec)
 {
-	float step[6];
+	EIGEN_STATIC_ASSERT_VECTOR_SPECIFIC_SIZE(Derived, 3);
+	return (Eigen::Matrix<typename Derived::Scalar, 3, 3>() << 0.0, -vec[2], vec[1],
+		vec[2], 0.0, -vec[0],
+		-vec[1], vec[0], 0.0).finished();
+}
 
+void
+ITMICPTracker::ApplyDelta(const Matrix4f& para_old, const Eigen::Matrix<EigenT, 6, 1>& delta, Matrix4f& para_new) const
+{
+	Eigen::Matrix<EigenT, 4, 4> Tinc = Eigen::Matrix<EigenT, 4, 4>::Identity();
 	switch (iterationType)
 	{
 		case TRACKER_ITERATION_ROTATION:
-			step[0] = (float) (delta[0]);
-			step[1] = (float) (delta[1]);
-			step[2] = (float) (delta[2]);
-			step[3] = 0.0f;
-			step[4] = 0.0f;
-			step[5] = 0.0f;
+			Tinc.block<3, 3>(0, 0) += VectorToSkewSymmetricMatrix(delta.block<3, 1>(0, 0));
 			break;
 		case TRACKER_ITERATION_TRANSLATION:
-			step[0] = 0.0f;
-			step[1] = 0.0f;
-			step[2] = 0.0f;
-			step[3] = (float) (delta[0]);
-			step[4] = (float) (delta[1]);
-			step[5] = (float) (delta[2]);
+			Tinc.block<3, 1>(0, 3) = Eigen::Matrix<EigenT, 3, 1>(delta.block<3, 1>(0, 0));
 			break;
 		default:
 		case TRACKER_ITERATION_BOTH:
-			step[0] = (float) (delta[0]);
-			step[1] = (float) (delta[1]);
-			step[2] = (float) (delta[2]);
-			step[3] = (float) (delta[3]);
-			step[4] = (float) (delta[4]);
-			step[5] = (float) (delta[5]);
+			Tinc.block<3, 3>(0, 0) += VectorToSkewSymmetricMatrix(delta.block<3, 1>(0, 0));
+			Tinc.block<3, 1>(0, 3) = delta.block<3, 1>(3, 0);
 			break;
 	}
-
-	Matrix4f Tinc;
-
-	Tinc.m00 = 1.0f;
-	Tinc.m10 = step[2];
-	Tinc.m20 = -step[1];
-	Tinc.m30 = step[3];
-	Tinc.m01 = -step[2];
-	Tinc.m11 = 1.0f;
-	Tinc.m21 = step[0];
-	Tinc.m31 = step[4];
-	Tinc.m02 = step[1];
-	Tinc.m12 = -step[0];
-	Tinc.m22 = 1.0f;
-	Tinc.m32 = step[5];
-	Tinc.m03 = 0.0f;
-	Tinc.m13 = 0.0f;
-	Tinc.m23 = 0.0f;
-	Tinc.m33 = 1.0f;
-
-	para_new = Tinc * para_old;
+	para_new = ORUtils::FromEigen<Matrix4f>(Tinc) * para_old;
 }
 
-void ITMICPTracker::UpdatePoseQuality(int noValidPoints_old, float* hessian_good, float f_old)
+void
+ITMICPTracker::UpdatePoseQuality(int noValidPoints_old, const Eigen::Matrix<EigenT, 6, 6>& hessian_good, float f_old)
 {
 	size_t noTotalPoints = viewHierarchy_depth->GetLevel(0)->data->dataSize;
 
@@ -308,31 +279,24 @@ void ITMICPTracker::UpdatePoseQuality(int noValidPoints_old, float* hessian_good
 	float normFactor_v1 = (float) noValidPoints_old / (float) noTotalPoints;
 	float normFactor_v2 = (float) noValidPoints_old / (float) noValidPointsMax;
 
-	float det = 0.0f;
-	if (iterationType == TRACKER_ITERATION_BOTH)
-	{
-		ORUtils::Cholesky cholA(hessian_good, 6);
-		det = cholA.Determinant();
-		if (std::isnan(det)) det = 0.0f;
-	}
+//	float det = 0.0f;
+//	if (iterationType == TRACKER_ITERATION_BOTH)
+//	{
+//		det = hessian_good.llt().matrixL().determinant();
+//		if (std::isnan(det)) det = 0.0f;
+//	}
 
 	float det_norm_v1 = 0.0f;
 	if (iterationType == TRACKER_ITERATION_BOTH)
 	{
-		float h[6 * 6];
-		for (int i = 0; i < 6 * 6; ++i) h[i] = hessian_good[i] * normFactor_v1;
-		ORUtils::Cholesky cholA(h, 6);
-		det_norm_v1 = cholA.Determinant();
+		det_norm_v1 = (normFactor_v1 * hessian_good).llt().matrixL().determinant();
 		if (std::isnan(det_norm_v1)) det_norm_v1 = 0.0f;
 	}
 
 	float det_norm_v2 = 0.0f;
 	if (iterationType == TRACKER_ITERATION_BOTH)
 	{
-		float h[6 * 6];
-		for (int i = 0; i < 6 * 6; ++i) h[i] = hessian_good[i] * normFactor_v2;
-		ORUtils::Cholesky cholA(h, 6);
-		det_norm_v2 = cholA.Determinant();
+		det_norm_v2 = (normFactor_v2 * hessian_good).llt().matrixL().determinant();
 		if (std::isnan(det_norm_v2)) det_norm_v2 = 0.0f;
 	}
 
@@ -376,16 +340,14 @@ void ITMICPTracker::TrackCamera(ITMTrackingState* trackingState, const ITMView* 
 	/** Approximated Hessian of error function
 	 * H ~= 2 * J^T * J  (J = Jacobian)
 	 */
-	float hessian_good[6 * 6];
-	memset(hessian_good, 0, sizeof(hessian_good));
+	Eigen::Matrix<EigenT, 6, 6> hessian_good;
+	hessian_good.setZero();
 
 	/** Gradient vector of error function
 	 * g = 2 * J^T * r (J = Jacobian)
 	 */
-	float nabla_good[6];
-	memset(nabla_good, 0, sizeof(nabla_good));
-
-	float A[6 * 6];
+	Eigen::Matrix<EigenT, 6, 1> nabla_good;
+	nabla_good.setZero();
 
 	const float weightNormalizer = 1 / (1 + parameters.colourWeight);
 
@@ -402,24 +364,22 @@ void ITMICPTracker::TrackCamera(ITMTrackingState* trackingState, const ITMView* 
 
 		for (int iterNo = 0; iterNo < noIterationsPerLevel[levelId]; iterNo++)
 		{
-			MatrixXf<6, 6> hessian_depth, hessian_RGB;
-			float nabla_depth[6], nabla_RGB[6];
+			Eigen::Matrix<float, 6, 6> hessian_depth, hessian_RGB;
+			Eigen::Matrix<float, 6, 1> nabla_depth, nabla_RGB;
 
-			noValidPoints_depth = this->ComputeGandH_Depth(f_depth, nabla_depth, hessian_depth.m, approxInvPose);
+			noValidPoints_depth = this->ComputeGandH_Depth(f_depth, nabla_depth.data(), hessian_depth.data(), approxInvPose);
 
-			MatrixXf<6, 6> hessian_new = hessian_depth;
-			float nabla_new[6];
-			memcpy(nabla_new, nabla_depth, sizeof(nabla_depth));
+			Eigen::Matrix<float, 6, 6> hessian_new = hessian_depth;
+			Eigen::Matrix<float, 6, 1> nabla_new = nabla_depth;
 			f_new = f_depth;
 
 			if (parameters.useColour)
 			{
-				noValidPoints_RGB = this->ComputeGandH_RGB(f_rgb, nabla_RGB, hessian_RGB.m, approxInvPose);
+				noValidPoints_RGB = this->ComputeGandH_RGB(f_rgb, nabla_RGB.data(), hessian_RGB.data(), approxInvPose);
 				if (noValidPoints_RGB > 0)
 				{
-					hessian_new =  weightNormalizer * (hessian_new + parameters.colourWeight * hessian_RGB);
-					for (int i = 0; i < 6; i++)
-						nabla_new[i] += weightNormalizer * (parameters.colourWeight * nabla_RGB[i]);
+					hessian_new = weightNormalizer * (hessian_new + parameters.colourWeight * hessian_RGB);
+					nabla_new += weightNormalizer * (parameters.colourWeight * nabla_RGB);
 					f_new += weightNormalizer * (parameters.colourWeight * f_rgb);
 				}
 			}
@@ -436,23 +396,23 @@ void ITMICPTracker::TrackCamera(ITMTrackingState* trackingState, const ITMView* 
 				f_old = f_new;
 				noValidPoints_old = noValidPoints_depth + noValidPoints_RGB;
 
-				memcpy(hessian_good, hessian_new.m, sizeof(hessian_good));
-				memcpy(nabla_good, nabla_new, sizeof(nabla_good));
+				hessian_good = hessian_new.cast<EigenT>();
+				nabla_good = nabla_new.cast<EigenT>();
 				lambda /= 10.0f;
 			}
-			memcpy(A, hessian_good, sizeof(hessian_good));
-			for (int i = 0; i < 6; ++i) A[i + i * 6] *= 1.0f + lambda;
+			Eigen::Matrix<EigenT, 6, 6> A = hessian_good;
+			A.diagonal() *= (1 + lambda);
 
 			// compute a new step and make sure we've got an SE3
-			float step[6];
-			ComputeDelta(step, nabla_good, A, iterationType != TRACKER_ITERATION_BOTH);
-			ApplyDelta(approxInvPose, step, approxInvPose);
+			Eigen::Matrix<EigenT, 6, 1> delta;
+			ComputeDelta(delta, nabla_good, A, iterationType != TRACKER_ITERATION_BOTH);
+			ApplyDelta(approxInvPose, delta, approxInvPose);
 			trackingState->pose_d->SetInvM(approxInvPose);
 			trackingState->pose_d->Coerce();
 			approxInvPose = trackingState->pose_d->GetInvM();
 
 			// if step is small, assume it's going to decrease the error and finish
-			if (HasConverged(step)) break;
+			if (HasConverged(delta)) break;
 		}
 	}
 
