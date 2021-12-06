@@ -12,13 +12,16 @@ public:
 	struct AccuCell;
 
 private:
-	AccuCell* accu_host = nullptr;
-	AccuCell* accu_device = nullptr;
+	AccuCell* accumulator_device = nullptr;
 
 protected:
-	int ComputeGandH_Depth(float& f, float* nabla, float* hessian, Matrix4f approxInvPose) override;
+	int ComputeGandH_Depth(float& f, float* nabla, float* hessian, Matrix4f approxInvPose, float approxScaleFactor) override;
 
-	int ComputeGandH_RGB(float& f, float* nabla, float* hessian, Matrix4f approxInvPose) override;
+	int ComputeGandH_RGB(float& f, float* nabla, float* hessian, Matrix4f approxInvPose, float approxScaleFactor) override;
+
+	size_t ComputeTransScale(float& f, Eigen::Matrix<EigenT, 4, 4>& H, Eigen::Matrix<EigenT, 4, 1>& g, const Matrix4f& approxInvPose, float approxScaleFactor) override;
+
+	size_t ComputeSahillioglu(float& f, Eigen::Matrix<EigenT, 4, 4>& A, Eigen::Matrix<EigenT, 4, 1>& b, const Matrix4f& approxInvPose, float approxScaleFactor) override;
 
 	void ComputeDepthPointAndIntensity(ITMFloat4Image* points_out,
 	                                   ITMFloatImage* intensity_out,

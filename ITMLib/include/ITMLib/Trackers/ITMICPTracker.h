@@ -33,6 +33,7 @@ public:
 		std::vector<TrackerIterationType> levels;
 		bool useColour = false;
 		float colourWeight = 0.1f;
+		bool optimizeScale = true;
 		float minColourGradient = 0.01f;
 		float smallStepSizeCriterion = 1e-3f;
 		float outlierDistanceFine = 0.002f;
@@ -112,11 +113,20 @@ protected:
 	/** Image hierarchy pyramid of intensity values from the rendered image projected into the current intensity */
 	ITMImageHierarchy<ITMTemplatedHierarchyLevel<ITMFloatImage>>* projectedIntensityHierarchy = nullptr;
 
+	/** center of the point cloud rendered from scene */
+	Vector3f scenePointCloudCenter_world;
+	/** center of the point cloud from depth image */
+	Vector3f depthPointCloudCenter;
+
 	Matrix4f depthToRGBTransform;
 
-	virtual int ComputeGandH_Depth(float& f, float* nabla, float* hessian, Matrix4f approxInvPose) = 0;
+	virtual int ComputeGandH_Depth(float& f, float* nabla, float* hessian, Matrix4f approxInvPose, float approxScaleFactor) = 0;
 
-	virtual int ComputeGandH_RGB(float& f, float* nabla, float* hessian, Matrix4f approxPose) = 0;
+	virtual int ComputeGandH_RGB(float& f, float* nabla, float* hessian, Matrix4f approxPose, float approxScaleFactor) = 0;
+
+	virtual size_t ComputeTransScale(float& f, Eigen::Matrix<EigenT, 4, 4>& H, Eigen::Matrix<EigenT, 4, 1>& g, const Matrix4f& approxInvPose, float approxScaleFactor) = 0;
+
+	virtual size_t ComputeSahillioglu(float& f, Eigen::Matrix<EigenT, 4, 4>& A, Eigen::Matrix<EigenT, 4, 1>& b, const Matrix4f& approxInvPose, float approxScaleFactor) = 0;
 
 	virtual void ComputeDepthPointAndIntensity(ITMFloat4Image* points_out,
 	                                           ITMFloatImage* intensity_out,

@@ -331,9 +331,6 @@ void computePointCloudCenter_device(PointCloudAccumulator* accumulator, const Ve
 
 	int locId_local = threadIdx.x + threadIdx.y * blockDim.x;
 
-	__shared__ float dim_shared1[256];
-	__shared__ float dim_shared2[256];
-	__shared__ float dim_shared3[256];
 	__shared__ bool blockHasValidPoint;
 
 	blockHasValidPoint = false;
@@ -356,8 +353,8 @@ void computePointCloudCenter_device(PointCloudAccumulator* accumulator, const Ve
 	__syncthreads();
 	if (!blockHasValidPoint) return;
 
-	parallelReduce(accumulator->noPoints, (int) isValidPoint, locId_local, dim_shared1);
-	parallelReduceVector3(accumulator->pointSum, point, locId_local, dim_shared1, dim_shared2, dim_shared3);
+	parallelReduceAtomic<256>(accumulator->noPoints, (int) isValidPoint, locId_local);
+	parallelReduceVector3<256>(accumulator->pointSum, point, locId_local);
 }
 
 __global__
@@ -370,9 +367,6 @@ void computeDepthCloudCenter_device(PointCloudAccumulator* accumulator, const fl
 
 	int locId_local = threadIdx.x + threadIdx.y * blockDim.x;
 
-	__shared__ float dim_shared1[256];
-	__shared__ float dim_shared2[256];
-	__shared__ float dim_shared3[256];
 	__shared__ bool blockHasValidPoint;
 
 	blockHasValidPoint = false;
@@ -395,8 +389,8 @@ void computeDepthCloudCenter_device(PointCloudAccumulator* accumulator, const fl
 	__syncthreads();
 	if (!blockHasValidPoint) return;
 
-	parallelReduce(accumulator->noPoints, (int) isValidPoint, locId_local, dim_shared1);
-	parallelReduceVector3(accumulator->pointSum, point, locId_local, dim_shared1, dim_shared2, dim_shared3);
+	parallelReduceAtomic<256>(accumulator->noPoints, (int) isValidPoint, locId_local);
+	parallelReduceVector3<256>(accumulator->pointSum, point, locId_local);
 }
 
 __global__ void convertColourToIntensity_device(float* imageData_out, Vector2i dims, const Vector4u* imageData_in)

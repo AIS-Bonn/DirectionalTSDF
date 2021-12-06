@@ -445,14 +445,14 @@ ITMRenderError ITMBasicEngine::ComputeICPError()
 			float A[6];
 			float error, icpError;
 			bool isValidPoint = computePerPointGH_Depth_Ab<false, false>(
-				A, icpError, x, y, depth[locId],
+				A, icpError, x, y, depth,
 				view->calib.intrinsics_d.imgSize, view->calib.intrinsics_d.projectionParamsSimple.all,
 				view->calib.intrinsics_d.imgSize, view->calib.intrinsics_d.projectionParamsSimple.all,
 				depthImageInvPose, sceneRenderingPose,
-				pointsRay, normalsRay, 100.0);
+				pointsRay, normalsRay, 1, 100.0);
 
 			isValidPoint &= computePerPointError<false, false>(
-				error, x, y, depth[locId],
+				error, x, y, depth,
 				view->calib.intrinsics_d.imgSize, view->calib.intrinsics_d.projectionParamsSimple.all,
 				view->calib.intrinsics_d.imgSize, view->calib.intrinsics_d.projectionParamsSimple.all,
 				depthImageInvPose, sceneRenderingPose,
@@ -550,11 +550,11 @@ void ITMBasicEngine::GetImage(ITMUChar4Image* out, const GetImageType getImageTy
 		{
 			if (renderState_freeview == nullptr)
 			{
-				renderState_freeview = new ITMRenderState(out->noDims, scene->sceneParams->viewFrustum_min,
+				renderState_freeview = new ITMRenderState(intrinsics->imgSize, scene->sceneParams->viewFrustum_min,
 				                                          scene->sceneParams->viewFrustum_max, settings->GetMemoryType());
 			}
 
-			denseMapper->GetSceneReconstructionEngine()->FindVisibleBlocks(scene, pose, &(view->calib.intrinsics_d),
+			denseMapper->GetSceneReconstructionEngine()->FindVisibleBlocks(scene, pose, intrinsics,
 			                                                               renderState_freeview);
 			visualisationEngine->CreateExpectedDepths(scene, pose, intrinsics, renderState_freeview);
 			visualisationEngine->RenderImage(scene, pose, intrinsics, renderState_freeview,

@@ -14,7 +14,7 @@ ITMICPTracker_CPU::ITMICPTracker_CPU(Vector2i imgSize_d, Vector2i imgSize_rgb, c
 ITMICPTracker_CPU::~ITMICPTracker_CPU(void)
 {}
 
-int ITMICPTracker_CPU::ComputeGandH_Depth(float& f, float* nabla, float* hessian, Matrix4f approxInvPose)
+int ITMICPTracker_CPU::ComputeGandH_Depth(float& f, float* nabla, float* hessian, Matrix4f approxInvPose, float approxScaleFactor)
 {
 	Vector4f* pointsMap = sceneHierarchy->GetLevel(0)->pointsMap->GetData(MEMORYDEVICE_CPU);
 	Vector4f* normalsMap = sceneHierarchy->GetLevel(0)->normalsMap->GetData(MEMORYDEVICE_CPU);
@@ -53,24 +53,24 @@ int ITMICPTracker_CPU::ComputeGandH_Depth(float& f, float* nabla, float* hessian
 			{
 				case TRACKER_ITERATION_ROTATION:
 					isValidPoint = computePerPointGH_Depth<true, true>(localNabla, localHessian, localF, x, y,
-					                                                   depth[x + y * viewImageSize.x], viewImageSize,
+					                                                   depth, viewImageSize,
 					                                                   viewIntrinsics, sceneImageSize, sceneIntrinsics,
 					                                                   approxInvPose, renderedScenePose, pointsMap, normalsMap,
-					                                                   distThresh[levelId]);
+					                                                   1, distThresh[levelId]);
 					break;
 				case TRACKER_ITERATION_TRANSLATION:
 					isValidPoint = computePerPointGH_Depth<true, false>(localNabla, localHessian, localF, x, y,
-					                                                    depth[x + y * viewImageSize.x], viewImageSize,
+					                                                    depth, viewImageSize,
 					                                                    viewIntrinsics, sceneImageSize, sceneIntrinsics,
 					                                                    approxInvPose, renderedScenePose, pointsMap, normalsMap,
-					                                                    distThresh[levelId]);
+					                                                    1, distThresh[levelId]);
 					break;
 				case TRACKER_ITERATION_BOTH:
 					isValidPoint = computePerPointGH_Depth<false, false>(localNabla, localHessian, localF, x, y,
-					                                                     depth[x + y * viewImageSize.x], viewImageSize,
+					                                                     depth, viewImageSize,
 					                                                     viewIntrinsics, sceneImageSize, sceneIntrinsics,
 					                                                     approxInvPose, renderedScenePose, pointsMap, normalsMap,
-					                                                     distThresh[levelId]);
+					                                                     1, distThresh[levelId]);
 					break;
 				default:
 					isValidPoint = false;
@@ -86,8 +86,10 @@ int ITMICPTracker_CPU::ComputeGandH_Depth(float& f, float* nabla, float* hessian
 			}
 		}
 
-	for (int r = 0, counter = 0; r < noPara; r++) for (int c = 0; c <= r; c++, counter++) hessian[r + c *
-	                                                                                                  6] = sumHessian[counter];
+	for (int r = 0, counter = 0; r < noPara; r++)
+		for (int c = 0; c <= r; c++, counter++)
+			hessian[r + c *
+			            6] = sumHessian[counter];
 	for (int r = 0; r < noPara; ++r) for (int c = r + 1; c < noPara; c++) hessian[r + c * 6] = hessian[c + r * 6];
 
 	memcpy(nabla, sumNabla, noPara * sizeof(float));
@@ -96,9 +98,9 @@ int ITMICPTracker_CPU::ComputeGandH_Depth(float& f, float* nabla, float* hessian
 	return noValidPoints;
 }
 
-int ITMICPTracker_CPU::ComputeGandH_RGB(float& f, float* nabla, float* hessian, Matrix4f approxInvPose)
+int ITMICPTracker_CPU::ComputeGandH_RGB(float& f, float* nabla, float* hessian, Matrix4f approxInvPose, float approxScaleFactor)
 {
-
+	// FIXME: implement
 }
 
 void ITMICPTracker_CPU::ComputeDepthPointAndIntensity(ITMFloat4Image* points_out, ITMFloatImage* intensity_out,
@@ -121,4 +123,17 @@ void ITMICPTracker_CPU::ComputeDepthPointAndIntensity(ITMFloat4Image* points_out
 		for (int x = 0; x < imageSize_depth.x; x++)
 			computeDepthPointAndColour(x, y, pointsOut, intensityOut, intensityIn, depths, imageSize_rgb, imageSize_depth,
 			                           intrinsics_rgb, intrinsics_depth, scenePose);
+}
+
+size_t ITMICPTracker_CPU::ComputeTransScale(float& f, Eigen::Matrix<EigenT, 4, 4>& H, Eigen::Matrix<EigenT, 4, 1>& g, const Matrix4f& approxInvPose, float approxScaleFactor)
+{
+	// FIXME: implement
+	return 0;
+}
+
+size_t ITMICPTracker_CPU::ComputeSahillioglu(float& f, Eigen::Matrix<EigenT, 4, 4>& A, Eigen::Matrix<EigenT, 4, 1>& b,
+                                             const Matrix4f& approxInvPose, float approxScaleFactor)
+{
+	// FIXME: implement
+	return 0;
 }

@@ -50,10 +50,10 @@ ITMSceneReconstructionEngine_CUDA<TIndex>::IntegrateIntoSceneRayCasting(
 	auto tsdf = GetTSDF(scene);
 
 	/// 1. Initialize summing voxel map (allocate and reset)
-	summingVoxelMap->resize(this->noAllocationBlocks);
+	summingVoxelMap->resize(this->noFusionBlocks);
 	summingVoxelMap->allocate(this->allocationFusionBlocksList->GetData(MEMORYDEVICE_CUDA), this->noAllocationBlocks);
 
-//	/// 2. Ray cast update for every pixel
+	/// 2. Ray cast update for every pixel
 	dim3 blockSizeUpdate(16, 16);
 	dim3 gridSizeUpdate((int) ceil((float) depthImgSize.x / (float) blockSizeUpdate.x),
 	                    (int) ceil((float) depthImgSize.y / (float) blockSizeUpdate.y));

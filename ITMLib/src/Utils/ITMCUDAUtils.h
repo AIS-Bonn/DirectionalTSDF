@@ -16,104 +16,256 @@ inline __device__ void warpReduce(volatile T* sdata, int tid)
 	sdata[tid] += sdata[tid + 1];
 }
 
-inline __device__ void warpReduce3(volatile float* sdata, int tid)
-{
-	sdata[3 * tid + 0] += sdata[3 * (tid + 32) + 0];
-	sdata[3 * tid + 1] += sdata[3 * (tid + 32) + 1];
-	sdata[3 * tid + 2] += sdata[3 * (tid + 32) + 2];
-	sdata[3 * tid + 0] += sdata[3 * (tid + 16) + 0];
-	sdata[3 * tid + 1] += sdata[3 * (tid + 16) + 1];
-	sdata[3 * tid + 2] += sdata[3 * (tid + 16) + 2];
-	sdata[3 * tid + 0] += sdata[3 * (tid + 8) + 0];
-	sdata[3 * tid + 1] += sdata[3 * (tid + 8) + 1];
-	sdata[3 * tid + 2] += sdata[3 * (tid + 8) + 2];
-	sdata[3 * tid + 0] += sdata[3 * (tid + 4) + 0];
-	sdata[3 * tid + 1] += sdata[3 * (tid + 4) + 1];
-	sdata[3 * tid + 2] += sdata[3 * (tid + 4) + 2];
-	sdata[3 * tid + 0] += sdata[3 * (tid + 2) + 0];
-	sdata[3 * tid + 1] += sdata[3 * (tid + 2) + 1];
-	sdata[3 * tid + 2] += sdata[3 * (tid + 2) + 2];
-	sdata[3 * tid + 0] += sdata[3 * (tid + 1) + 0];
-	sdata[3 * tid + 1] += sdata[3 * (tid + 1) + 1];
-	sdata[3 * tid + 2] += sdata[3 * (tid + 1) + 2];
-}
-
 /**
- * Three layer parallel tree reduction for Vector3 types
+ * Multi-layer parallel tree reduction.
  * @tparam T target type
- * @tparam S type of shared variable (so other types can be reused, i.e. use shared float for reduction of int)
  * @param target storage target of reduction
  * @param source value to add
  * @param locId_local local Id inside block
- * @param shared shared variable array
  */
-template<typename T, typename S>
+template<size_t blockSize, typename T>
 __device__
-inline void parallelReduce(T& target, const T& source, const int locId_local,
-                           volatile S* shared)
+inline void parallelReduce(T& target, const T& source, const int threadId)
 {
-	shared[locId_local] = static_cast<S>(source);
+	__shared__ T sdata[blockSize];
+	sdata[threadId] = source;
 	__syncthreads();
 
-	if (locId_local < 128) shared[locId_local] += shared[locId_local + 128];
+	if (blockSize >= 1024)
+	{
+		if (threadId < 512)
+		{ sdata[threadId] += sdata[threadId + 512]; }
+		__syncthreads();
+	}
+	if (blockSize >= 512)
+	{
+		if (threadId < 256)
+		{ sdata[threadId] += sdata[threadId + 256]; }
+		__syncthreads();
+	}
+	if (blockSize >= 256)
+	{
+		if (threadId < 128)
+		{ sdata[threadId] += sdata[threadId + 128]; }
+		__syncthreads();
+	}
+	if (blockSize >= 128)
+	{
+		if (threadId < 64)
+		{ sdata[threadId] += sdata[threadId + 64]; }
+		__syncthreads();
+	}
+	if (threadId < 32) warpReduce(sdata, threadId);
 	__syncthreads();
-	if (locId_local < 64) shared[locId_local] += shared[locId_local + 64];
-	__syncthreads();
-
-	if (locId_local < 32) warpReduce(shared, locId_local);
-	__syncthreads();
-
-	if (locId_local == 0) atomicAdd(&target, static_cast<T>(shared[0]));
+	if (threadId == 0) target = sdata[0];
 }
 
 /**
- * Three layer parallel tree reduction for arrays of 3 values
+ * Three layer parallel tree reduction. Uses atomicAdd for summing results from block reduction (results may not be reproducible)
+ * @tparam T target type
+ * @param target summation target of reduction (atomicAdd)
+ * @param source value to add
+ * @param threadId local Id inside block
+ */
+template<size_t blockSize, typename T>
+__device__
+inline void parallelReduceAtomic(T& target, const T& source, const int threadId)
+{
+	T result;
+	parallelReduce<blockSize, T>(result, source, threadId);
+	if (threadId == 0) atomicAdd(&target, result);
+}
+
+template<size_t blockSize, typename T>
+__device__
+inline void parallelReduceArray3(T* target, const T* source, const int threadId)
+{
+
+	__shared__ T sdata1[blockSize];
+	__shared__ T sdata2[blockSize];
+	__shared__ T sdata3[blockSize];
+
+	sdata1[threadId] = source[0];
+	sdata2[threadId] = source[1];
+	sdata3[threadId] = source[2];
+	__syncthreads();
+
+	if (blockSize >= 1024)
+	{
+		if (threadId < 512)
+		{
+			sdata1[threadId] += sdata1[threadId + 512];
+			sdata2[threadId] += sdata2[threadId + 512];
+			sdata3[threadId] += sdata3[threadId + 512];
+		}
+		__syncthreads();
+	}
+	if (blockSize >= 512)
+	{
+		if (threadId < 256)
+		{
+			sdata1[threadId] += sdata1[threadId + 256];
+			sdata2[threadId] += sdata2[threadId + 256];
+			sdata3[threadId] += sdata3[threadId + 256];
+		}
+		__syncthreads();
+	}
+	if (blockSize >= 256)
+	{
+		if (threadId < 128)
+		{
+			sdata1[threadId] += sdata1[threadId + 128];
+			sdata2[threadId] += sdata2[threadId + 128];
+			sdata3[threadId] += sdata3[threadId + 128];
+		}
+		__syncthreads();
+	}
+	if (blockSize >= 128)
+	{
+		if (threadId < 64)
+		{
+			sdata1[threadId] += sdata1[threadId + 64];
+			sdata2[threadId] += sdata2[threadId + 64];
+			sdata3[threadId] += sdata3[threadId + 64];
+		}
+		__syncthreads();
+	}
+
+	if (threadId < 32)
+	{
+		warpReduce(sdata1, threadId);
+		warpReduce(sdata2, threadId);
+		warpReduce(sdata3, threadId);
+	}
+	__syncthreads();
+
+	if (threadId == 0)
+	{
+		target[0] = sdata1[0];
+		target[1] = sdata2[0];
+		target[2] = sdata3[0];
+	}
+}
+
+template<size_t blockSize, typename T>
+__device__
+inline void parallelReduceArray4(T* target, const T* source, const int threadId)
+{
+
+	__shared__ T sdata1[blockSize];
+	__shared__ T sdata2[blockSize];
+	__shared__ T sdata3[blockSize];
+	__shared__ T sdata4[blockSize];
+
+	sdata1[threadId] = source[0];
+	sdata2[threadId] = source[1];
+	sdata3[threadId] = source[2];
+	sdata4[threadId] = source[3];
+	__syncthreads();
+
+	if (blockSize >= 1024)
+	{
+		if (threadId < 512)
+		{
+			sdata1[threadId] += sdata1[threadId + 512];
+			sdata2[threadId] += sdata2[threadId + 512];
+			sdata3[threadId] += sdata3[threadId + 512];
+			sdata4[threadId] += sdata4[threadId + 512];
+		}
+		__syncthreads();
+	}
+	if (blockSize >= 512)
+	{
+		if (threadId < 256)
+		{
+			sdata1[threadId] += sdata1[threadId + 256];
+			sdata2[threadId] += sdata2[threadId + 256];
+			sdata3[threadId] += sdata3[threadId + 256];
+			sdata4[threadId] += sdata4[threadId + 256];
+		}
+		__syncthreads();
+	}
+	if (blockSize >= 256)
+	{
+		if (threadId < 128)
+		{
+			sdata1[threadId] += sdata1[threadId + 128];
+			sdata2[threadId] += sdata2[threadId + 128];
+			sdata3[threadId] += sdata3[threadId + 128];
+			sdata4[threadId] += sdata4[threadId + 128];
+		}
+		__syncthreads();
+	}
+	if (blockSize >= 128)
+	{
+		if (threadId < 64)
+		{
+			sdata1[threadId] += sdata1[threadId + 64];
+			sdata2[threadId] += sdata2[threadId + 64];
+			sdata3[threadId] += sdata3[threadId + 64];
+			sdata4[threadId] += sdata4[threadId + 64];
+		}
+		__syncthreads();
+	}
+
+	if (threadId < 32)
+	{
+		warpReduce(sdata1, threadId);
+		warpReduce(sdata2, threadId);
+		warpReduce(sdata3, threadId);
+		warpReduce(sdata4, threadId);
+	}
+	__syncthreads();
+
+	if (threadId == 0)
+	{
+		target[0] = sdata1[0];
+		target[1] = sdata2[0];
+		target[2] = sdata3[0];
+		target[3] = sdata4[0];
+	}
+}
+
+/**
+ * Three layer parallel tree reduction for arrays of 3 values. Uses atomicAdd for summing results from block reduction (results may not be reproducible)
  * @tparam T array type
  * @param target storage target of reduction
  * @param source array to add
  * @param locId_local local Id inside block
- * @param shared1 shared variable array for first parameter
- * @param shared2 shared variable array for second parameter
- * @param shared3 shared variable array for third parameter
  */
-template<typename T>
+template<size_t blockSize, typename T>
 __device__
-inline void parallelReduceArray3(T* target, const T* source, const int locId_local,
-                                  volatile T* shared1, volatile T* shared2, volatile T* shared3)
+inline void parallelReduceArray3Atomic(T* target, const T* source, const int threadId)
 {
-	shared1[locId_local] = source[0];
-	shared2[locId_local] = source[1];
-	shared3[locId_local] = source[2];
-	__syncthreads();
-
-	if (locId_local < 128)
+	T result[3];
+	parallelReduceArray3<blockSize, T>(result, source, threadId);
+	if (threadId == 0)
 	{
-		shared1[locId_local] += shared1[locId_local + 128];
-		shared2[locId_local] += shared2[locId_local + 128];
-		shared3[locId_local] += shared3[locId_local + 128];
+		atomicAdd(&target[0], result[0]);
+		atomicAdd(&target[1], result[1]);
+		atomicAdd(&target[2], result[2]);
 	}
-	__syncthreads();
-	if (locId_local < 64)
-	{
-		shared1[locId_local] += shared1[locId_local + 64];
-		shared2[locId_local] += shared2[locId_local + 64];
-		shared3[locId_local] += shared3[locId_local + 64];
-	}
-	__syncthreads();
+}
 
-	if (locId_local < 32)
+/**
+ * Three layer parallel tree reduction for arrays of 4 values. Uses atomicAdd for summing results from block reduction (results may not be reproducible)
+ * @tparam T array type
+ * @param target storage target of reduction
+ * @param source array to add
+ * @param locId_local local Id inside block
+ */
+template<size_t blockSize, typename T>
+__device__
+inline void parallelReduceArray4Atomic(T* target, const T* source, const int threadId)
+{
+	T result[4];
+	parallelReduceArray4<blockSize, T>(result, source, threadId);
+	if (threadId == 0)
 	{
-		warpReduce(shared1, locId_local);
-		warpReduce(shared2, locId_local);
-		warpReduce(shared3, locId_local);
-	}
-	__syncthreads();
-
-	if (locId_local == 0)
-	{
-		atomicAdd(&(target[0]), shared1[0]);
-		atomicAdd(&(target[1]), shared2[0]);
-		atomicAdd(&(target[2]), shared3[0]);
+		atomicAdd(&target[0], result[0]);
+		atomicAdd(&target[1], result[1]);
+		atomicAdd(&target[2], result[2]);
+		atomicAdd(&target[3], result[3]);
 	}
 }
 
@@ -122,17 +274,78 @@ inline void parallelReduceArray3(T* target, const T* source, const int locId_loc
  * @tparam T vector type
  * @param target storage target of reduction
  * @param source value to add
- * @param locId_local local Id inside block
- * @param shared1 shared variable array for first parameter
- * @param shared2 shared variable array for second parameter
- * @param shared3 shared variable array for third parameter
+ * @param threadId local Id inside block
  */
-template<typename T>
+template<size_t blockSize, typename T>
 __device__
-inline void parallelReduceVector3(ORUtils::Vector3<T>& target, const ORUtils::Vector3<T>& source, const int locId_local,
-                                  volatile T* shared1, volatile T* shared2, volatile T* shared3)
+inline void parallelReduceVector3(ORUtils::Vector3<T>& target, const ORUtils::Vector3<T>& source, const int threadId)
 {
-	parallelReduceArray3(target.v, source.v, locId_local, shared1, shared2, shared3);
+	parallelReduceArray3Atomic<blockSize, T>(target.v, source.v, threadId);
+}
+
+/**
+ * Three layer parallel tree reduction for Vector4 types
+ * @tparam T vector type
+ * @param target storage target of reduction
+ * @param source value to add
+ * @param threadId local Id inside block
+ */
+template<size_t blockSize, typename T>
+__device__
+inline void parallelReduceVector4(ORUtils::Vector4<T>& target, const ORUtils::Vector4<T>& source, const int threadId)
+{
+	parallelReduceArray4Atomic<blockSize, T>(target.v, source.v, threadId);
+}
+
+template<size_t blockSize, typename T>
+__global__ void reduceBlock_device(T* out, const T* in, size_t N)
+{
+	size_t threadId = threadIdx.x + blockDim.x * threadIdx.y;
+	size_t blockId = blockIdx.x + gridDim.x * blockIdx.y;
+	size_t i = blockId * blockSize + threadId;
+
+	T data = 0;
+	if (i < N) data = in[i];
+
+	parallelReduce<blockSize>(out[blockId], data, threadId);
+}
+
+/**
+ * Reduce an array of type T by parallel reduction with pyramid (no atomic operation)
+ * @tparam blockSize size of individual blocks
+ * @tparam T type of data
+ * @param data input data
+ * @param N number elements in data
+ * @return
+ */
+template<size_t blockSize, typename T>
+T GPUReduction(T* data, size_t N)
+{
+	size_t n = N;
+	size_t blocksPerGrid = std::ceil((float) n / blockSize);
+
+	T* kernelOut;
+	ORcudaSafeCall(cudaMalloc(&kernelOut, sizeof(T) * blocksPerGrid));
+	T* kernelIn = data;
+
+	// pyramid reduction with blocks into kernelOut, until last remaining reduction fits into single block
+	do
+	{
+		blocksPerGrid = std::ceil((float) n / blockSize);
+		reduceBlock_device<blockSize><<<blocksPerGrid, blockSize>>>(kernelOut, kernelIn, n);
+		kernelIn = kernelOut;
+		n = blocksPerGrid;
+	} while (n > blockSize);
+
+	if (n > 1)
+		reduceBlock_device<blockSize><<<1, blockSize>>>(kernelOut, kernelOut, n);
+
+	cudaDeviceSynchronize();
+
+	T sum;
+	cudaMemcpy(&sum, &kernelOut[0], sizeof(T), cudaMemcpyDeviceToHost);
+	ORcudaSafeCall(cudaFree(kernelOut));
+	return sum;
 }
 
 template<typename T>

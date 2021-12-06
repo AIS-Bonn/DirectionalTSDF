@@ -234,7 +234,7 @@ convertDepthAffineToFloat_device(float* d_out, const short* d_in, Vector2i imgSi
 	int x = threadIdx.x + blockIdx.x * blockDim.x;
 	int y = threadIdx.y + blockIdx.y * blockDim.y;
 
-	if ((x >= imgSize.x) || (y >= imgSize.y)) return;
+	if (x < 1 || y < 1 || (x >= imgSize.x - 1) || (y >= imgSize.y - 1)) return;
 
 	convertDepthAffineToFloat(d_out, x, y, d_in, imgSize, depthCalibParams, filterDepth);
 }
@@ -262,7 +262,7 @@ ComputeNormalAndWeight_device(const float* depth_in, Vector4f* normal_out, Vecto
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
 
-	if (x >= imgDims.x || y >= imgDims.y)
+	if (x < 1 || y < 1 || x >= imgDims.x - 1 || y >= imgDims.y - 1)
 		return;
 
 	computeNormalAndWeight(depth_in, normal_out, x, y, imgDims, intrinsic);

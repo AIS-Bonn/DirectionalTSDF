@@ -35,6 +35,9 @@ public:
 	/// Current pose of the depth camera.
 	ORUtils::SE3Pose* pose_d;
 
+	/// Current scale factor for depth camera
+	float scaleFactor = 1;
+
 	/// Tracking quality: 1.0: success, 0.0: failure
 	enum TrackingResult
 	{

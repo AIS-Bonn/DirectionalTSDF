@@ -8,47 +8,64 @@
 namespace ITMLib
 {
 
+/**
+ * Project point form depth image view into (rendered) scene view, resulting in 2D coordinates
+ * @param sceneCoords result 2D coordinates for scene point map
+ * @param depthPoint_view depth point in depth view frame
+ * @param approxInvPose assumed pose of current view (basis for projective DA hypothesis)
+ * @param scenePose pose from which scene was rendered
+ */
+_CPU_AND_GPU_CODE_ inline bool projectiveDataAssociation(Vector2f& sceneCoords,
+                                                         const Vector4f& depthPoint_view,
+                                                         const Vector2i& viewImageSize,
+                                                         const Vector4f& viewIntrinsics,
+                                                         const Vector2i& sceneImageSize,
+                                                         const Vector4f& sceneIntrinsics,
+                                                         const Matrix4f& approxInvPose,
+                                                         const Matrix4f& scenePose,
+                                                         const float scaleFactor = 1.0)
+{
+//	Vector4f depthPoint_world = approxInvPose * depthPoint_view;
+	Vector4f depthPoint_world = (approxInvPose * Vector4f(scaleFactor * depthPoint_view.toVector3(), 0) +
+	                             approxInvPose.getColumn(3));
+
+	// project into previous rendered image (scene)
+	Vector4f depthPoint_scene = scenePose * depthPoint_world;
+	if (depthPoint_scene.z <= 0.0f) return false;
+	Vector2f depthPoint2DCoords = project(depthPoint_scene.toVector3(), sceneIntrinsics);
+
+	if (!((depthPoint2DCoords.x >= 0.0f) && (depthPoint2DCoords.x <= sceneImageSize.x - 2) &&
+	      (depthPoint2DCoords.y >= 0.0f) &&
+	      (depthPoint2DCoords.y <= sceneImageSize.y - 2)))
+		return false;
+
+	sceneCoords = depthPoint2DCoords;
+
+	return true;
+}
+
 template<bool shortIteration, bool rotationOnly>
 _CPU_AND_GPU_CODE_ inline bool computePerPointError(float& error,
                                                     const int& x, const int& y,
-                                                    const float& depth, const Vector2i& viewImageSize,
+                                                    const float* depth, const Vector2i& viewImageSize,
                                                     const Vector4f& viewIntrinsics, const Vector2i& sceneImageSize,
                                                     const Vector4f& sceneIntrinsics, const Matrix4f& approxInvPose,
                                                     const Matrix4f& scenePose, const Vector4f* pointsMap)
 {
-	if (depth <= 1e-8f) return false; //check if valid -- != 0.0f
+	float depthValue = depth[PixelCoordsToIndex(x, y, viewImageSize)];
+	if (depthValue <= 1e-8f) return false; //check if valid -- != 0.0f
+	Vector4f depthPoint_view = Vector4f(reprojectImagePoint(x, y, depthValue, invertProjectionParams(viewIntrinsics)), 1);
 
-	Vector4f tmp3Dpoint, tmp3Dpoint_reproj;
-	Vector3f ptDiff;
-	Vector4f curr3Dpoint, corr3Dnormal;
-	Vector2f tmp2Dpoint;
-
-	tmp3Dpoint.x = depth * ((float(x) - viewIntrinsics.z) / viewIntrinsics.x);
-	tmp3Dpoint.y = depth * ((float(y) - viewIntrinsics.w) / viewIntrinsics.y);
-	tmp3Dpoint.z = depth;
-	tmp3Dpoint.w = 1.0f;
-
-	// transform to previous frame coordinates
-	tmp3Dpoint = approxInvPose * tmp3Dpoint;
-	tmp3Dpoint.w = 1.0f;
-
-	// project into previous rendered image
-	tmp3Dpoint_reproj = scenePose * tmp3Dpoint;
-	if (tmp3Dpoint_reproj.z <= 0.0f) return false;
-	tmp2Dpoint.x = sceneIntrinsics.x * tmp3Dpoint_reproj.x / tmp3Dpoint_reproj.z + sceneIntrinsics.z;
-	tmp2Dpoint.y = sceneIntrinsics.y * tmp3Dpoint_reproj.y / tmp3Dpoint_reproj.z + sceneIntrinsics.w;
-
-	if (!((tmp2Dpoint.x >= 0.0f) && (tmp2Dpoint.x <= sceneImageSize.x - 2) && (tmp2Dpoint.y >= 0.0f) &&
-	      (tmp2Dpoint.y <= sceneImageSize.y - 2)))
+	Vector2f sceneCoords;
+	if (!projectiveDataAssociation(sceneCoords, depthPoint_view, viewImageSize, viewIntrinsics,
+	                               sceneImageSize, sceneIntrinsics, approxInvPose, scenePose))
 		return false;
+	Vector3f depthPoint_world = (approxInvPose * depthPoint_view).toVector3();
 
-	curr3Dpoint = interpolateBilinear_withHoles(pointsMap, tmp2Dpoint, sceneImageSize);
-	if (curr3Dpoint.w < 0.0f) return false;
+	Vector4f scenePoint_world = interpolateBilinear_withHoles(pointsMap, sceneCoords, sceneImageSize);
+	if (scenePoint_world.w < 0.0f) return false;
 
-	ptDiff.x = curr3Dpoint.x - tmp3Dpoint.x;
-	ptDiff.y = curr3Dpoint.y - tmp3Dpoint.y;
-	ptDiff.z = curr3Dpoint.z - tmp3Dpoint.z;
-
+	Vector3f ptDiff = scenePoint_world.toVector3() - depthPoint_world;
 	error = ORUtils::length(ptDiff);
 	if (error != error) // check NaN
 		return false;
@@ -77,7 +94,7 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_RGB_Ab(float* A, float& residua
                                                         const float minGradient)
 {
 	if (x >= imgSize_depth.x || y >= imgSize_depth.y) return false;
-	int idx = x + y * imgSize_depth.x;
+	int idx = PixelCoordsToIndex(x, y, imgSize_depth);
 
 	const Vector4f point_current = points_current[idx];
 	const float intensity_current = intensities_current[idx];
@@ -185,80 +202,185 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_RGB_Ab(float* A, float& residua
 template<bool shortIteration, bool rotationOnly>
 _CPU_AND_GPU_CODE_ inline bool computePerPointGH_Depth_Ab(float* A, float& b,
                                                           const int& x, const int& y,
-                                                          const float& depth, const Vector2i& viewImageSize,
+                                                          const float* depth, const Vector2i& viewImageSize,
                                                           const Vector4f& viewIntrinsics,
                                                           const Vector2i& sceneImageSize,
                                                           const Vector4f& sceneIntrinsics,
                                                           const Matrix4f& approxInvPose, const Matrix4f& scenePose,
                                                           const Vector4f* pointsMap,
-                                                          const Vector4f* normalsMap, float distThresh)
+                                                          const Vector4f* normalsMap, float scaleFactor,
+                                                          float distThresh)
 {
-	if (depth <= 1e-8f) return false; //check if valid -- != 0.0f
+	float depthValue = depth[PixelCoordsToIndex(x, y, viewImageSize)];
+	if (depthValue <= 1e-8f) return false; //check if valid -- != 0.0f
+	Vector4f depthPoint_view = Vector4f(reprojectImagePoint(x, y, depthValue, invertProjectionParams(viewIntrinsics)), 1);
 
-	Vector4f tmp3Dpoint, tmp3Dpoint_reproj;
-	Vector3f ptDiff;
-	Vector4f curr3Dpoint, corr3Dnormal;
-	Vector2f tmp2Dpoint;
-
-	tmp3Dpoint.x = depth * ((float(x) - viewIntrinsics.z) / viewIntrinsics.x);
-	tmp3Dpoint.y = depth * ((float(y) - viewIntrinsics.w) / viewIntrinsics.y);
-	tmp3Dpoint.z = depth;
-	tmp3Dpoint.w = 1.0f;
-
-	// transform to previous frame coordinates
-	tmp3Dpoint = approxInvPose * tmp3Dpoint;
-	tmp3Dpoint.w = 1.0f;
-
-	// project into previous rendered image
-	tmp3Dpoint_reproj = scenePose * tmp3Dpoint;
-	if (tmp3Dpoint_reproj.z <= 0.0f) return false;
-	tmp2Dpoint.x = sceneIntrinsics.x * tmp3Dpoint_reproj.x / tmp3Dpoint_reproj.z + sceneIntrinsics.z;
-	tmp2Dpoint.y = sceneIntrinsics.y * tmp3Dpoint_reproj.y / tmp3Dpoint_reproj.z + sceneIntrinsics.w;
-
-	if (!((tmp2Dpoint.x >= 0.0f) && (tmp2Dpoint.x <= sceneImageSize.x - 2) && (tmp2Dpoint.y >= 0.0f) &&
-	      (tmp2Dpoint.y <= sceneImageSize.y - 2)))
+	Vector2f sceneCoords;
+	if (!projectiveDataAssociation(sceneCoords, depthPoint_view, viewImageSize, viewIntrinsics,
+	                               sceneImageSize, sceneIntrinsics, approxInvPose, scenePose, scaleFactor))
 		return false;
+//	Vector3f depthPoint_world = (approxInvPose * depthPoint_view).toVector3();
+	Vector3f depthPoint_world = (approxInvPose * Vector4f(scaleFactor * depthPoint_view.toVector3(), 0) +
+	                             approxInvPose.getColumn(3)).toVector3();
 
-	curr3Dpoint = interpolateBilinear_withHoles(pointsMap, tmp2Dpoint, sceneImageSize);
-	if (curr3Dpoint.w < 0.0f) return false;
+	Vector4f scenePoint_world = interpolateBilinear_withHoles(pointsMap, sceneCoords, sceneImageSize);
+	if (scenePoint_world.w < 0.0f) return false;
 
-	ptDiff.x = curr3Dpoint.x - tmp3Dpoint.x;
-	ptDiff.y = curr3Dpoint.y - tmp3Dpoint.y;
-	ptDiff.z = curr3Dpoint.z - tmp3Dpoint.z;
-	float dist = ptDiff.x * ptDiff.x + ptDiff.y * ptDiff.y + ptDiff.z * ptDiff.z;
-
+	Vector3f ptDiff = scenePoint_world.toVector3() - depthPoint_world;
+	float dist = ORUtils::dot(ptDiff, ptDiff);
 	if (dist > distThresh or dist != dist) return false;
 
-	corr3Dnormal = interpolateBilinear_withHoles(normalsMap, tmp2Dpoint, sceneImageSize);
-//	if (corr3Dnormal.w < 0.0f) return false;
+	Vector3f sceneNormal = interpolateBilinear_withHoles(normalsMap, sceneCoords, sceneImageSize).toVector3();
+//	if (sceneNormal.w < 0.0f) return false;
 
-	b = ORUtils::dot(corr3Dnormal.toVector3(), ptDiff);
+	b = ORUtils::dot(sceneNormal, ptDiff);
 
 	// TODO check whether normal matches normal from image, done in the original paper, but does not seem to be required
 	if (shortIteration)
 	{
 		if (rotationOnly)
 		{
-			Vector3f XP = ORUtils::cross(corr3Dnormal.toVector3(), tmp3Dpoint.toVector3());
-			A[0] = XP.x;
-			A[1] = XP.y;
-			A[2] = XP.z;
+			Vector3f XP = ORUtils::cross(depthPoint_world, sceneNormal);
+			A[0] = -XP.x;
+			A[1] = -XP.y;
+			A[2] = -XP.z;
 		} else
 		{
-			A[0] = corr3Dnormal.x;
-			A[1] = corr3Dnormal.y;
-			A[2] = corr3Dnormal.z;
+			A[0] = -sceneNormal.x;
+			A[1] = -sceneNormal.y;
+			A[2] = -sceneNormal.z;
 		}
 	} else
 	{
-		Vector3f XP = ORUtils::cross(corr3Dnormal.toVector3(), tmp3Dpoint.toVector3());
-		A[0] = XP.x;
-		A[1] = XP.y;
-		A[2] = XP.z;
-		A[3] = corr3Dnormal.x;
-		A[4] = corr3Dnormal.y;
-		A[5] = corr3Dnormal.z;
+		Vector3f XP = ORUtils::cross(depthPoint_world, sceneNormal);
+		A[0] = -XP.x;
+		A[1] = -XP.y;
+		A[2] = -XP.z;
+		A[3] = -sceneNormal.x;
+		A[4] = -sceneNormal.y;
+		A[5] = -sceneNormal.z;
 	}
+
+	return true;
+}
+
+/**
+ * Sahillioglu 2021: Scale-Adaptive ICP
+ * @param f residual
+ * @param a summand for upper left entry of matrix in Eq. (6)
+ * @param d summand upper entry of vector on right side of Eq. (6)
+ * @param c summand for vector c in Eq. (6)
+ * @param d summand for vector d in Eq. (6)
+ */
+_CPU_AND_GPU_CODE_ inline bool computePerPoint_Sahillioglu(float& f, float& a, float& b, Vector3f& c, Vector3f& d,
+                                                           const int& x, const int& y,
+                                                           const float* depth, const Vector2i& viewImageSize,
+                                                           const Vector4f& viewIntrinsics,
+                                                           const Vector4f* pointsMap,
+                                                           const Vector2i& sceneImageSize,
+                                                           const Vector4f& sceneIntrinsics,
+                                                           const Matrix4f& approxInvPose, const float approxScaleFactor,
+                                                           const Matrix4f& scenePose,
+                                                           float distThresh)
+{
+	float depthValue = depth[PixelCoordsToIndex(x, y, viewImageSize)];
+	if (depthValue <= 1e-8f) return false; //check if valid -- != 0.0f
+	Vector4f depthPoint_view = Vector4f(reprojectImagePoint(x, y, depthValue, invertProjectionParams(viewIntrinsics)), 1);
+
+//	Vector2f sceneCoords;
+//	if (!projectiveDataAssociation(sceneCoords, depthPoint_view, viewImageSize, viewIntrinsics,
+//	                               sceneImageSize, sceneIntrinsics, approxInvPose, scenePose))
+//		return false;
+
+	// scale rotation only!
+	Vector3f depthPoint_world = (approxInvPose * Vector4f(approxScaleFactor * depthPoint_view.toVector3(), 0) +
+	                             approxInvPose.getColumn(3)).toVector3();
+
+	// project into previous rendered image (scene)
+	Vector4f depthPoint_scene = scenePose * Vector4f(depthPoint_world, 1);
+	if (depthPoint_scene.z <= 0.0f) return false;
+	Vector2f depthPoint2DCoords = project(depthPoint_scene.toVector3(), sceneIntrinsics);
+
+	if (!((depthPoint2DCoords.x >= 0.0f) && (depthPoint2DCoords.x <= sceneImageSize.x - 2) &&
+	      (depthPoint2DCoords.y >= 0.0f) &&
+	      (depthPoint2DCoords.y <= sceneImageSize.y - 2)))
+		return false;
+
+	Vector2f sceneCoords = depthPoint2DCoords;
+
+	// Corresponding point in rendered image (scene)
+	Vector4f scenePoint_world = interpolateBilinear_withHoles(pointsMap, sceneCoords, sceneImageSize);
+	if (scenePoint_world.w < 0.0f) return false;
+
+	a = ORUtils::dot(depthPoint_world, depthPoint_world);
+	b = ORUtils::dot(depthPoint_world, scenePoint_world.toVector3());
+	c = depthPoint_world;
+	d = scenePoint_world.toVector3();
+
+	Vector3f ptDiff = scenePoint_world.toVector3() - depthPoint_world;
+	f = ORUtils::dot(ptDiff, ptDiff);
+
+	return true;
+}
+
+
+/**
+ * Point-to-plane scale-translation optimization
+ */
+_CPU_AND_GPU_CODE_ inline bool computePerPoint_TransScale(float& f, Vector4f& j, float& r,
+                                                          const int& x, const int& y,
+                                                          const float* depth, const Vector2i& viewImageSize,
+                                                          const Vector4f& viewIntrinsics,
+                                                          const Vector4f* pointsMap,
+                                                          const Vector4f* normalsMap,
+                                                          const Vector2i& sceneImageSize,
+                                                          const Vector4f& sceneIntrinsics,
+                                                          const Matrix4f& approxInvPose, const Matrix4f& scenePose,
+                                                          const float approxScaleFactor,
+                                                          float distThresh)
+{
+	float depthValue = depth[PixelCoordsToIndex(x, y, viewImageSize)];
+	if (depthValue <= 1e-8f) return false; //check if valid -- != 0.0f
+	Vector4f depthPoint_view = Vector4f(reprojectImagePoint(x, y, depthValue, invertProjectionParams(viewIntrinsics)), 1);
+
+	Vector3f depthPoint_rotated = (approxInvPose * Vector4f(depthPoint_view.toVector3(), 0)).toVector3();
+	Vector3f depthPoint_world = approxScaleFactor * depthPoint_rotated + approxInvPose.getColumn(3).toVector3();
+
+	// project into previous rendered image (scene)
+	Vector4f depthPoint_scene = scenePose * Vector4f(depthPoint_world, 1);
+	if (depthPoint_scene.z <= 0.0f) return false;
+	Vector2f depthPoint2DCoords = project(depthPoint_scene.toVector3(), sceneIntrinsics);
+
+	if (!((depthPoint2DCoords.x >= 0.0f) && (depthPoint2DCoords.x <= sceneImageSize.x - 2) &&
+	      (depthPoint2DCoords.y >= 0.0f) &&
+	      (depthPoint2DCoords.y <= sceneImageSize.y - 2)))
+		return false;
+
+	Vector2f sceneCoords = depthPoint2DCoords;
+
+	// Corresponding point in rendered image (scene)
+	Vector4f scenePoint_world = interpolateBilinear_withHoles(pointsMap, sceneCoords, sceneImageSize);
+	if (scenePoint_world.w < 0.0f) return false;
+
+	Vector3f ptDiff = scenePoint_world.toVector3() - depthPoint_world;
+	float dist = ORUtils::dot(ptDiff, ptDiff);
+	if (dist > distThresh or dist != dist) return false;
+
+	Vector3f sceneNormal = interpolateBilinear_withHoles(normalsMap, sceneCoords, sceneImageSize).toVector3();
+
+
+	f = dist;
+	// multiplicative scale diff
+//	j = Vector4f(-sceneNormal, -ORUtils::dot(approxScaleFactor * depthPoint_rotated, sceneNormal));
+//	r = ORUtils::dot((scenePoint_world - approxInvPose.getColumn(3)).toVector3(), sceneNormal);
+
+	// additive scale diff
+	j = Vector4f(-sceneNormal, -ORUtils::dot(depthPoint_rotated, sceneNormal));
+	r = ORUtils::dot(scenePoint_world.toVector3() - depthPoint_world, sceneNormal);
+
+	// only translation (equal to default ICP)
+//	j = Vector4f(-sceneNormal, 0);
+//	r = ORUtils::dot(scenePoint_world.toVector3() - depthPoint_world, sceneNormal);
 
 	return true;
 }
@@ -266,11 +388,11 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_Depth_Ab(float* A, float& b,
 template<bool shortIteration, bool rotationOnly>
 _CPU_AND_GPU_CODE_ inline bool computePerPointGH_Depth(float* localNabla, float* localHessian, float& localF,
                                                        const int& x, const int& y,
-                                                       const float& depth, const Vector2i& viewImageSize,
+                                                       const float* depth, const Vector2i& viewImageSize,
                                                        const Vector4f& viewIntrinsics, const Vector2i& sceneImageSize,
                                                        const Vector4f& sceneIntrinsics, const Matrix4f& approxInvPose,
                                                        const Matrix4f& scenePose, const Vector4f* pointsMap,
-                                                       const Vector4f* normalsMap, float distThresh)
+                                                       const Vector4f* normalsMap, float scaleFactor, float distThresh)
 {
 	const int noPara = shortIteration ? 3 : 6;
 	float A[noPara];
@@ -278,7 +400,8 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_Depth(float* localNabla, float*
 
 	bool ret = computePerPointGH_Depth_Ab<shortIteration, rotationOnly>(A, b, x, y, depth, viewImageSize, viewIntrinsics,
 	                                                                    sceneImageSize, sceneIntrinsics, approxInvPose,
-	                                                                    scenePose, pointsMap, normalsMap, distThresh);
+	                                                                    scenePose, pointsMap, normalsMap, scaleFactor,
+	                                                                    distThresh);
 
 	if (!ret) return false;
 

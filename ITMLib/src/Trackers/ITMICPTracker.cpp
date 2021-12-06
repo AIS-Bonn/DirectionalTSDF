@@ -147,9 +147,12 @@ void ITMICPTracker::SetEvaluationData(ITMTrackingState* trackingState, const ITM
 	{
 		viewHierarchy_intensity->GetLevel(0)->intrinsics = view->calib.intrinsics_rgb.projectionParamsSimple.all;
 
-		// Convert RGB to intensity
-		viewHierarchy_intensity->GetLevel(0)->intensity_prev->SetFrom(
-			viewHierarchy_intensity->GetLevel(0)->intensity_current, ORUtils::CUDA_TO_CUDA);
+		if (trackingState->framesProcessed % 20 == 2)
+		{
+			// Convert RGB to intensity
+			viewHierarchy_intensity->GetLevel(0)->intensity_prev->SetFrom(
+				viewHierarchy_intensity->GetLevel(0)->intensity_current, ORUtils::CUDA_TO_CUDA);
+		}
 		lowLevelEngine->ConvertColourToIntensity(viewHierarchy_intensity->GetLevel(0)->intensity_current, view->rgb);
 
 		// Compute first level gradients
@@ -210,6 +213,19 @@ void ITMICPTracker::PrepareForEvaluation()
 			                              view->calib.trafo_rgb_to_depth.calib_inv);
 		}
 	}
+
+//	if (parameters.optimizeScale)
+//	{ // compute point cloud centers
+//		size_t noValidPoints;
+//		lowLevelEngine->ComputePointCloudCenter(scenePointCloudCenter_world, noValidPoints,
+//		                                        sceneHierarchy->GetLevel(0)->pointsMap);
+//		if (noValidPoints <= 0) printf("WARNING: could not determine scene point cloud center\n");
+//		lowLevelEngine->ComputeDepthCloudCenter(
+//			depthPointCloudCenter, noValidPoints,
+//			viewHierarchy_depth->GetLevel(viewHierarchy_depth->GetNoLevels() - 1)->data,
+//			viewHierarchy_depth->GetLevel(viewHierarchy_depth->GetNoLevels() - 1)->intrinsics);
+//		if (noValidPoints <= 0) printf("WARNING: could not determine depth image point cloud center\n");
+//	}
 }
 
 void ITMICPTracker::SetEvaluationParams(int levelId)
@@ -279,26 +295,19 @@ ITMICPTracker::UpdatePoseQuality(int noValidPoints_old, const Eigen::Matrix<Eige
 	float normFactor_v1 = (float) noValidPoints_old / (float) noTotalPoints;
 	float normFactor_v2 = (float) noValidPoints_old / (float) noValidPointsMax;
 
-//	float det = 0.0f;
-//	if (iterationType == TRACKER_ITERATION_BOTH)
-//	{
-//		det = hessian_good.llt().matrixL().determinant();
-//		if (std::isnan(det)) det = 0.0f;
-//	}
-
 	float det_norm_v1 = 0.0f;
-	if (iterationType == TRACKER_ITERATION_BOTH)
-	{
-		det_norm_v1 = (normFactor_v1 * hessian_good).llt().matrixL().determinant();
-		if (std::isnan(det_norm_v1)) det_norm_v1 = 0.0f;
-	}
-
 	float det_norm_v2 = 0.0f;
 	if (iterationType == TRACKER_ITERATION_BOTH)
 	{
+		det_norm_v1 = (normFactor_v1 * hessian_good).llt().matrixL().determinant();
 		det_norm_v2 = (normFactor_v2 * hessian_good).llt().matrixL().determinant();
-		if (std::isnan(det_norm_v2)) det_norm_v2 = 0.0f;
+	} else
+	{
+		det_norm_v1 = (normFactor_v1 * hessian_good.block<3, 3>(0, 0)).llt().matrixL().determinant();
+		det_norm_v2 = (normFactor_v2 * hessian_good.block<3, 3>(0, 0)).llt().matrixL().determinant();
 	}
+	if (std::isnan(det_norm_v1)) det_norm_v1 = 0.0f;
+	if (std::isnan(det_norm_v2)) det_norm_v2 = 0.0f;
 
 	float finalResidual_v2 = sqrt(
 		((float) noValidPoints_old * f_old + (float) (noValidPointsMax - noValidPoints_old) * distThresh[0]) /
@@ -323,6 +332,209 @@ ITMICPTracker::UpdatePoseQuality(int noValidPoints_old, const Eigen::Matrix<Eige
 		else if (score > -10.0f) trackingState->trackerResult = ITMTrackingState::TRACKING_POOR;
 	}
 }
+
+#if 1
+
+void ITMICPTracker::TrackCamera(ITMTrackingState* trackingState, const ITMView* view)
+{
+	if (!trackingState->HasValidPointCloud()) return;
+
+	this->SetEvaluationData(trackingState, view);
+	this->PrepareForEvaluation();
+
+	float f_old = 1e10, f_new;
+	float f_old2 = 1e20f;
+	float f_depth, f_rgb;
+	int noValidPoints_depth = 0;
+	int noValidPoints_RGB = 0;
+	int noValidPoints_old = 0;
+
+	/** Approximated Hessian of error function
+	 * H ~= 2 * J^T * J  (J = Jacobian)
+	 */
+	Eigen::Matrix<EigenT, 6, 6> hessian_good;
+	hessian_good.setZero();
+
+	/** Gradient vector of error function
+	 * g = 2 * J^T * r (J = Jacobian)
+	 */
+	Eigen::Matrix<EigenT, 6, 1> nabla_good;
+	nabla_good.setZero();
+
+	Eigen::Matrix<EigenT, 4, 4> H_good;
+	Eigen::Matrix<EigenT, 4, 1> g_good;
+
+	trackingState->scaleFactor = 1;
+
+	const float weightNormalizer = 1 / (1 + parameters.colourWeight);
+
+	for (int levelId = viewHierarchy_depth->GetNoLevels() - 1; levelId >= 0; levelId--)
+	{
+		printf("LEVEL: %i\n", levelId);
+		this->SetEvaluationParams(levelId);
+		if (iterationType == TRACKER_ITERATION_NONE) continue;
+
+		iterationType = TRACKER_ITERATION_ROTATION;
+
+		Matrix4f approxInvPose = trackingState->pose_d->GetInvM();
+		ORUtils::SE3Pose lastKnownGoodPose(*(trackingState->pose_d));
+		float lastKnownGoodScale = trackingState->scaleFactor;
+		f_old = 1e20f;
+		f_old2 = 1e20f;
+		noValidPoints_old = 0;
+		/// Levenber-Marquardt (Fletcher) damping factor
+		float lambda = 1.0;
+		float lambdaUp = 2.0;
+//		float lambda = 1e-10;
+
+		Eigen::Matrix<float, 6, 6> hessian_new;
+		Eigen::Matrix<float, 6, 1> nabla_new;
+
+		for (int iterNo = 0; iterNo < noIterationsPerLevel[levelId]; iterNo++)
+		{
+			Eigen::Matrix<float, 6, 6> hessian_depth, hessian_RGB;
+			Eigen::Matrix<float, 6, 1> nabla_depth, nabla_RGB;
+
+			noValidPoints_depth = this->ComputeGandH_Depth(f_depth, nabla_depth.data(), hessian_depth.data(), approxInvPose,
+			                                               trackingState->scaleFactor);
+
+			hessian_new = hessian_depth;
+			nabla_new = nabla_depth;
+			f_new = f_depth;
+
+			if (parameters.useColour)
+			{
+				noValidPoints_RGB = this->ComputeGandH_RGB(f_rgb, nabla_RGB.data(), hessian_RGB.data(), approxInvPose,
+				                                           trackingState->scaleFactor);
+				if (noValidPoints_RGB > 0)
+				{
+					hessian_new = weightNormalizer * (hessian_new + parameters.colourWeight * hessian_RGB);
+					nabla_new += weightNormalizer * (parameters.colourWeight * nabla_RGB);
+					f_new += weightNormalizer * (parameters.colourWeight * f_rgb);
+				}
+			}
+
+			float fDiff = 0;
+			// check if error increased. If so, revert
+			if ((noValidPoints_depth <= 0 && noValidPoints_RGB <= 0) || (f_new > f_old))
+			{
+				trackingState->pose_d->SetFrom(&lastKnownGoodPose);
+				trackingState->scaleFactor = lastKnownGoodScale;
+				approxInvPose = trackingState->pose_d->GetInvM();
+
+				// 2004, Madsen, Methods For Non-Linear Least Squares Problems
+//				float gainRatio = (f_old - f_new) / ;
+				lambda *= lambdaUp;
+				lambdaUp *= 2;
+
+//				lambda *= 10.0f;
+//				if (lambda > 1e7) break; // We won't find a better solution
+			} else
+			{
+				// compute solution and apply rotation to pose
+				Eigen::Matrix<EigenT, 6, 6> A = hessian_new.cast<EigenT>();
+				Eigen::Matrix<EigenT, 6, 1> v = nabla_new.cast<EigenT>();
+				A.diagonal() *= (1 + lambda);
+				Eigen::Matrix<EigenT, 6, 1> delta;
+				ComputeDelta(delta, v, A, iterationType != TRACKER_ITERATION_BOTH);
+				Matrix4f approxInvPoseRotated;
+				ApplyDelta(approxInvPose, delta, approxInvPoseRotated);
+
+				// compute scale and translation matrices based on rotated pose
+				float f;
+				Eigen::Matrix<EigenT, 4, 4> H;
+				Eigen::Matrix<EigenT, 4, 1> g;
+				size_t noPoints = ComputeTransScale(f, H, g, approxInvPoseRotated, trackingState->scaleFactor);
+//				std::cout << noPoints << ", " << f << "  (" << g.transpose() << ")" << std::endl;
+//				std::cout << H << std::endl;
+				fDiff = f_old2 - f;
+				if (fDiff > 1e3) fDiff = 0; // initialization issue
+				if (noPoints <= 0 or f > f_old2)
+				{
+					trackingState->pose_d->SetFrom(&lastKnownGoodPose);
+					trackingState->scaleFactor = lastKnownGoodScale;
+					approxInvPose = trackingState->pose_d->GetInvM();
+					lambda *= lambdaUp;
+					lambdaUp *= 2;
+
+//					lambda *= 10.0f;
+//					if (lambda > 1e7) break; // We won't find a better solution
+				} else
+				{
+					hessian_good = hessian_new.cast<EigenT>();
+					nabla_good = nabla_new.cast<EigenT>();
+					f_old = f_new;
+					lastKnownGoodPose.SetFrom(trackingState->pose_d);
+					lastKnownGoodScale = trackingState->scaleFactor;
+					noValidPoints_old = noValidPoints_depth + noValidPoints_RGB;
+
+//					lambda /= 10.0f;
+
+					f_old2 = f;
+					H_good = H;
+					g_good = g;
+				}
+			}
+
+			Eigen::Matrix<EigenT, 6, 6> A = hessian_good;
+			A.diagonal() *= (1 + lambda);
+
+			// compute a new step and make sure we've got an SE3
+			Eigen::Matrix<EigenT, 6, 1> delta;
+			ComputeDelta(delta, nabla_good, A, iterationType != TRACKER_ITERATION_BOTH);
+			ApplyDelta(approxInvPose, delta, approxInvPose);
+			trackingState->pose_d->SetInvM(approxInvPose);
+			trackingState->pose_d->Coerce();
+			approxInvPose = trackingState->pose_d->GetInvM();
+
+			Eigen::Matrix<EigenT, 4, 1> transScale;
+			transScale.setZero();
+			{
+				Eigen::Matrix<EigenT, 4, 4> A = H_good;
+				A.diagonal() *= (1 + lambda);
+				transScale = A.llt().solve(-g_good);
+
+//				Eigen::Matrix<EigenT, 3, 3> A = H_good.block<3, 3>(0, 0);
+//				A.diagonal() *= (1 + lambda);
+//				Eigen::Matrix<EigenT, 4, 1> transScale;
+//				transScale.block<3,1>(0, 0) = A.llt().solve(-g_good.block<3,1>(0, 0));
+//				transScale.w() = 1;
+
+//				std::cout << "solution: " << transScale.transpose() << std::endl;
+
+//				trackingState->scaleFactor *= transScale.w();
+				trackingState->scaleFactor += transScale.w();
+				Vector3f transInc(transScale.x(), transScale.y(), transScale.z());
+				approxInvPose.setTranslate(approxInvPose.getColumn(3).toVector3() + transInc);
+				trackingState->pose_d->SetInvM(approxInvPose);
+				trackingState->pose_d->Coerce();
+				approxInvPose = trackingState->pose_d->GetInvM();
+
+				if (fDiff > 0)
+				{
+					const double fDiff_predicted = 0.5 * transScale.dot(transScale * lambda - (g_good));
+					float gainRatio = fDiff / fDiff_predicted; // actual error decrease vs predicted error decrease
+					lambdaUp = 2;
+					lambda *= std::max(1.0 / 3, 1 - std::pow(2 * gainRatio - 1, 3.0));
+				}
+			}
+//			std::cout << lambda << ", " << delta.norm() << ", " << transScale.block<3, 1>(0, 0).norm() << ", scale: "
+//			          << trackingState->scaleFactor
+//			          << std::endl;
+
+			// if step is small, assume it's going to decrease the error and finish
+			if (std::sqrt(delta.squaredNorm() + transScale.block<3, 1>(0, 0).squaredNorm()) <
+			    parameters.smallStepSizeCriterion)
+				break;
+		}
+	}
+
+//	std::cout << H_good << std::endl;
+	std::cout << "scale: " << trackingState->scaleFactor << std::endl;
+	this->UpdatePoseQuality(noValidPoints_old, hessian_good, f_old + f_old2);
+}
+
+#else
 
 void ITMICPTracker::TrackCamera(ITMTrackingState* trackingState, const ITMView* view)
 {
@@ -360,6 +572,8 @@ void ITMICPTracker::TrackCamera(ITMTrackingState* trackingState, const ITMView* 
 		ORUtils::SE3Pose lastKnownGoodPose(*(trackingState->pose_d));
 		f_old = 1e20f;
 		noValidPoints_old = 0;
+
+		/// Levenber-Marquardt (Fletcher) damping factor
 		float lambda = 1.0;
 
 		for (int iterNo = 0; iterNo < noIterationsPerLevel[levelId]; iterNo++)
@@ -367,7 +581,7 @@ void ITMICPTracker::TrackCamera(ITMTrackingState* trackingState, const ITMView* 
 			Eigen::Matrix<float, 6, 6> hessian_depth, hessian_RGB;
 			Eigen::Matrix<float, 6, 1> nabla_depth, nabla_RGB;
 
-			noValidPoints_depth = this->ComputeGandH_Depth(f_depth, nabla_depth.data(), hessian_depth.data(), approxInvPose);
+			noValidPoints_depth = this->ComputeGandH_Depth(f_depth, nabla_depth.data(), hessian_depth.data(), approxInvPose, trackingState->scaleFactor);
 
 			Eigen::Matrix<float, 6, 6> hessian_new = hessian_depth;
 			Eigen::Matrix<float, 6, 1> nabla_new = nabla_depth;
@@ -375,7 +589,7 @@ void ITMICPTracker::TrackCamera(ITMTrackingState* trackingState, const ITMView* 
 
 			if (parameters.useColour)
 			{
-				noValidPoints_RGB = this->ComputeGandH_RGB(f_rgb, nabla_RGB.data(), hessian_RGB.data(), approxInvPose);
+				noValidPoints_RGB = this->ComputeGandH_RGB(f_rgb, nabla_RGB.data(), hessian_RGB.data(), approxInvPose, trackingState->scaleFactor);
 				if (noValidPoints_RGB > 0)
 				{
 					hessian_new = weightNormalizer * (hessian_new + parameters.colourWeight * hessian_RGB);
@@ -410,6 +624,8 @@ void ITMICPTracker::TrackCamera(ITMTrackingState* trackingState, const ITMView* 
 			trackingState->pose_d->SetInvM(approxInvPose);
 			trackingState->pose_d->Coerce();
 			approxInvPose = trackingState->pose_d->GetInvM();
+			std::cout << lambda << ", " << std::sqrt(delta.squaredNorm()) << ", scale: " << trackingState->scaleFactor
+								<< std::endl;
 
 			// if step is small, assume it's going to decrease the error and finish
 			if (HasConverged(delta)) break;
@@ -418,3 +634,5 @@ void ITMICPTracker::TrackCamera(ITMTrackingState* trackingState, const ITMView* 
 
 	this->UpdatePoseQuality(noValidPoints_old, hessian_good, f_old);
 }
+
+#endif

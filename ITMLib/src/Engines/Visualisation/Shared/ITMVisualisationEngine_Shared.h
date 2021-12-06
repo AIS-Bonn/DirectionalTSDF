@@ -689,9 +689,9 @@ processPixelError(Vector4u* outRendering, const Vector4f* pointsRay, const Vecto
 
 	float A[6];
 	float b;
-	bool isValidPoint = computePerPointGH_Depth_Ab<false, false>(A, b, x, y, depth[locId], imgSize, intrinsics, imgSize,
+	bool isValidPoint = computePerPointGH_Depth_Ab<false, false>(A, b, x, y, depth, imgSize, intrinsics, imgSize,
 	                                                             intrinsics, depthImageInvPose, sceneRenderingPose,
-	                                                             pointsRay, normalsRay, 100.0);
+	                                                             pointsRay, normalsRay, 1, 100.0);
 //	float angle = -(sceneRenderingPose * normalsRay[locId]).z;
 
 	if (!isValidPoint or (normalsRay[locId].x == 0 and normalsRay[locId].y == 0 and normalsRay[locId].z == 0))
