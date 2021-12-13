@@ -3,6 +3,7 @@
 #include <Trackers/Shared/ITMICPTracker_Shared.h>
 #include <thrust/reduce.h>
 #include <thrust/transform_reduce.h>
+#include <thrust/device_ptr.h>
 
 #include <cmath>
 #include <ITMLib/Core/ITMBasicEngine.h>
@@ -16,8 +17,6 @@
 
 #include <ORUtils/NVTimer.h>
 #include <ORUtils/FileUtils.h>
-
-//#define OUTPUT_TRAJECTORY_QUATERNIONS
 
 using namespace ITMLib;
 
@@ -180,79 +179,6 @@ void ITMBasicEngine::resetAll()
 	trackingState->Reset();
 }
 
-#ifdef OUTPUT_TRAJECTORY_QUATERNIONS
-static int QuaternionFromRotationMatrix_variant(const double *matrix)
-{
-	int variant = 0;
-	if
-		((matrix[4]>-matrix[8]) && (matrix[0]>-matrix[4]) && (matrix[0]>-matrix[8]))
-	{
-		variant = 0;
-	}
-	else if ((matrix[4]<-matrix[8]) && (matrix[0]>
-		matrix[4]) && (matrix[0]> matrix[8])) {
-		variant = 1;
-	}
-	else if ((matrix[4]> matrix[8]) && (matrix[0]<
-		matrix[4]) && (matrix[0]<-matrix[8])) {
-		variant = 2;
-	}
-	else if ((matrix[4]<
-		matrix[8]) && (matrix[0]<-matrix[4]) && (matrix[0]< matrix[8])) {
-		variant = 3;
-	}
-	return variant;
-}
-
-static void QuaternionFromRotationMatrix(const double *matrix, double *q) {
-	/* taken from "James Diebel. Representing Attitude: Euler
-	Angles, Quaternions, and Rotation Vectors. Technical Report, Stanford
-	University, Palo Alto, CA."
-	*/
-
-	// choose the numerically best variant...
-	int variant = QuaternionFromRotationMatrix_variant(matrix);
-	double denom = 1.0;
-	if (variant == 0) {
-		denom += matrix[0] + matrix[4] + matrix[8];
-	}
-	else {
-		int tmp = variant * 4;
-		denom += matrix[tmp - 4];
-		denom -= matrix[tmp % 12];
-		denom -= matrix[(tmp + 4) % 12];
-	}
-	denom = sqrt(denom);
-	q[variant] = 0.5*denom;
-
-	denom *= 2.0;
-	switch (variant) {
-	case 0:
-		q[1] = (matrix[5] - matrix[7]) / denom;
-		q[2] = (matrix[6] - matrix[2]) / denom;
-		q[3] = (matrix[1] - matrix[3]) / denom;
-		break;
-	case 1:
-		q[0] = (matrix[5] - matrix[7]) / denom;
-		q[2] = (matrix[1] + matrix[3]) / denom;
-		q[3] = (matrix[6] + matrix[2]) / denom;
-		break;
-	case 2:
-		q[0] = (matrix[6] - matrix[2]) / denom;
-		q[1] = (matrix[1] + matrix[3]) / denom;
-		q[3] = (matrix[5] + matrix[7]) / denom;
-		break;
-	case 3:
-		q[0] = (matrix[1] - matrix[3]) / denom;
-		q[1] = (matrix[6] + matrix[2]) / denom;
-		q[2] = (matrix[5] + matrix[7]) / denom;
-		break;
-	}
-
-	if (q[0] < 0.0f) for (int i = 0; i < 4; ++i) q[i] *= -1.0f;
-}
-#endif
-
 ITMTrackingState::TrackingResult
 ITMBasicEngine::ProcessFrame(ITMUChar4Image* rgbImage, ITMShortImage* rawDepthImage, ITMIMUMeasurement* imuMeasurement,
                              const ORUtils::SE3Pose* pose)
@@ -277,7 +203,6 @@ ITMBasicEngine::ProcessFrame(ITMUChar4Image* rgbImage, ITMShortImage* rawDepthIm
 
 	// tracking
 	ORUtils::SE3Pose oldPose(*(trackingState->pose_d));
-	if (trackingActive) trackingController->Track(trackingState, view);
 
 	// If poses provided externally
 	if (pose)
@@ -285,6 +210,12 @@ ITMBasicEngine::ProcessFrame(ITMUChar4Image* rgbImage, ITMShortImage* rawDepthIm
 		trackingState->trackerResult = ITMTrackingState::TRACKING_GOOD;
 		trackingState->pose_d->SetFrom(pose);
 	}
+
+	// track pose (or refine, if pose given)
+	if (trackingActive) trackingController->Track(trackingState, view);
+
+	// Rescale input according to computed scale factor
+	lowLevelEngine->RescaleDepthImage(view->depth, std::exp(trackingState->scaleFactor));
 
 	if (trackingState->trackerResult == ITMTrackingState::TRACKING_GOOD) consecutiveGoodFrames++;
 	else consecutiveGoodFrames = 0;
@@ -370,18 +301,6 @@ ITMBasicEngine::ProcessFrame(ITMUChar4Image* rgbImage, ITMShortImage* rawDepthIm
 		}
 	} else *trackingState->pose_d = oldPose;
 
-#ifdef OUTPUT_TRAJECTORY_QUATERNIONS
-	const ORUtils::SE3Pose *p = trackingState->pose_d;
-	double t[3];
-	double R[9];
-	double q[4];
-	for (int i = 0; i < 3; ++i) t[i] = p->GetInvM().m[3 * 4 + i];
-	for (int r = 0; r < 3; ++r) for (int c = 0; c < 3; ++c)
-		R[r * 3 + c] = p->GetM().m[c * 4 + r];
-	QuaternionFromRotationMatrix(R, q);
-	fprintf(stderr, "%f %f %f %f %f %f %f\n", t[0], t[1], t[2], q[1], q[2], q[3], q[0]);
-#endif
-
 	this->timeStats.preprocessing = viewBuilder->GetTimeStats();
 	this->timeStats.tracking = trackingController->GetTimeStats();
 //	this->timeStats.relocalization
@@ -439,9 +358,6 @@ ITMRenderError ITMBasicEngine::ComputeICPError()
 	for (int x = 0; x < imgSize.width; x++)
 		for (int y = 0; y < imgSize.height; y++)
 		{
-
-			int locId = x + y * imgSize.width;
-
 			float A[6];
 			float error, icpError;
 			bool isValidPoint = computePerPointGH_Depth_Ab<false, false>(
@@ -449,7 +365,7 @@ ITMRenderError ITMBasicEngine::ComputeICPError()
 				view->calib.intrinsics_d.imgSize, view->calib.intrinsics_d.projectionParamsSimple.all,
 				view->calib.intrinsics_d.imgSize, view->calib.intrinsics_d.projectionParamsSimple.all,
 				depthImageInvPose, sceneRenderingPose,
-				pointsRay, normalsRay, 1, 100.0);
+				pointsRay, normalsRay, 100.0);
 
 			isValidPoint &= computePerPointError<false, false>(
 				error, x, y, depth,

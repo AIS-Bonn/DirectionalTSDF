@@ -11,3 +11,8 @@ set(STDGPU_BUILD_EXAMPLES OFF CACHE INTERNAL "")
 # Exclude the tests from the build
 set(STDGPU_BUILD_TESTS OFF CACHE INTERNAL "")
 add_subdirectory(stdgpu)
+
+set(-DUSE_BASIC_LOGGING ON CACHE INTERNAL "")
+set(-DBUILD_SOPHUS_TESTS OFF CACHE INTERNAL "")
+set(-DBUILD_SOPHUS_EXAMPLES OFF CACHE INTERNAL "")
+add_subdirectory(Sophus)

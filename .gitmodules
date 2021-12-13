@@ -7,3 +7,6 @@
 [submodule "External/eigen"]
 	path = External/eigen
 	url = https://gitlab.com/libeigen/eigen.git
+[submodule "External/Sophus"]
+	path = External/Sophus
+	url = https://github.com/strasdat/Sophus

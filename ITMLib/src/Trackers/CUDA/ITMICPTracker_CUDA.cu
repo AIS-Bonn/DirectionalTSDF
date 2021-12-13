@@ -30,21 +30,14 @@ struct ITMICPTracker_CUDA::AccuCell
 	}
 };
 
-struct AccumulatorSahillioglu
+struct AccumulatorSim3
 {
-	int numPoints;
-	float a;
-	float b;
-	Vector3f c;
-	Vector3f d;
-	float f; // error
-};
+	static const int sizeH = 7 + 6 + 5 + 4 + 3 + 2 + 1; // size of lower triangle matrix
+	static const int sizeg = 7;
 
-struct AccumulatorTransScale
-{
 	int numPoints;
-	Matrix4f H; // hessian
-	Vector4f g;
+	float H[7 + 6 + 5 + 4 + 3 + 2 + 1]; // diagonal halfmatrix of Hessian
+	float g[7]; // residual Vector
 	float f; // error
 
 	_CPU_AND_GPU_CODE_
@@ -52,9 +45,11 @@ struct AccumulatorTransScale
 	{
 		numPoints = 0;
 		f = 0;
-		H.setZeros();
 #pragma unroll
-		for (float& i : g.v)
+		for (float& i : H)
+			i = 0;
+#pragma unroll
+		for (float& i : g)
 			i = 0;
 	}
 };
@@ -71,7 +66,6 @@ struct KernelParameters
 	Matrix4f scenePose;
 	Vector4f viewIntrinsics;
 	Vector2i viewImageSize;
-	float scaleFactor;
 	float distThresh;
 };
 
@@ -94,19 +88,23 @@ struct RGBKernelParameters
 };
 
 __global__ void
-ScaleTracker_device(AccumulatorTransScale* accumulator,
-                    const float* depth, const Vector4f* pointsMap, const Vector4f* normalsMap,
-                    Vector4f sceneIntrinsics, Vector2i sceneImageSize,
-                    Vector4f viewIntrinsics, Vector2i viewImageSize,
-                    Matrix4f approxInvPose, Matrix4f scenePose, float scaleFactor, float distThresh);
+Sim3DerivativeDepth_device(AccumulatorSim3* accumulator,
+                           const float* depth, const Vector4f* pointsMap, const Vector4f* normalsMap,
+                           Vector4f sceneIntrinsics, Vector2i sceneImageSize,
+                           Vector4f viewIntrinsics, Vector2i viewImageSize,
+                           Matrix4f approxInvPose, Matrix4f scenePose,
+                           float distThresh);
 
 __global__ void
-TrackerSahillioglu_device(AccumulatorSahillioglu* accumulator,
-                          const float* depth, const Vector4f* pointsMap,
-                          const Vector4f sceneIntrinsics, const Vector2i sceneImageSize,
-                          const Vector4f viewIntrinsics, const Vector2i viewImageSize,
-                          const Matrix4f approxInvPose, const float approxScaleFactor, const Matrix4f scenePose,
-                          const float distThresh);
+Sim3DerivativeRGB_device(AccumulatorSim3* accumulator,
+                         Vector4f* points_current,
+                         float* intensity_current, float* intensity_reference, Vector2f* gradient_reference,
+                         Vector4f intrinsics_depth, Vector4f intrinsics_rgb,
+                         Vector2i imgSize_depth, Vector2i imgSize_rgb,
+                         Matrix4f approxInvPose, Matrix4f intensityReferencePose,
+                         float viewFrustum_max,
+                         float intensityThresh,
+                         float minGradient);
 
 template<bool shortIteration, bool rotationOnly>
 __global__ void
@@ -132,91 +130,38 @@ ITMICPTracker_CUDA::~ITMICPTracker_CUDA(void)
 	ORcudaSafeCall(cudaFree(accumulator_device));
 }
 
-size_t ITMICPTracker_CUDA::ComputeSahillioglu(float& f, Eigen::Matrix<EigenT, 4, 4>& A, Eigen::Matrix<EigenT, 4, 1>& b,
-                                              const Matrix4f& approxInvPose, const float approxScaleFactor)
-{
-	Vector4f* pointsMap = sceneHierarchy->GetLevel(0)->pointsMap->GetData(MEMORYDEVICE_CUDA);
-	Vector4f sceneIntrinsics = sceneHierarchy->GetLevel(0)->intrinsics;
-	Vector2i sceneImageSize = sceneHierarchy->GetLevel(0)->pointsMap->noDims;
-
-	float* depth = viewHierarchy_depth->GetLevel(levelId)->data->GetData(MEMORYDEVICE_CUDA);
-	Vector4f viewIntrinsics = viewHierarchy_depth->GetLevel(levelId)->intrinsics;
-	Vector2i viewImageSize = viewHierarchy_depth->GetLevel(levelId)->data->noDims;
-
-	AccumulatorSahillioglu* accumulator_device;
-	ORcudaSafeCall(cudaMalloc((void**) &accumulator_device, sizeof(AccumulatorSahillioglu)));
-	ORcudaSafeCall(cudaMemset(accumulator_device, 0, sizeof(AccumulatorSahillioglu)));
-
-	dim3 blockSize(16, 16);
-	dim3 gridSize((int) ceil((float) viewImageSize.x / (float) blockSize.x),
-	              (int) ceil((float) viewImageSize.y / (float) blockSize.y));
-
-	Vector3f viewCloudCenter_world = (approxInvPose * Vector4f(depthPointCloudCenter, 1)).toVector3();
-
-	TrackerSahillioglu_device<<<gridSize, blockSize>>>(accumulator_device,
-	                                                   depth,
-	                                                   pointsMap,
-	                                                   sceneIntrinsics,
-	                                                   sceneImageSize,
-	                                                   viewIntrinsics,
-	                                                   viewImageSize,
-	                                                   approxInvPose,
-	                                                   approxScaleFactor,
-	                                                   renderedScenePose,
-	                                                   distThresh[levelId]
-	);
-	ORcudaKernelCheck;
-
-	AccumulatorSahillioglu accumulator_host;
-	ORcudaSafeCall(cudaMemcpy(&accumulator_host, accumulator_device, sizeof(accumulator_host), cudaMemcpyDeviceToHost));
-
-	if (accumulator_host.numPoints > 0)
-	{
-		accumulator_host.a /= accumulator_host.numPoints;
-		accumulator_host.b /= accumulator_host.numPoints;
-		accumulator_host.c /= accumulator_host.numPoints;
-		accumulator_host.d /= accumulator_host.numPoints;
-	}
-
-	b << accumulator_host.b, accumulator_host.d.x, accumulator_host.d.y, accumulator_host.d.z;
-	A.block<4, 1>(0, 0) << accumulator_host.a, accumulator_host.c.x, accumulator_host.c.y, accumulator_host.c.z;
-	A.block<1, 3>(0, 1) << accumulator_host.c.x, accumulator_host.c.y, accumulator_host.c.z;
-	A.block<3, 3>(1, 1).setIdentity();
-//	A.block<3, 3>(1, 1).setZero();
-//	A.block<3, 3>(1, 1).diagonal().setConstant(accumulator_host.numPoints);
-	f = accumulator_host.f / accumulator_host.numPoints;
-
-	ORcudaSafeCall(cudaFree(accumulator_device));
-	return accumulator_host.numPoints;
-}
-
 /** Perform final reduction of per-block summation values stored in accumulator array
  * */
 template<size_t blockSize>
-__global__ void reduceAccumulatorTransScale(AccumulatorTransScale* accu, size_t N)
+__global__ void reduceAccumulatorSim3(AccumulatorSim3* accu, size_t N)
 {
 	size_t threadId = threadIdx.x + blockDim.x * threadIdx.y;
 	size_t blockId = blockIdx.x + gridDim.x * blockIdx.y;
 
-	AccumulatorTransScale sum{};
+	AccumulatorSim3 sum{};
 	sum.SetZero();
+
 	for (size_t i = blockId * blockSize + threadId; i < N; i += blockDim.x * gridDim.x)
 	{
 		sum.numPoints += accu[i].numPoints;
 		sum.f += accu[i].f;
-		sum.g = accu[i].g;
-		sum.H = accu[i].H;
+		for (int j = 0; j < 7; j++)
+			sum.g[j] += accu[i].g[j];
+		for (int j = 0; j < AccumulatorSim3::sizeH; j++)
+			sum.H[j] += accu[i].H[j];
 	}
 
 	parallelReduce<blockSize>(accu[blockId].numPoints, sum.numPoints, threadId);
 	parallelReduce<blockSize>(accu[blockId].f, sum.f, threadId);
-	parallelReduceArray4<blockSize>(accu[blockId].g.v, sum.g.v, threadId);
-	for (unsigned char offset = 0; offset < 16; offset += 4)
-		parallelReduceArray4<blockSize>(accu[blockId].H.m + offset, sum.H.m + offset, threadId);
+	parallelReduceArray4<blockSize>(accu[blockId].g, sum.g, threadId);
+	parallelReduceArray3<blockSize>(accu[blockId].g + 4, sum.g + 4, threadId);
+	for (unsigned char offset = 0; offset < AccumulatorSim3::sizeH; offset += 4)
+		parallelReduceArray4<blockSize>(accu[blockId].H + offset, sum.H + offset, threadId);
 }
 
-size_t ITMICPTracker_CUDA::ComputeTransScale(float& f, Eigen::Matrix<EigenT, 4, 4>& H, Eigen::Matrix<EigenT, 4, 1>& g,
-                                             const Matrix4f& approxInvPose, float approxScaleFactor)
+size_t
+ITMICPTracker_CUDA::ComputeGandHSim3_Depth(float& f, Eigen::Matrix<EigenT, 7, 7>& H, Eigen::Matrix<EigenT, 7, 1>& g,
+                                           const Matrix4f& approxInvPose)
 {
 	Vector4f* pointsMap = sceneHierarchy->GetLevel(0)->pointsMap->GetData(MEMORYDEVICE_CUDA);
 	Vector4f* normalsMap = sceneHierarchy->GetLevel(0)->normalsMap->GetData(MEMORYDEVICE_CUDA);
@@ -230,44 +175,100 @@ size_t ITMICPTracker_CUDA::ComputeTransScale(float& f, Eigen::Matrix<EigenT, 4, 
 	dim3 blockSize(16, 16);
 	dim3 gridSize((int) ceil((float) viewImageSize.x / (float) blockSize.x),
 	              (int) ceil((float) viewImageSize.y / (float) blockSize.y));
+
 	size_t numBlocks = gridSize.x * gridSize.y;
 
-	AccumulatorTransScale* accumulator_device;
-	ORcudaSafeCall(cudaMalloc((void**) &accumulator_device, numBlocks * sizeof(AccumulatorTransScale)));
-	ORcudaSafeCall(cudaMemset(accumulator_device, 0, numBlocks * sizeof(AccumulatorTransScale)));
+	AccumulatorSim3* accumulator_device;
+	ORcudaSafeCall(cudaMalloc(&accumulator_device, numBlocks * sizeof(AccumulatorSim3)));
+	ORcudaSafeCall(cudaMemset(accumulator_device, 0, numBlocks * sizeof(AccumulatorSim3)));
 
-	ScaleTracker_device<<<gridSize, blockSize>>>(accumulator_device,
-	                                             depth,
-	                                             pointsMap,
-	                                             normalsMap,
-	                                             sceneIntrinsics,
-	                                             sceneImageSize,
-	                                             viewIntrinsics,
-	                                             viewImageSize,
-	                                             approxInvPose,
-	                                             renderedScenePose,
-	                                             approxScaleFactor,
-	                                             distThresh[levelId]
-	);
-	reduceAccumulatorTransScale<1024><<<1, 1024>>>(accumulator_device, numBlocks);
+	Sim3DerivativeDepth_device << < gridSize, blockSize >> >(accumulator_device, depth, pointsMap, normalsMap,
+		sceneIntrinsics, sceneImageSize, viewIntrinsics, viewImageSize,
+		approxInvPose, renderedScenePose, distThresh[levelId]);
+	reduceAccumulatorSim3<1024><<<1, 1024>>>(accumulator_device, numBlocks);
 	ORcudaKernelCheck;
 
-	AccumulatorTransScale accumulator_host;
-	ORcudaSafeCall(
-		cudaMemcpy(&accumulator_host, accumulator_device, sizeof(AccumulatorTransScale), cudaMemcpyDeviceToHost));
-
-	H = ORUtils::ToEigen<Eigen::Matrix<EigenT, 4, 4>>(accumulator_host.H);
-	g = ORUtils::ToEigen<Eigen::Matrix<EigenT, 4, 1>>(accumulator_host.g);
-	f = accumulator_host.f;
-	if (accumulator_host.numPoints)
-	{
-		H /= accumulator_host.numPoints;
-		g /= accumulator_host.numPoints;
-		f /= accumulator_host.numPoints;
-	}
-
+	AccumulatorSim3 accumulator{};
+	ORcudaSafeCall(cudaMemcpy(&accumulator, accumulator_device, sizeof(AccumulatorSim3), cudaMemcpyDeviceToHost));
 	ORcudaSafeCall(cudaFree(accumulator_device));
-	return accumulator_host.numPoints;
+
+	if (accumulator.numPoints == 0)
+		return 0;
+
+	float invNoPoints = 1.0f / accumulator.numPoints;
+
+	for (int r = 0, counter = 0; r < 7; r++)
+		for (int c = 0; c <= r; c++, counter++)
+			H(r, c) = accumulator.H[counter] * invNoPoints;
+	for (int r = 0; r < 7; ++r)
+		for (int c = r + 1; c < 7; c++)
+			H(r, c) = H(c, r);
+
+	for (int c = 0; c < 7; c++)
+		g[c] = accumulator.g[c] * invNoPoints;
+
+	f = accumulator.f * invNoPoints;
+
+	return accumulator.numPoints;
+}
+
+size_t
+ITMICPTracker_CUDA::ComputeGandHSim3_RGB(float& f, Eigen::Matrix<EigenT, 7, 7>& H, Eigen::Matrix<EigenT, 7, 1>& g,
+                                         const Matrix4f& approxInvPose)
+{
+	Vector2i viewImageSize = viewHierarchy_depth->GetLevel(levelId)->data->noDims;
+
+	dim3 blockSize(16, 16);
+	dim3 gridSize((int) ceil((float) viewImageSize.x / (float) blockSize.x),
+	              (int) ceil((float) viewImageSize.y / (float) blockSize.y));
+
+	size_t numBlocks = gridSize.x * gridSize.y;
+
+	AccumulatorSim3* accumulator_device;
+	ORcudaSafeCall(cudaMalloc(&accumulator_device, numBlocks * sizeof(AccumulatorSim3)));
+	ORcudaSafeCall(cudaMemset(accumulator_device, 0, numBlocks * sizeof(AccumulatorSim3)));
+
+	Sim3DerivativeRGB_device << < gridSize, blockSize >> >(
+		accumulator_device,
+			reprojectedPointsHierarchy->GetLevel(levelId)->data->GetData(MEMORYDEVICE_CUDA),
+			projectedIntensityHierarchy->GetLevel(levelId)->data->GetData(MEMORYDEVICE_CUDA),
+			viewHierarchy_intensity->GetLevel(levelId)->intensity_prev->GetData(MEMORYDEVICE_CUDA),
+			viewHierarchy_intensity->GetLevel(levelId)->gradients->GetData(MEMORYDEVICE_CUDA),
+			viewHierarchy_depth->GetLevel(levelId)->intrinsics,
+			viewHierarchy_intensity->GetLevel(levelId)->intrinsics,
+			viewHierarchy_depth->GetLevel(levelId)->data->noDims,
+			viewHierarchy_intensity->GetLevel(levelId)->intensity_prev->noDims,
+			approxInvPose,
+			depthToRGBTransform * intensityReferencePose,
+			6, // FIXME: use parameter
+			colourThresh[levelId],
+			parameters.minColourGradient
+	);
+	reduceAccumulatorSim3<1024><<<1, 1024>>>(accumulator_device, numBlocks);
+	ORcudaKernelCheck;
+
+	AccumulatorSim3 accumulator{};
+	ORcudaSafeCall(cudaMemcpy(&accumulator, accumulator_device, sizeof(AccumulatorSim3), cudaMemcpyDeviceToHost));
+	ORcudaSafeCall(cudaFree(accumulator_device));
+
+	if (accumulator.numPoints == 0)
+		return 0;
+
+	float invNoPoints = 1.0f / accumulator.numPoints;
+
+	for (int r = 0, counter = 0; r < 7; r++)
+		for (int c = 0; c <= r; c++, counter++)
+			H(r, c) = accumulator.H[counter] * invNoPoints;
+	for (int r = 0; r < 7; ++r)
+		for (int c = r + 1; c < 7; c++)
+			H(r, c) = H(c, r);
+
+	for (int c = 0; c < 7; c++)
+		g[c] = accumulator.g[c] * invNoPoints;
+
+	f = accumulator.f * invNoPoints;
+
+	return accumulator.numPoints;
 }
 
 /** Perform final reduction of per-block summation values stored in accumulator array
@@ -303,8 +304,7 @@ __global__ void reduceAccumulator(ITMICPTracker_CUDA::AccuCell* accu, size_t N)
 		parallelReduceArray3<blockSize>(accu[blockId].h + paraId, sum.h + paraId, threadId);
 }
 
-int ITMICPTracker_CUDA::ComputeGandH_Depth(float& f, float* nabla, float* hessian, Matrix4f approxInvPose,
-                                           float approxScaleFactor)
+int ITMICPTracker_CUDA::ComputeGandH_Depth(float& f, float* nabla, float* hessian, Matrix4f approxInvPose)
 {
 	Vector4f* pointsMap = sceneHierarchy->GetLevel(0)->pointsMap->GetData(MEMORYDEVICE_CUDA);
 	Vector4f* normalsMap = sceneHierarchy->GetLevel(0)->normalsMap->GetData(MEMORYDEVICE_CUDA);
@@ -339,7 +339,6 @@ int ITMICPTracker_CUDA::ComputeGandH_Depth(float& f, float* nabla, float* hessia
 	args.scenePose = renderedScenePose;
 	args.viewIntrinsics = viewIntrinsics;
 	args.viewImageSize = viewImageSize;
-	args.scaleFactor = approxScaleFactor;
 	args.distThresh = distThresh[levelId];
 
 	switch (iterationType)
@@ -385,8 +384,7 @@ int ITMICPTracker_CUDA::ComputeGandH_Depth(float& f, float* nabla, float* hessia
 	return accumulator.numPoints;
 }
 
-int ITMICPTracker_CUDA::ComputeGandH_RGB(float& f, float* nabla, float* hessian, Matrix4f approxInvPose,
-                                         float approxScaleFactor)
+int ITMICPTracker_CUDA::ComputeGandH_RGB(float& f, float* nabla, float* hessian, Matrix4f approxInvPose)
 {
 	Vector2i imageSize_depth = viewHierarchy_depth->GetLevel(levelId)->data->noDims;
 	Vector2i imageSize_rgb = viewHierarchy_depth->GetLevel(levelId)->data->noDims;
@@ -608,7 +606,7 @@ depthTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu, float*
                                       Vector4f* pointsMap,
                                       Vector4f* normalsMap, Vector4f sceneIntrinsics, Vector2i sceneImageSize,
                                       Matrix4f scenePose, Vector4f viewIntrinsics, Vector2i viewImageSize,
-                                      float scaleFactor, float distThresh)
+                                      float distThresh)
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
 
@@ -632,7 +630,7 @@ depthTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu, float*
 		                                                                        viewImageSize, viewIntrinsics,
 		                                                                        sceneImageSize, sceneIntrinsics,
 		                                                                        approxInvPose, scenePose, pointsMap,
-		                                                                        normalsMap, scaleFactor, distThresh);
+		                                                                        normalsMap, distThresh);
 		if (isValidPoint) blockHasValidPoint = true;
 	}
 
@@ -682,66 +680,12 @@ depthTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu, float*
 }
 
 __global__ void
-TrackerSahillioglu_device(AccumulatorSahillioglu* accumulator,
-                          const float* depth, const Vector4f* pointsMap,
-                          const Vector4f sceneIntrinsics, const Vector2i sceneImageSize,
-                          const Vector4f viewIntrinsics, const Vector2i viewImageSize,
-                          const Matrix4f approxInvPose, const float approxScaleFactor, const Matrix4f scenePose,
-                          const float distThresh
-)
-{
-	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
-
-	int locId_local = threadIdx.x + threadIdx.y * blockDim.x;
-
-	__shared__ bool blockHasValidPoint;
-
-	blockHasValidPoint = false;
-	__syncthreads();
-
-	Vector3f c, d;
-	float a, b, f;
-	bool isValidPoint = false;
-	if (x < viewImageSize.x && y < viewImageSize.y)
-	{
-		isValidPoint = computePerPoint_Sahillioglu(f, a, b, c, d,
-		                                           x, y, depth, viewImageSize,
-		                                           viewIntrinsics, pointsMap, sceneImageSize, sceneIntrinsics,
-		                                           approxInvPose, approxScaleFactor, scenePose, distThresh);
-
-		if (isValidPoint) blockHasValidPoint = true;
-	}
-
-	__syncthreads();
-
-	if (!blockHasValidPoint)
-		return;
-
-	if (!isValidPoint)
-	{
-		f = 0;
-		a = 0;
-		b = 0;
-		memset(c.v, 0, sizeof(c));
-		memset(d.v, 0, sizeof(d));
-	}
-
-	parallelReduceAtomic<256>(accumulator->numPoints, (int) isValidPoint, locId_local);
-	parallelReduceAtomic<256>(accumulator->f, f, locId_local);
-	parallelReduceAtomic<256>(accumulator->a, a, locId_local);
-	parallelReduceAtomic<256>(accumulator->b, b, locId_local);
-	parallelReduceArray3Atomic<256>(accumulator->c.v, c.v, locId_local);
-	parallelReduceArray3Atomic<256>(accumulator->d.v, d.v, locId_local);
-}
-
-__global__ void
-ScaleTracker_device(AccumulatorTransScale* accumulator,
-                    const float* depth, const Vector4f* pointsMap, const Vector4f* normalsMap,
-                    const Vector4f sceneIntrinsics, const Vector2i sceneImageSize,
-                    const Vector4f viewIntrinsics, const Vector2i viewImageSize,
-                    const Matrix4f approxInvPose, const Matrix4f scenePose, const float scaleFactor,
-                    const float distThresh
-)
+Sim3DerivativeDepth_device(AccumulatorSim3* accumulator,
+                           const float* depth, const Vector4f* pointsMap, const Vector4f* normalsMap,
+                           Vector4f sceneIntrinsics, Vector2i sceneImageSize,
+                           Vector4f viewIntrinsics, Vector2i viewImageSize,
+                           Matrix4f approxInvPose, Matrix4f scenePose,
+                           const float distThresh)
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
 
@@ -753,25 +697,18 @@ ScaleTracker_device(AccumulatorTransScale* accumulator,
 	blockHasValidPoint = false;
 	__syncthreads();
 
-	Vector4f j;
+	MatrixXf<1, 7> J;
 	float r;
 	float f;
 	bool isValidPoint = false;
 	if (x < viewImageSize.x && y < viewImageSize.y)
 	{
-		isValidPoint = computePerPoint_TransScale(f, j, r, x, y,
-		                                          depth, viewImageSize,
-		                                          viewIntrinsics, pointsMap, normalsMap, sceneImageSize, sceneIntrinsics,
-		                                          approxInvPose, scenePose, scaleFactor, distThresh);
+		isValidPoint = computeSim3Derivative_Depth(J, r, x, y,
+		                                           depth, viewImageSize,
+		                                           viewIntrinsics, sceneImageSize, sceneIntrinsics,
+		                                           approxInvPose, scenePose, pointsMap, normalsMap, distThresh);
 
 		if (isValidPoint) blockHasValidPoint = true;
-	}
-
-	if (!isValidPoint)
-	{
-		memset(j.v, 0, sizeof(j));
-		f = 0;
-		r = 0;
 	}
 
 	__syncthreads();
@@ -779,24 +716,109 @@ ScaleTracker_device(AccumulatorTransScale* accumulator,
 	if (!blockHasValidPoint)
 		return;
 
-	parallelReduce<256>(accumulator[blockId].numPoints, (int) isValidPoint, threadId);
-	parallelReduce<256>(accumulator[blockId].f, f, threadId);
-	parallelReduceArray4<256>(accumulator[blockId].g.v, (j * r).v, threadId);
-
-	float localHessian[4 * 4];
-#if (defined(__CUDACC__) && defined(__CUDA_ARCH__))
-#pragma unroll
-#endif
-	for (unsigned char r = 0, counter = 0; r < 4; r++)
+	if (!isValidPoint)
 	{
-#if (defined(__CUDACC__) && defined(__CUDA_ARCH__))
-#pragma unroll
-#endif
-		for (int c = 0; c < 4; c++, counter++) localHessian[counter] = j[r] * j[c];
+		J.setZeros();
+		f = 0;
+		r = 0;
 	}
 
-	for (int offset = 0; offset < 4 * 4; offset = offset + 4)
-		parallelReduceArray4<256>(accumulator[blockId].H.m + offset, localHessian + offset, threadId);
+	parallelReduce<256>(accumulator[blockId].numPoints, (int) isValidPoint, threadId);
+	parallelReduce<256>(accumulator[blockId].f, r * r, threadId);
+
+	MatrixXf<1, 7> localG = (J * r);
+	parallelReduceArray4<256>(accumulator[blockId].g, localG.m, threadId);
+	parallelReduceArray3<256>(accumulator[blockId].g + 4, localG.m + 4, threadId);
+
+	const int sizeH = 7 + 6 + 5 + 4 + 3 + 2 + 1; // size of lower triangle matrix
+	float localHessian[sizeH];
+#pragma unroll
+	for (unsigned char row = 0, counter = 0; row < 7; row++)
+	{
+#pragma unroll
+		for (int col = 0; col <= row; col++, counter++) localHessian[counter] = J.at(row, 0) * J.at(col, 0);
+	}
+
+	//reduction for hessian
+	for (unsigned char offset = 0; offset < sizeH; offset += 4)
+	{
+		parallelReduceArray4<256>(accumulator[blockId].H + offset,
+		                          localHessian + offset,
+		                          threadId);
+	}
+}
+
+__global__ void
+Sim3DerivativeRGB_device(AccumulatorSim3* accumulator,
+                         Vector4f* points_current,
+                         float* intensity_current, float* intensity_reference, Vector2f* gradient_reference,
+                         Vector4f intrinsics_depth, Vector4f intrinsics_rgb,
+                         Vector2i imgSize_depth, Vector2i imgSize_rgb,
+                         Matrix4f approxInvPose, Matrix4f intensityReferencePose,
+                         const float viewFrustum_max, const float intensityThresh, const float minGradient)
+{
+	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
+
+	int threadId = threadIdx.x + threadIdx.y * blockDim.x;
+	size_t blockId = blockIdx.x + blockIdx.y * gridDim.x;
+
+	__shared__ bool blockHasValidPoint;
+
+	blockHasValidPoint = false;
+	__syncthreads();
+
+	MatrixXf<1, 7> J;
+	float r;
+	float f;
+	bool isValidPoint = false;
+	if (x < imgSize_depth.x && y < imgSize_depth.y)
+	{
+		isValidPoint = computeSim3Derivative_RGB(J, r, x, y,
+		                                         points_current,
+		                                         intensity_current, intensity_reference, gradient_reference,
+		                                         imgSize_depth, imgSize_rgb,
+		                                         intrinsics_depth, intrinsics_rgb,
+		                                         approxInvPose, intensityReferencePose,
+		                                         viewFrustum_max, intensityThresh, minGradient);
+
+		if (isValidPoint) blockHasValidPoint = true;
+	}
+
+	__syncthreads();
+
+	if (!blockHasValidPoint)
+		return;
+
+	if (!isValidPoint)
+	{
+		J.setZeros();
+		f = 0;
+		r = 0;
+	}
+
+	parallelReduce<256>(accumulator[blockId].numPoints, (int) isValidPoint, threadId);
+	parallelReduce<256>(accumulator[blockId].f, r * r, threadId);
+
+	MatrixXf<1, 7> localG = (J * r);
+	parallelReduceArray4<256>(accumulator[blockId].g, localG.m, threadId);
+	parallelReduceArray3<256>(accumulator[blockId].g + 4, localG.m + 4, threadId);
+
+	const int sizeH = 7 + 6 + 5 + 4 + 3 + 2 + 1; // size of lower triangle matrix
+	float localHessian[sizeH];
+#pragma unroll
+	for (unsigned char row = 0, counter = 0; row < 7; row++)
+	{
+#pragma unroll
+		for (int col = 0; col <= row; col++, counter++) localHessian[counter] = J.at(row, 0) * J.at(col, 0);
+	}
+
+	//reduction for hessian
+	for (unsigned char offset = 0; offset < sizeH; offset += 4)
+	{
+		parallelReduceArray4<256>(accumulator[blockId].H + offset,
+		                          localHessian + offset,
+		                          threadId);
+	}
 }
 
 template<bool shortIteration, bool rotationOnly>
@@ -808,7 +830,7 @@ depthTrackerOneLevel_g_rt_device(KernelParameters para)
 	                                                                    para.pointsMap, para.normalsMap,
 	                                                                    para.sceneIntrinsics, para.sceneImageSize,
 	                                                                    para.scenePose, para.viewIntrinsics,
-	                                                                    para.viewImageSize, para.scaleFactor,
+	                                                                    para.viewImageSize,
 	                                                                    para.distThresh);
 }
 

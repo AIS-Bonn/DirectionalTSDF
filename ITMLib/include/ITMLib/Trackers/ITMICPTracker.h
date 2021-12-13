@@ -70,6 +70,10 @@ private:
 
 	int* noIterationsPerLevel;
 
+	void TrackCameraSE3(ITMTrackingState* trackingState, const ITMView* view);
+
+	void TrackCameraSim3(ITMTrackingState* trackingState, const ITMView* view);
+
 	void SetupLevels();
 
 	void PrepareForEvaluation();
@@ -120,13 +124,13 @@ protected:
 
 	Matrix4f depthToRGBTransform;
 
-	virtual int ComputeGandH_Depth(float& f, float* nabla, float* hessian, Matrix4f approxInvPose, float approxScaleFactor) = 0;
+	virtual int ComputeGandH_Depth(float& f, float* nabla, float* hessian, Matrix4f approxInvPose) = 0;
 
-	virtual int ComputeGandH_RGB(float& f, float* nabla, float* hessian, Matrix4f approxPose, float approxScaleFactor) = 0;
+	virtual int ComputeGandH_RGB(float& f, float* nabla, float* hessian, Matrix4f approxPose) = 0;
 
-	virtual size_t ComputeTransScale(float& f, Eigen::Matrix<EigenT, 4, 4>& H, Eigen::Matrix<EigenT, 4, 1>& g, const Matrix4f& approxInvPose, float approxScaleFactor) = 0;
+	virtual size_t ComputeGandHSim3_Depth(float& f, Eigen::Matrix<EigenT, 7, 7>& H, Eigen::Matrix<EigenT, 7, 1>& g, const Matrix4f& approxInvPose) = 0;
 
-	virtual size_t ComputeSahillioglu(float& f, Eigen::Matrix<EigenT, 4, 4>& A, Eigen::Matrix<EigenT, 4, 1>& b, const Matrix4f& approxInvPose, float approxScaleFactor) = 0;
+	virtual size_t ComputeGandHSim3_RGB(float& f, Eigen::Matrix<EigenT, 7, 7>& H, Eigen::Matrix<EigenT, 7, 1>& g, const Matrix4f& approxInvPose) = 0;
 
 	virtual void ComputeDepthPointAndIntensity(ITMFloat4Image* points_out,
 	                                           ITMFloatImage* intensity_out,
