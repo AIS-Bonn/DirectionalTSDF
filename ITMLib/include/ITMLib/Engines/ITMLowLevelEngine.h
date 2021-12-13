@@ -40,6 +40,8 @@ public:
 
 	virtual void ComputeDepthCloudCenter(Vector3f& center, size_t& noValidPoints, const ITMFloatImage* depth, Vector4f intrinsics) const = 0;
 
+	virtual void RescaleDepthImage(ITMFloatImage* image, float factor) const = 0;
+
 	ITMLowLevelEngine(void)
 	{}
 

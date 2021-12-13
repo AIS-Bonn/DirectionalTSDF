@@ -5,6 +5,9 @@
 #include "../Shared/ITMLowLevelEngine_Shared.h"
 #include <ITMLib/Utils/ITMProjectionUtils.h>
 #include <Utils/ITMCUDAUtils.h>
+#include <thrust/functional.h>
+#include <thrust/transform.h>
+#include <thrust/device_ptr.h>
 
 #include <ORUtils/CUDADefines.h>
 
@@ -318,6 +321,12 @@ ITMLowLevelEngine_CUDA::ComputeDepthCloudCenter(Vector3f& center, size_t& noVali
 	if (noValidPoints > 0) center /= noValidPoints;
 
 	ORcudaSafeCall(cudaFree(accumulator_device));
+}
+
+void ITMLowLevelEngine_CUDA::RescaleDepthImage(ITMFloatImage* image, float factor) const
+{
+	thrust::device_ptr<float> ptr = thrust::device_pointer_cast(image->GetData(MEMORYDEVICE_CUDA));
+	thrust::transform(ptr, ptr + image->dataSize, ptr, factor * thrust::placeholders::_1);
 }
 
 // device functions

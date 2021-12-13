@@ -3,6 +3,8 @@
 #include "ITMLowLevelEngine_CPU.h"
 
 #include <ITMLib/Utils/ITMProjectionUtils.h>
+#include <thrust/transform.h>
+#include <thrust/functional.h>
 #include "../Shared/ITMLowLevelEngine_Shared.h"
 
 using namespace ITMLib;
@@ -229,4 +231,10 @@ void ITMLowLevelEngine_CPU::ComputeDepthCloudCenter(Vector3f& center, size_t& no
 
 	if (noValidPoints > 0)
 		center /= noValidPoints;
+}
+
+void ITMLowLevelEngine_CPU::RescaleDepthImage(ITMFloatImage* image, float factor) const
+{
+	float* ptr = image->GetData(MEMORYDEVICE_CPU);
+	thrust::transform(ptr, ptr + image->dataSize, ptr, factor * thrust::placeholders::_1);
 }

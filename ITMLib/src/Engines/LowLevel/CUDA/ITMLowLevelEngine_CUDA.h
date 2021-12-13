@@ -42,6 +42,8 @@ public:
 
 	void ComputeDepthCloudCenter(Vector3f& center, size_t& noValidPoints, const ITMFloatImage* depth, Vector4f intrinsics) const override;
 
+	void RescaleDepthImage(ITMFloatImage* image, float factor) const override;
+
 	ITMLowLevelEngine_CUDA();
 
 	~ITMLowLevelEngine_CUDA() override;
