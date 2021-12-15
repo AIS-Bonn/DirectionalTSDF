@@ -60,12 +60,12 @@ template<typename T, int rows, int cols>
 class MatrixX : public MatrixX_<T, rows, cols>
 {
 public:
-	_CPU_AND_GPU_CODE_ inline T &operator()(int x, int y)	{ return at(x, y); }
-	_CPU_AND_GPU_CODE_ inline const T &operator()(int x, int y) const	{ return at(x, y); }
+	_CPU_AND_GPU_CODE_ inline T &operator()(int c, int r)	{ return at(c, r); }
+	_CPU_AND_GPU_CODE_ inline const T &operator()(int c, int r) const	{ return at(c, r); }
 	_CPU_AND_GPU_CODE_ inline T &operator()(Vector2<int> pnt)	{ return at(pnt.x, pnt.y); }
 	_CPU_AND_GPU_CODE_ inline const T &operator()(Vector2<int> pnt) const	{ return at(pnt.x, pnt.y); }
-	_CPU_AND_GPU_CODE_ inline T &at(int x, int y) { return this->m[y * cols + x]; }
-	_CPU_AND_GPU_CODE_ inline const T &at(int x, int y) const { return this->m[y * cols + x]; }
+	_CPU_AND_GPU_CODE_ inline T &at(int c, int r) { return this->m[r * cols + c]; }
+	_CPU_AND_GPU_CODE_ inline const T &at(int c, int r) const { return this->m[r * cols + c]; }
 
 	_CPU_AND_GPU_CODE_ inline void setZeros() { for (int i = 0; i < rows * cols; i++) this->m[i] = 0; }
 
@@ -87,6 +87,7 @@ public:
 	template<int K>
 	_CPU_AND_GPU_CODE_ inline friend MatrixX<T, rows, K> operator * (const MatrixX<T, rows, cols>  &lhs, const MatrixX<T, cols, K> &rhs)	{
 		MatrixX<T, rows, K> r;
+		r.setZeros();
 		for (int x = 0; x < K; x++) for (int y = 0; y < rows; y++) for (int k = 0; k < cols; k++)
 					r(x, y) += lhs(k, y) * rhs(x, k);
 		return r;
@@ -115,12 +116,12 @@ public:
 		_CPU_AND_GPU_CODE_ inline Vector3<T> getScale() const { return Vector3<T>(this->m00, this->m11, this->m22); }
 
 		// Element access
-		_CPU_AND_GPU_CODE_ inline T &operator()(int x, int y)	{ return at(x, y); }
-		_CPU_AND_GPU_CODE_ inline const T &operator()(int x, int y) const	{ return at(x, y); }
+		_CPU_AND_GPU_CODE_ inline T &operator()(int c, int r)	{ return at(c, r); }
+		_CPU_AND_GPU_CODE_ inline const T &operator()(int c, int r) const	{ return at(c, r); }
 		_CPU_AND_GPU_CODE_ inline T &operator()(Vector2<int> pnt)	{ return at(pnt.x, pnt.y); }
 		_CPU_AND_GPU_CODE_ inline const T &operator()(Vector2<int> pnt) const	{ return at(pnt.x, pnt.y); }
-		_CPU_AND_GPU_CODE_ inline T &at(int x, int y) { return this->m[y | (x << 2)]; }
-		_CPU_AND_GPU_CODE_ inline const T &at(int x, int y) const { return this->m[y | (x << 2)]; }
+		_CPU_AND_GPU_CODE_ inline T &at(int c, int r) { return this->m[r | (c << 2)]; }
+		_CPU_AND_GPU_CODE_ inline const T &at(int c, int r) const { return this->m[r | (c << 2)]; }
 
 		// set values
 		_CPU_AND_GPU_CODE_ inline void setValues(const T *mp) { memcpy(this->m, mp, sizeof(T) * 16); }
@@ -134,12 +135,12 @@ public:
 		_CPU_AND_GPU_CODE_ inline void setColumn(int c, const Vector4_<T> &t) { memcpy(this->m + 4 * c, t.v, sizeof(T) * 4); }
 
 		// get values
-		_CPU_AND_GPU_CODE_ inline Vector4<T> getRow(int r) const { Vector4<T> v; for (int x = 0; x < 4; x++) v[x] = at(x, r); return v; }
+		_CPU_AND_GPU_CODE_ inline Vector4<T> getRow(int r) const { Vector4<T> v; for (int c = 0; c < 4; c++) v[c] = at(c, r); return v; }
 		_CPU_AND_GPU_CODE_ inline Vector4<T> getColumn(int c) const { Vector4<T> v; memcpy(v.v, this->m + 4 * c, sizeof(T) * 4); return v; }
 		_CPU_AND_GPU_CODE_ inline Matrix4 t() const { // transpose
 			Matrix4 mtrans;
-			for (int x = 0; x < 4; x++)	for (int y = 0; y < 4; y++)
-				mtrans(x, y) = at(y, x);
+			for (int r = 0; r < 4; r++)	for (int c = 0; c < 4; c++)
+				mtrans(r, c) = at(c, r);
 			return mtrans;
 		}
 
@@ -303,12 +304,12 @@ public:
 		_CPU_AND_GPU_CODE_ inline Vector3<T> getScale() const { return Vector3<T>(this->m00, this->m11, this->m22); }
 
 		// Element access
-		_CPU_AND_GPU_CODE_ inline T &operator()(int x, int y)	{ return at(x, y); }
-		_CPU_AND_GPU_CODE_ inline const T &operator()(int x, int y) const	{ return at(x, y); }
+		_CPU_AND_GPU_CODE_ inline T &operator()(int c, int r)	{ return at(c, r); }
+		_CPU_AND_GPU_CODE_ inline const T &operator()(int c, int r) const	{ return at(c, r); }
 		_CPU_AND_GPU_CODE_ inline T &operator()(Vector2<int> pnt)	{ return at(pnt.x, pnt.y); }
 		_CPU_AND_GPU_CODE_ inline const T &operator()(Vector2<int> pnt) const	{ return at(pnt.x, pnt.y); }
-		_CPU_AND_GPU_CODE_ inline T &at(int x, int y) { return this->m[x * 3 + y]; }
-		_CPU_AND_GPU_CODE_ inline const T &at(int x, int y) const { return this->m[x * 3 + y]; }
+		_CPU_AND_GPU_CODE_ inline T &at(int c, int r) { return this->m[c * 3 + r]; }
+		_CPU_AND_GPU_CODE_ inline const T &at(int c, int r) const { return this->m[c * 3 + r]; }
 
 		// set values
 		_CPU_AND_GPU_CODE_ inline void setValues(const T *mp) { memcpy(this->m, mp, sizeof(T) * 9); }
@@ -317,16 +318,16 @@ public:
 		_CPU_AND_GPU_CODE_ inline void setIdentity() { setZeros(); this->m00 = this->m11 = this->m22 = 1; }
 		_CPU_AND_GPU_CODE_ inline void setScale(T s) { this->m00 = this->m11 = this->m22 = s; }
 		_CPU_AND_GPU_CODE_ inline void setScale(const Vector3_<T> &s) { this->m00 = s[0]; this->m11 = s[1]; this->m22 = s[2]; }
-		_CPU_AND_GPU_CODE_ inline void setRow(int r, const Vector3_<T> &t){ for (int x = 0; x < 3; x++) at(x, r) = t[x]; }
+		_CPU_AND_GPU_CODE_ inline void setRow(int r, const Vector3_<T> &t){ for (int c = 0; c < 3; c++) at(c, r) = t[c]; }
 		_CPU_AND_GPU_CODE_ inline void setColumn(int c, const Vector3_<T> &t) { memcpy(this->m + 3 * c, t.v, sizeof(T) * 3); }
 
 		// get values
-		_CPU_AND_GPU_CODE_ inline Vector3<T> getRow(int r) const { Vector3<T> v; for (int x = 0; x < 3; x++) v[x] = at(x, r); return v; }
+		_CPU_AND_GPU_CODE_ inline Vector3<T> getRow(int r) const { Vector3<T> v; for (int c = 0; c < 3; c++) v[c] = at(c, r); return v; }
 		_CPU_AND_GPU_CODE_ inline Vector3<T> getColumn(int c) const { Vector3<T> v; memcpy(v.v, this->m + 3 * c, sizeof(T) * 3); return v; }
 		_CPU_AND_GPU_CODE_ inline Matrix3 t() { // transpose
 			Matrix3 mtrans;
-			for (int x = 0; x < 3; x++)	for (int y = 0; y < 3; y++)
-				mtrans(x, y) = at(y, x);
+			for (int r = 0; r < 3; r++)	for (int c = 0; c < 3; c++)
+				mtrans(r, c) = at(c, r);
 			return mtrans;
 		}
 
@@ -428,12 +429,12 @@ public:
 		_CPU_AND_GPU_CODE_ inline const T *getValues() const { return this->m; }
 
 		// Element access
-		_CPU_AND_GPU_CODE_ inline T &operator()(int x, int y)	{ return at(x, y); }
-		_CPU_AND_GPU_CODE_ inline const T &operator()(int x, int y) const	{ return at(x, y); }
+		_CPU_AND_GPU_CODE_ inline T &operator()(int c, int r)	{ return at(c, r); }
+		_CPU_AND_GPU_CODE_ inline const T &operator()(int c, int r) const	{ return at(c, r); }
 		_CPU_AND_GPU_CODE_ inline T &operator()(Vector2<int> pnt)	{ return at(pnt.x, pnt.y); }
 		_CPU_AND_GPU_CODE_ inline const T &operator()(Vector2<int> pnt) const	{ return at(pnt.x, pnt.y); }
-		_CPU_AND_GPU_CODE_ inline T &at(int x, int y) { return this->m[y * s + x]; }
-		_CPU_AND_GPU_CODE_ inline const T &at(int x, int y) const { return this->m[y * s + x]; }
+		_CPU_AND_GPU_CODE_ inline T &at(int c, int r) { return this->m[r * s + c]; }
+		_CPU_AND_GPU_CODE_ inline const T &at(int c, int r) const { return this->m[r * s + c]; }
 
 		// set values
 		_CPU_AND_GPU_CODE_ inline void setValues(const T *mp) { for (int i = 0; i < s*s; i++) this->m[i] = mp[i]; }
@@ -442,13 +443,13 @@ public:
 		_CPU_AND_GPU_CODE_ inline void setIdentity() { setZeros(); for (int i = 0; i < s*s; i++) this->m[i + i*s] = 1; }
 
 		// get values
-		_CPU_AND_GPU_CODE_ inline VectorX<T, s> getRow(int r) const { VectorX<T, s> v; for (int x = 0; x < s; x++) v[x] = at(x, r); return v; }
-		_CPU_AND_GPU_CODE_ inline VectorX<T, s> getColumn(int c) const { Vector4<T> v; for (int x = 0; x < s; x++) v[x] = at(c, x); return v; }
+		_CPU_AND_GPU_CODE_ inline VectorX<T, s> getRow(int r) const { VectorX<T, s> v; for (int c = 0; c < s; c++) v[c] = at(c, r); return v; }
+		_CPU_AND_GPU_CODE_ inline VectorX<T, s> getColumn(int c) const { Vector4<T> v; for (int r = 0; r < s; r++) v[r] = at(c, r); return v; }
 		_CPU_AND_GPU_CODE_ inline MatrixSQX<T, s> getTranspose()
 		{ // transpose
 			MatrixSQX<T, s> mtrans;
-			for (int x = 0; x < s; x++)	for (int y = 0; y < s; y++)
-				mtrans(x, y) = at(y, x);
+			for (int r = 0; r < s; r++)	for (int c = 0; c < s; c++)
+				mtrans(r, c) = at(c, r);
 			return mtrans;
 		}
 
