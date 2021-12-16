@@ -29,7 +29,7 @@ protected:
 	                                   const ITMFloatImage* depth_in,
 	                                   const Vector4f& intrinsics_depth,
 	                                   const Vector4f& intrinsics_rgb,
-	                                   const Matrix4f& scenePose) override;
+	                                   const Matrix4f& T_depthToRGB) override;
 
 public:
 	ITMICPTracker_CUDA(Vector2i imgSize_d, Vector2i imgSize_rgb, const Parameters& parameters,

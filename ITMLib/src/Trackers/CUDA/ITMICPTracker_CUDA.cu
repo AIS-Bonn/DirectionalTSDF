@@ -199,13 +199,13 @@ ITMICPTracker_CUDA::ComputeGandHSim3_Depth(float& f, Eigen::Matrix<EigenT, 7, 7>
 
 	for (int r = 0, counter = 0; r < 7; r++)
 		for (int c = 0; c <= r; c++, counter++)
-			H(r, c) = accumulator.H[counter] * invNoPoints;
+			H(r, c) = accumulator.H[counter];
 	for (int r = 0; r < 7; ++r)
 		for (int c = r + 1; c < 7; c++)
 			H(r, c) = H(c, r);
 
 	for (int c = 0; c < 7; c++)
-		g[c] = accumulator.g[c] * invNoPoints;
+		g[c] = accumulator.g[c];
 
 	f = accumulator.f * invNoPoints;
 
@@ -258,13 +258,13 @@ ITMICPTracker_CUDA::ComputeGandHSim3_RGB(float& f, Eigen::Matrix<EigenT, 7, 7>& 
 
 	for (int r = 0, counter = 0; r < 7; r++)
 		for (int c = 0; c <= r; c++, counter++)
-			H(r, c) = accumulator.H[counter] * invNoPoints;
+			H(r, c) = accumulator.H[counter];
 	for (int r = 0; r < 7; ++r)
 		for (int c = r + 1; c < 7; c++)
 			H(r, c) = H(c, r);
 
 	for (int c = 0; c < 7; c++)
-		g[c] = accumulator.g[c] * invNoPoints;
+		g[c] = accumulator.g[c];
 
 	f = accumulator.f * invNoPoints;
 
@@ -345,16 +345,19 @@ int ITMICPTracker_CUDA::ComputeGandH_Depth(float& f, float* nabla, float* hessia
 	{
 		case TRACKER_ITERATION_ROTATION:
 			depthTrackerOneLevel_g_rt_device<true, true> << < gridSize, blockSize >> >(args);
+			ORcudaKernelCheck;
 			reduceAccumulator<true, 1024><<<1, 1024>>>(accumulator_device, numBlocks);
 			ORcudaKernelCheck;
 			break;
 		case TRACKER_ITERATION_TRANSLATION:
 			depthTrackerOneLevel_g_rt_device<true, false> << < gridSize, blockSize >> >(args);
+			ORcudaKernelCheck;
 			reduceAccumulator<true, 1024><<<1, 1024>>>(accumulator_device, numBlocks);
 			ORcudaKernelCheck;
 			break;
 		case TRACKER_ITERATION_BOTH:
 			depthTrackerOneLevel_g_rt_device<false, false> << < gridSize, blockSize >> >(args);
+			ORcudaKernelCheck;
 			reduceAccumulator<false, 1024><<<1, 1024>>>(accumulator_device, numBlocks);
 			ORcudaKernelCheck;
 			break;
@@ -371,13 +374,13 @@ int ITMICPTracker_CUDA::ComputeGandH_Depth(float& f, float* nabla, float* hessia
 
 	for (int r = 0, counter = 0; r < noPara; r++)
 		for (int c = 0; c <= r; c++, counter++)
-			hessian[r + c * 6] = accumulator.h[counter] * invNoPoints;
+			hessian[r + c * 6] = accumulator.h[counter];
 	for (int r = 0; r < noPara; ++r)
 		for (int c = r + 1; c < noPara; c++)
 			hessian[r + c * 6] = hessian[c + r * 6];
 
 	for (int c = 0; c < noPara; c++)
-		nabla[c] = accumulator.g[c] * invNoPoints;
+		nabla[c] = accumulator.g[c];
 
 	f = accumulator.f * invNoPoints;
 
@@ -398,8 +401,9 @@ int ITMICPTracker_CUDA::ComputeGandH_RGB(float& f, float* nabla, float* hessian,
 	dim3 blockSize(16, 16);
 	dim3 gridSize((int) ceil((float) imageSize_depth.x / (float) blockSize.x),
 	              (int) ceil((float) imageSize_depth.y / (float) blockSize.y));
+	size_t numBlocks = gridSize.x * gridSize.y;
 
-	ORcudaSafeCall(cudaMemset(accumulator_device, 0, sizeof(AccuCell)));
+	ORcudaSafeCall(cudaMemset(accumulator_device, 0, numBlocks * sizeof(AccuCell)));
 
 	struct RGBKernelParameters args;
 	args.accu = accumulator_device;
@@ -422,19 +426,24 @@ int ITMICPTracker_CUDA::ComputeGandH_RGB(float& f, float* nabla, float* hessian,
 		case TRACKER_ITERATION_ROTATION:
 			RGBTrackerOneLevel_g_rt_device<true, true> << < gridSize, blockSize >> >(args);
 			ORcudaKernelCheck;
+			reduceAccumulator<true, 1024><<<1, 1024>>>(accumulator_device, numBlocks);
+			ORcudaKernelCheck;
 			break;
 		case TRACKER_ITERATION_TRANSLATION:
 			RGBTrackerOneLevel_g_rt_device<true, false> << < gridSize, blockSize >> >(args);
+			ORcudaKernelCheck;
+			reduceAccumulator<true, 1024><<<1, 1024>>>(accumulator_device, numBlocks);
 			ORcudaKernelCheck;
 			break;
 		case TRACKER_ITERATION_BOTH:
 			RGBTrackerOneLevel_g_rt_device<false, false> << < gridSize, blockSize >> >(args);
 			ORcudaKernelCheck;
+			reduceAccumulator<false, 1024><<<1, 1024>>>(accumulator_device, numBlocks);
+			ORcudaKernelCheck;
 			break;
 		default:
 			break;
 	}
-
 	ITMICPTracker_CUDA::AccuCell accu_host{};
 	ORcudaSafeCall(cudaMemcpy(&accu_host, accumulator_device, sizeof(AccuCell), cudaMemcpyDeviceToHost));
 
@@ -445,13 +454,13 @@ int ITMICPTracker_CUDA::ComputeGandH_RGB(float& f, float* nabla, float* hessian,
 
 	for (int r = 0, counter = 0; r < noPara; r++)
 		for (int c = 0; c <= r; c++, counter++)
-			hessian[r + c * 6] = accu_host.h[counter] * invNoPoints;
+			hessian[r + c * 6] = accu_host.h[counter];
 	for (int r = 0; r < noPara; ++r)
 		for (int c = r + 1; c < noPara; c++)
 			hessian[r + c * 6] = hessian[c + r * 6];
 
 	for (int c = 0; c < noPara; c++)
-		nabla[c] = accu_host.g[c] * invNoPoints;
+		nabla[c] = accu_host.g[c];
 
 	f = accu_host.f * invNoPoints;
 
@@ -462,13 +471,13 @@ __global__
 void
 computeDepthPointAndColour_device(Vector4f* out_points, float* out_rgb, const float* in_rgb, const float* in_points,
                                   Vector2i imageSize, Vector2i sceneSize, Vector4f intrinsics_depth,
-                                  Vector4f intrinsics_rgb, Matrix4f scenePose)
+                                  Vector4f intrinsics_rgb, Matrix4f T_depthToRGB)
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x;
 	int y = threadIdx.y + blockIdx.y * blockDim.y;
 
 	computeDepthPointAndColour(x, y, out_points, out_rgb, in_rgb, in_points, imageSize, sceneSize, intrinsics_depth,
-	                           intrinsics_rgb, scenePose);
+	                           intrinsics_rgb, T_depthToRGB);
 }
 
 void ITMLib::ITMICPTracker_CUDA::ComputeDepthPointAndIntensity(ITMFloat4Image* points_out, ITMFloatImage* intensity_out,
@@ -476,7 +485,7 @@ void ITMLib::ITMICPTracker_CUDA::ComputeDepthPointAndIntensity(ITMFloat4Image* p
                                                                const ITMFloatImage* depth_in,
                                                                const Vector4f& intrinsics_depth,
                                                                const Vector4f& intrinsics_rgb,
-                                                               const Matrix4f& scenePose)
+                                                               const Matrix4f& T_depthToRGB)
 {
 	const Vector2i imageSize_rgb = intensity_in->noDims;
 	const Vector2i imageSize_depth = depth_in->noDims; // Also the size of the projected image
@@ -495,7 +504,7 @@ void ITMLib::ITMICPTracker_CUDA::ComputeDepthPointAndIntensity(ITMFloat4Image* p
 
 	computeDepthPointAndColour_device<<<gridSize, blockSize>>>(pointsOut, intensityOut, intensityIn, depths,
 	                                                           imageSize_rgb, imageSize_depth, intrinsics_rgb,
-	                                                           intrinsics_depth, scenePose);
+	                                                           intrinsics_depth, T_depthToRGB);
 	ORcudaKernelCheck;
 }
 
@@ -504,10 +513,10 @@ void ITMLib::ITMICPTracker_CUDA::ComputeDepthPointAndIntensity(ITMFloat4Image* p
 template<bool shortIteration, bool rotationOnly>
 __device__ void
 RGBTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu,
-                                    Vector4f* points_current,
-                                    float* intensity_current,
-                                    float* intensity_reference,
-                                    Vector2f* gradient_reference,
+                                    const Vector4f* points_current,
+                                    const float* intensity_current,
+                                    const float* intensity_reference,
+                                    const Vector2f* gradient_reference,
                                     Matrix4f approxInvPose,
                                     Matrix4f intensityReferencePose,
                                     Vector4f intrinsics_depth,
@@ -520,7 +529,8 @@ RGBTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu,
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
 
-	int locId_local = threadIdx.x + threadIdx.y * blockDim.x;
+	int threadId = threadIdx.x + threadIdx.y * blockDim.x;
+	size_t blockId = blockIdx.x + blockIdx.y * gridDim.x;
 
 	__shared__ bool blockHasValidPoint;
 
@@ -566,17 +576,17 @@ RGBTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu,
 	if (!blockHasValidPoint) return;
 
 	// reduction for valid number of points
-	parallelReduceAtomic<256>(accu->numPoints, (int) isValidPoint, locId_local);
+	parallelReduce<256>(accu[blockId].numPoints, (int) isValidPoint, threadId);
 
 	// reduction for error
-	parallelReduceAtomic<256>(accu->f, b * b, locId_local);
+	parallelReduce<256>(accu[blockId].f, b * b, threadId);
 
 	// reduction for nabla (b * A)
 	for (unsigned char paraId = 0; paraId < noPara; paraId += 3)
 	{
-		parallelReduceArray3Atomic<256>(accu->g + paraId,
-		                                Vector3f(b * A[paraId + 0], b * A[paraId + 1], b * A[paraId + 2]).v,
-		                                locId_local);
+		parallelReduceArray3<256>(accu[blockId].g + paraId,
+		                          Vector3f(b * A[paraId + 0], b * A[paraId + 1], b * A[paraId + 2]).v,
+		                          threadId);
 	}
 
 	float localHessian[noParaSQ];
@@ -594,9 +604,9 @@ RGBTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu,
 	//reduction for hessian
 	for (unsigned char paraId = 0; paraId < noParaSQ; paraId += 3)
 	{
-		parallelReduceArray3Atomic<256>(accu->h + paraId,
-		                                localHessian + paraId,
-		                                locId_local);
+		parallelReduceArray3<256>(accu[blockId].h + paraId,
+		                          localHessian + paraId,
+		                          threadId);
 	}
 }
 

@@ -105,7 +105,9 @@ public:
 	void Reset()
 	{
 		this->age_pointCloud = -1;
+		this->framesProcessed = 0;
 		this->pose_d->SetFrom(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+		this->scaleFactor = 0;
 		this->pose_pointCloud->SetFrom(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
 		this->trackerResult = TRACKING_GOOD;
 		this->trackerScore = 0.0f;

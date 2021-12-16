@@ -123,71 +123,107 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_RGB_Ab(float* A, float& residua
 	if (fabs(gradient_reference.x) < minGradient || fabs(gradient_reference.y) < minGradient) return false;
 	residual = diff;
 
-	MatrixXf<2, 3> d_proj;
+	// detailed derivative
+	// d grad   d proj   d K   d T * p
+	// ------ * ------ * --- * -------
+	// d proj     d K    d p     d Xi
+
+//	const float inv_z = 1 / point_reference.z;
+//	const float inv_z_sq = inv_z * inv_z;
+//	MatrixXf<2, 3> d_proj;
+//	d_proj(0, 0) = inv_z;
+//	d_proj(1, 0) = 0;
+//	d_proj(2, 0) = -(point_reference.x * intrinsics_rgb.x + intrinsics_rgb.z * point_reference.z) * inv_z_sq;
+//	d_proj(0, 1) = 0;
+//	d_proj(1, 1) = inv_z;
+//	d_proj(2, 1) = -(point_reference.y * intrinsics_rgb.y + intrinsics_rgb.w * point_reference.z) * inv_z_sq;
+//
+//
+//	MatrixXf<1, 2> d_grad;
+//	d_grad(0, 0) = gradient_reference.x;
+//	d_grad(1, 0) = gradient_reference.y;
+//
+//	MatrixXf<3, 3> K;
+//	K.setZeros();
+//	K(0, 0) = intrinsics_rgb.x;
+//	K(1, 1) = intrinsics_rgb.y;
+//	K(2, 0) = intrinsics_rgb.z;
+//	K(2, 1) = intrinsics_rgb.w;
+//	K(2, 2) = 1;
+//
+//	if (shortIteration)
+//	{
+//		MatrixXf<3, 3> d_point;
+//		d_point.setZeros();
+//		if (rotationOnly)
+//		{
+//			d_point(0, 0) = 0;
+//			d_point(0, 1) = -point_reference.z;
+//			d_point(0, 2) = point_reference.y;
+//			d_point(1, 0) = point_reference.z;
+//			d_point(1, 1) = 0;
+//			d_point(1, 2) = -point_reference.x;
+//			d_point(2, 0) = -point_reference.y;
+//			d_point(2, 1) = point_reference.x;
+//			d_point(2, 2) = 0;
+//		} else
+//		{
+//			d_point(0, 0) = 1;
+//			d_point(1, 1) = 1;
+//			d_point(2, 2) = 1;
+//		}
+//		MatrixXf<1, 3> J = d_grad * d_proj * K * d_point;
+//		memcpy(A, J.m, sizeof(J.m));
+//	} else
+//	{
+//		MatrixXf<3, 6> d_point;
+//		d_point.setZeros();
+//		d_point(0, 0) = 0;
+//		d_point(0, 1) = -point_reference.z;
+//		d_point(0, 2) = point_reference.y;
+//		d_point(1, 0) = point_reference.z;
+//		d_point(1, 1) = 0;
+//		d_point(1, 2) = -point_reference.x;
+//		d_point(2, 0) = -point_reference.y;
+//		d_point(2, 1) = point_reference.x;
+//		d_point(2, 2) = 0;
+//
+//		d_point(3, 0) = 1;
+//		d_point(4, 1) = 1;
+//		d_point(5, 2) = 1;
+//
+//		MatrixXf<1, 6> J = d_grad * d_proj * K * d_point;
+//		memcpy(A, J.m, sizeof(J.m));
+//  }
+
+	// compact form of the above
 	const float inv_z = 1 / point_reference.z;
-	const float inv_z_sq = inv_z * inv_z;
-	d_proj(0, 0) = inv_z;
-	d_proj(1, 0) = 0;
-	d_proj(2, 0) = -point_reference.x * inv_z_sq;
-	d_proj(0, 1) = 0;
-	d_proj(1, 1) = d_proj(0, 0);
-	d_proj(2, 1) = -point_reference.y * inv_z_sq;
-
-	MatrixXf<1, 2> d_grad;
-	d_grad(0, 0) = gradient_reference.x;
-	d_grad(1, 0) = gradient_reference.y;
-
-	MatrixXf<3, 3> K;
-	K.setZeros();
-	K(0, 0) = intrinsics_depth.x;
-	K(1, 1) = intrinsics_depth.y;
-	K(2, 0) = intrinsics_depth.z;
-	K(2, 1) = intrinsics_depth.w;
-	K(2, 2) = 1;
+	Vector3f dI_dproj_dK;
+	dI_dproj_dK.x = gradient_reference.x * intrinsics_rgb.x * inv_z;
+	dI_dproj_dK.y = gradient_reference.y * intrinsics_rgb.y * inv_z;
+	dI_dproj_dK.z = -(dI_dproj_dK.x * point_reference.x + dI_dproj_dK.y * point_reference.y) * inv_z;
 
 	if (shortIteration)
 	{
-		MatrixXf<3, 3> d_point;
-		d_point.setZeros();
 		if (rotationOnly)
 		{
-			d_point(0, 0) = 0;
-			d_point(0, 1) = -point_world.z;
-			d_point(0, 2) = point_world.y;
-			d_point(1, 0) = point_world.z;
-			d_point(1, 1) = 0;
-			d_point(1, 2) = -point_world.x;
-			d_point(2, 0) = -point_world.y;
-			d_point(2, 1) = point_world.x;
-			d_point(2, 2) = 0;
+			A[0] = -point_reference.z * dI_dproj_dK.y + point_reference.y * dI_dproj_dK.z;
+			A[1] = point_reference.z * dI_dproj_dK.x - point_reference.x * dI_dproj_dK.z;
+			A[2] = -point_reference.y * dI_dproj_dK.x + point_reference.x * dI_dproj_dK.y;
 		} else
 		{
-			d_point(0, 0) = 1;
-			d_point(1, 1) = 1;
-			d_point(2, 2) = 1;
+			A[0] = dI_dproj_dK.x;
+			A[1] = dI_dproj_dK.y;
+			A[2] = dI_dproj_dK.z;
 		}
-		MatrixXf<1, 3> J = d_grad * d_proj * K * d_point;
-		memcpy(A, J.m, sizeof(J.m));
 	} else
 	{
-		MatrixXf<3, 6> d_point;
-		d_point.setZeros();
-		d_point(0, 0) = 0;
-		d_point(0, 1) = -point_world.z;
-		d_point(0, 2) = point_world.y;
-		d_point(1, 0) = point_world.z;
-		d_point(1, 1) = 0;
-		d_point(1, 2) = -point_world.x;
-		d_point(2, 0) = -point_world.y;
-		d_point(2, 1) = point_world.x;
-		d_point(2, 2) = 0;
-
-		d_point(3, 0) = 1;
-		d_point(4, 1) = 1;
-		d_point(5, 2) = 1;
-
-		MatrixXf<1, 6> J = d_grad * d_proj * K * d_point;
-		memcpy(A, J.m, sizeof(J.m));
+		A[0] = -point_reference.z * dI_dproj_dK.y + point_reference.y * dI_dproj_dK.z;
+		A[1] = point_reference.z * dI_dproj_dK.x - point_reference.x * dI_dproj_dK.z;
+		A[2] = -point_reference.y * dI_dproj_dK.x + point_reference.x * dI_dproj_dK.y;
+		A[3] = dI_dproj_dK.x;
+		A[4] = dI_dproj_dK.y;
+		A[5] = dI_dproj_dK.z;
 	}
 
 	return true;
@@ -381,10 +417,10 @@ _CPU_AND_GPU_CODE_ inline bool computeSim3Derivative_RGB(MatrixXf<1, 7>& J, floa
 	const float inv_z_sq = inv_z * inv_z;
 	d_proj(0, 0) = inv_z;
 	d_proj(1, 0) = 0;
-	d_proj(2, 0) = -point_reference.x * inv_z_sq;
+	d_proj(2, 0) = -(point_reference.x * intrinsics_rgb.x + intrinsics_rgb.z * point_reference.z) * inv_z_sq;
 	d_proj(0, 1) = 0;
-	d_proj(1, 1) = d_proj(0, 0);
-	d_proj(2, 1) = -point_reference.y * inv_z_sq;
+	d_proj(1, 1) = inv_z;
+	d_proj(2, 1) = -(point_reference.y * intrinsics_rgb.y + intrinsics_rgb.w * point_reference.z) * inv_z_sq;
 
 	MatrixXf<1, 2> d_grad;
 	d_grad(0, 0) = gradient_reference.x;
@@ -392,10 +428,10 @@ _CPU_AND_GPU_CODE_ inline bool computeSim3Derivative_RGB(MatrixXf<1, 7>& J, floa
 
 	MatrixXf<3, 3> K;
 	K.setZeros();
-	K(0, 0) = intrinsics_depth.x;
-	K(1, 1) = intrinsics_depth.y;
-	K(2, 0) = intrinsics_depth.z;
-	K(2, 1) = intrinsics_depth.w;
+	K(0, 0) = intrinsics_rgb.x;
+	K(1, 1) = intrinsics_rgb.y;
+	K(2, 0) = intrinsics_rgb.z;
+	K(2, 1) = intrinsics_rgb.w;
 	K(2, 2) = 1;
 
 	MatrixXf<3, 7> d_point;
@@ -405,13 +441,13 @@ _CPU_AND_GPU_CODE_ inline bool computeSim3Derivative_RGB(MatrixXf<1, 7>& J, floa
 	d_point(2, 2) = 1;
 
 	d_point(3, 0) = 0;
-	d_point(3, 1) = -point_world.z;
-	d_point(3, 2) = point_world.y;
-	d_point(4, 0) = point_world.z;
+	d_point(3, 1) = -point_reference.z;
+	d_point(3, 2) = point_reference.y;
+	d_point(4, 0) = point_reference.z;
 	d_point(4, 1) = 0;
-	d_point(4, 2) = -point_world.x;
-	d_point(5, 0) = -point_world.y;
-	d_point(5, 1) = point_world.x;
+	d_point(4, 2) = -point_reference.x;
+	d_point(5, 0) = -point_reference.y;
+	d_point(5, 1) = point_reference.x;
 	d_point(5, 2) = 0;
 
 	d_point(6, 0) = point_world.x;
@@ -419,7 +455,6 @@ _CPU_AND_GPU_CODE_ inline bool computeSim3Derivative_RGB(MatrixXf<1, 7>& J, floa
 	d_point(6, 2) = point_world.z;
 
 	J = d_grad * d_proj * K * d_point;
-
 	return true;
 }
 
