@@ -42,6 +42,9 @@ computeNormalBilateralFiltered(const Vector4f* normals, const float sigma_d, con
                                const int x, const int y, const Vector2i& imgSize)
 {
 	Vector4f result(0, 0, 0, -1);
+	// for correctness, discard border (otherwise can cause stripes on reconstructed surfaces)
+	if (x < radius || y < radius || x + radius >= imgSize.x || y + radius >= imgSize.y)
+		return result;
 
 	const Vector4f center = normals[y * imgSize.x + x];
 	if (center.w < 0)
@@ -95,6 +98,10 @@ _CPU_AND_GPU_CODE_ inline float
 computeDepthBilateralFiltered(const float* depth, const float sigma_d, const float sigma_r, const int radius,
                               const int x, const int y, const Vector2i& imgSize)
 {
+	// for correctness, discard border (otherwise can cause stripes on reconstructed surfaces)
+	if (x < radius || y < radius || x + radius >= imgSize.x || y + radius >= imgSize.y)
+		return -1.0f;
+
 	const float center = depth[y * imgSize.x + x];
 	if (center < 0)
 		return center;

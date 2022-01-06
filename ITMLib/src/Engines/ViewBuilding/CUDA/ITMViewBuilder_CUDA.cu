@@ -234,7 +234,7 @@ convertDepthAffineToFloat_device(float* d_out, const short* d_in, Vector2i imgSi
 	int x = threadIdx.x + blockIdx.x * blockDim.x;
 	int y = threadIdx.y + blockIdx.y * blockDim.y;
 
-	if (x < 1 || y < 1 || (x >= imgSize.x - 1) || (y >= imgSize.y - 1)) return;
+	if (x < 0 || y < 0 || x >= imgSize.x || y >= imgSize.y) return;
 
 	convertDepthAffineToFloat(d_out, x, y, d_in, imgSize, depthCalibParams, filterDepth);
 }
@@ -243,7 +243,7 @@ __global__ void filterDepthBilateral_device(float* imageData_out, const float* i
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
 
-	if (x < 2 || x > imgDims.x - 2 || y < 2 || y > imgDims.y - 2) return;
+	if (x >= imgDims.x || y >= imgDims.y) return;
 
 	filterDepthBilateral(imageData_out, imageData_in, 5.0, 0.025, x, y, imgDims);
 }
