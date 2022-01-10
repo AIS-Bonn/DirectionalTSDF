@@ -79,7 +79,7 @@ __global__ void genericRaycast_device(Vector4f* out_ptsRay,
 
 	if (x >= imgSize.x || y >= imgSize.y) return;
 
-	int locId = x + y * imgSize.x;
+	int locId = PixelCoordsToIndex(x, y, imgSize);
 	int locId2 = (int) floor((float) x / minmaximg_subsample) + (int) floor((float) y / minmaximg_subsample) * imgSize.x;
 
 	float distance;
@@ -96,7 +96,7 @@ __global__ void renderDepthShaded_device(Vector4u* outRendering, const Vector4f*
 
 	if (x >= imgSize.x || y >= imgSize.y) return;
 
-	int locId = x + y * imgSize.x;
+	int locId = PixelCoordsToIndex(x, y, imgSize);
 
 	processPixelDepthShaded_SDFNormals(outRendering[locId], ptsRay[locId], tsdf, oneOverVoxelSize, lightSource);
 }
@@ -124,7 +124,7 @@ __global__ void renderNormals_device(Vector4u* outRendering, const Vector4f* pts
 
 	if (x >= imgSize.x || y >= imgSize.y) return;
 
-	int locId = x + y * imgSize.x;
+	int locId = PixelCoordsToIndex(x, y, imgSize);
 
 	processPixelNormal_SDFNormals(outRendering[locId], ptsRay[locId], tsdf, oneOverVoxelSize, lightSource);
 }
@@ -138,53 +138,28 @@ __global__ void renderConfidence_device(Vector4u* outRendering, const Vector4f* 
 
 	if (x >= imgSize.x || y >= imgSize.y) return;
 
-	int locId = x + y * imgSize.x;
+	int locId = PixelCoordsToIndex(x, y, imgSize);
 
 	processPixelConfidence_SDFNormals(outRendering[locId], ptsRay[locId], tsdf, sceneParams, lightSource);
 }
 
 template<class TIndex, class TVoxel, template<typename, typename...> class Map, typename... Args>
-__global__ void renderPointCloud_device(Vector4f* locations, Vector4f* colours, uint* noTotalPoints,
-                                        const Vector4f* ptsRay, const Map<TIndex, TVoxel*, Args...> tsdf,
-                                        const bool skipPoints,
-                                        float voxelSize, const Vector2i imgSize, const Vector3f lightSource)
+__global__ void renderColourFloat_device(Vector4f* colours, const Vector4f* ptsRay,
+                                         const Map<TIndex, TVoxel*, Args...> tsdf,
+                                         float voxelSize, const Vector2i imgSize)
 {
-	__shared__ bool shouldPrefix;
-	shouldPrefix = false;
-	__syncthreads();
-
-
 	int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
 
-	if (x >= imgSize.x && y >= imgSize.y)
-		return;
+	if (x >= imgSize.x && y >= imgSize.y) return;
 
-	int locId = x + y * imgSize.x;
-	Vector3f outNormal;
-	float angle;
+	int locId = PixelCoordsToIndex(x, y, imgSize);
 
 	const Vector4f& pointRay = ptsRay[locId];
 	Vector3f point = pointRay.toVector3();
-	bool foundPoint = pointRay.w > 0;
-	computeNormalAndAngleTSDF(foundPoint, point, tsdf, 1 / voxelSize, lightSource, outNormal, angle);
-
-	if (skipPoints && ((x % 2 == 0) || (y % 2 == 0))) foundPoint = false;
-
-	if (foundPoint) shouldPrefix = true;
-
-	__syncthreads();
-
-	if (shouldPrefix)
-	{
-		int offset = computePrefixSum_device<uint>(foundPoint, noTotalPoints, blockDim.x * blockDim.y,
-		                                           threadIdx.x + threadIdx.y * blockDim.x);
-
-		if (offset != -1)
-		{
-			colours[offset] = readFromSDF_color4u_interpolated(tsdf, point);
-			locations[offset] = Vector4f(point, 1.0);
-		}
-	}
+	if (pointRay.w > 0)
+		colours[locId] = readFromSDF_color4u_interpolated(tsdf, point * (1 / voxelSize));
+	else
+		colours[locId] = Vector4f(0, 0, 0, 0);
 }
 
 template<class TIndex, class TVoxel, template<typename, typename...> class Map, typename... Args>
@@ -196,7 +171,7 @@ __global__ void renderColour_device(Vector4u* outRendering, const Vector4f* ptsR
 
 	if (x >= imgSize.x || y >= imgSize.y) return;
 
-	int locId = x + y * imgSize.x;
+	int locId = PixelCoordsToIndex(x, y, imgSize);
 
 	processPixelColour(outRendering[locId], ptsRay[locId], tsdf, oneOverVoxelSize, lightSource);
 }
@@ -209,7 +184,7 @@ __global__ void renderDepthColour_device(Vector4u* outRendering, const Vector4f*
 
 	if (x >= imgSize.x || y >= imgSize.y) return;
 
-	int locId = x + y * imgSize.x;
+	int locId = PixelCoordsToIndex(x, y, imgSize);
 
 	processPixelDepthColour<TVoxel>(outRendering[locId], ptsRay[locId], T_CW, maxDepth);
 }

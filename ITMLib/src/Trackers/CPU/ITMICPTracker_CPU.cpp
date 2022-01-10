@@ -14,7 +14,7 @@ ITMICPTracker_CPU::ITMICPTracker_CPU(Vector2i imgSize_d, Vector2i imgSize_rgb, c
 ITMICPTracker_CPU::~ITMICPTracker_CPU(void)
 {}
 
-int ITMICPTracker_CPU::ComputeGandH_Depth(float& f, float* nabla, float* hessian, Matrix4f approxInvPose)
+int ITMICPTracker_CPU::ComputeGandH_Depth(float& f, float* nabla, float* hessian, const Matrix4f& deltaT)
 {
 	Vector4f* pointsMap = sceneHierarchy->GetLevel(0)->pointsMap->GetData(MEMORYDEVICE_CPU);
 	Vector4f* normalsMap = sceneHierarchy->GetLevel(0)->normalsMap->GetData(MEMORYDEVICE_CPU);
@@ -53,23 +53,26 @@ int ITMICPTracker_CPU::ComputeGandH_Depth(float& f, float* nabla, float* hessian
 			{
 				case TRACKER_ITERATION_ROTATION:
 					isValidPoint = computePerPointGH_Depth<true, true>(localNabla, localHessian, localF, x, y,
+					                                                   deltaT, renderedScenePose,
 					                                                   depth, viewImageSize,
 					                                                   viewIntrinsics, sceneImageSize, sceneIntrinsics,
-					                                                   approxInvPose, renderedScenePose, pointsMap, normalsMap,
+					                                                   pointsMap, normalsMap,
 					                                                   distThresh[levelId]);
 					break;
 				case TRACKER_ITERATION_TRANSLATION:
 					isValidPoint = computePerPointGH_Depth<true, false>(localNabla, localHessian, localF, x, y,
+					                                                    deltaT, renderedScenePose,
 					                                                    depth, viewImageSize,
 					                                                    viewIntrinsics, sceneImageSize, sceneIntrinsics,
-					                                                    approxInvPose, renderedScenePose, pointsMap, normalsMap,
+					                                                    pointsMap, normalsMap,
 					                                                    distThresh[levelId]);
 					break;
 				case TRACKER_ITERATION_BOTH:
 					isValidPoint = computePerPointGH_Depth<false, false>(localNabla, localHessian, localF, x, y,
+					                                                     deltaT, renderedScenePose,
 					                                                     depth, viewImageSize,
 					                                                     viewIntrinsics, sceneImageSize, sceneIntrinsics,
-					                                                     approxInvPose, renderedScenePose, pointsMap, normalsMap,
+					                                                     pointsMap, normalsMap,
 					                                                     distThresh[levelId]);
 					break;
 				default:
@@ -98,7 +101,7 @@ int ITMICPTracker_CPU::ComputeGandH_Depth(float& f, float* nabla, float* hessian
 	return noValidPoints;
 }
 
-int ITMICPTracker_CPU::ComputeGandH_RGB(float& f, float* nabla, float* hessian, Matrix4f approxInvPose)
+int ITMICPTracker_CPU::ComputeGandH_RGB(float& f, float* nabla, float* hessian, const Matrix4f& delta_T)
 {
 	// FIXME: implement
 }

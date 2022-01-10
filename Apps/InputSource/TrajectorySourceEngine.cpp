@@ -16,6 +16,9 @@ void TrajectorySourceEngine::Read(const std::string& path)
 {
 	std::ifstream file(path);
 	std::string line;
+	if (not file.is_open())
+		printf("error opening trajectory file %s\n", path.c_str());
+
 	while (std::getline(file, line))
 	{
 		if (line[0] == '#')

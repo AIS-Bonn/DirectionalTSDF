@@ -6,6 +6,7 @@
 #include <Utils/ITMCUDAUtils.h>
 #include <ORUtils/CUDADefines.h>
 #include <ORUtils/EigenConversion.h>
+#include <ORUtils/FileUtils.h>
 
 using namespace ITMLib;
 
@@ -58,12 +59,12 @@ struct KernelParameters
 {
 	ITMICPTracker_CUDA::AccuCell* accu;
 	float* depth;
-	Matrix4f approxInvPose;
+	Matrix4f deltaT;
 	Vector4f* pointsMap;
 	Vector4f* normalsMap;
 	Vector4f sceneIntrinsics;
 	Vector2i sceneImageSize;
-	Matrix4f scenePose;
+	Matrix4f T_scene_CW;
 	Vector4f viewIntrinsics;
 	Vector2i viewImageSize;
 	float distThresh;
@@ -76,8 +77,9 @@ struct RGBKernelParameters
 	float* intensity_current;
 	float* intensity_reference;
 	Vector2f* gradient_reference;
-	Matrix4f approxInvPose;
-	Matrix4f intensityReferencePose;
+	Matrix4f deltaT;
+	Matrix4f T_ref_CW;
+	Matrix4f T_scene_WC;
 	Vector4f intrinsics_depth;
 	Vector4f intrinsics_rgb;
 	Vector2i imgSize_depth;
@@ -304,7 +306,7 @@ __global__ void reduceAccumulator(ITMICPTracker_CUDA::AccuCell* accu, size_t N)
 		parallelReduceArray3<blockSize>(accu[blockId].h + paraId, sum.h + paraId, threadId);
 }
 
-int ITMICPTracker_CUDA::ComputeGandH_Depth(float& f, float* nabla, float* hessian, Matrix4f approxInvPose)
+int ITMICPTracker_CUDA::ComputeGandH_Depth(float& f, float* nabla, float* hessian, const Matrix4f& deltaT)
 {
 	Vector4f* pointsMap = sceneHierarchy->GetLevel(0)->pointsMap->GetData(MEMORYDEVICE_CUDA);
 	Vector4f* normalsMap = sceneHierarchy->GetLevel(0)->normalsMap->GetData(MEMORYDEVICE_CUDA);
@@ -331,12 +333,12 @@ int ITMICPTracker_CUDA::ComputeGandH_Depth(float& f, float* nabla, float* hessia
 	struct KernelParameters args;
 	args.accu = accumulator_device;
 	args.depth = depth;
-	args.approxInvPose = approxInvPose;
+	args.deltaT = deltaT;
+	args.T_scene_CW = renderedScenePose;
 	args.pointsMap = pointsMap;
 	args.normalsMap = normalsMap;
 	args.sceneIntrinsics = sceneIntrinsics;
 	args.sceneImageSize = sceneImageSize;
-	args.scenePose = renderedScenePose;
 	args.viewIntrinsics = viewIntrinsics;
 	args.viewImageSize = viewImageSize;
 	args.distThresh = distThresh[levelId];
@@ -374,20 +376,25 @@ int ITMICPTracker_CUDA::ComputeGandH_Depth(float& f, float* nabla, float* hessia
 
 	for (int r = 0, counter = 0; r < noPara; r++)
 		for (int c = 0; c <= r; c++, counter++)
-			hessian[r + c * 6] = accumulator.h[counter];
+			hessian[r + c * 6] = accumulator.h[counter] * invNoPoints;
 	for (int r = 0; r < noPara; ++r)
 		for (int c = r + 1; c < noPara; c++)
 			hessian[r + c * 6] = hessian[c + r * 6];
 
 	for (int c = 0; c < noPara; c++)
-		nabla[c] = accumulator.g[c];
+		nabla[c] = accumulator.g[c] * invNoPoints;
 
 	f = accumulator.f * invNoPoints;
 
 	return accumulator.numPoints;
 }
 
-int ITMICPTracker_CUDA::ComputeGandH_RGB(float& f, float* nabla, float* hessian, Matrix4f approxInvPose)
+__global__ void
+RGBTrackerErrorImage_device(Vector4u* outRendering,
+                            RGBKernelParameters para,
+                            float maxError);
+
+int ITMICPTracker_CUDA::ComputeGandH_RGB(float& f, float* nabla, float* hessian, const Matrix4f& deltaT)
 {
 	Vector2i imageSize_depth = viewHierarchy_depth->GetLevel(levelId)->data->noDims;
 	Vector2i imageSize_rgb = viewHierarchy_depth->GetLevel(levelId)->data->noDims;
@@ -411,12 +418,13 @@ int ITMICPTracker_CUDA::ComputeGandH_RGB(float& f, float* nabla, float* hessian,
 	args.intensity_current = projectedIntensityHierarchy->GetLevel(levelId)->data->GetData(MEMORYDEVICE_CUDA);
 	args.intensity_reference = viewHierarchy_intensity->GetLevel(levelId)->intensity_prev->GetData(MEMORYDEVICE_CUDA);
 	args.gradient_reference = viewHierarchy_intensity->GetLevel(levelId)->gradients->GetData(MEMORYDEVICE_CUDA);
-	args.approxInvPose = approxInvPose;
+	args.deltaT = deltaT;
 	args.intrinsics_depth = viewHierarchy_depth->GetLevel(levelId)->intrinsics;
 	args.imgSize_depth = viewHierarchy_depth->GetLevel(levelId)->data->noDims;
 	args.intrinsics_rgb = viewHierarchy_intensity->GetLevel(levelId)->intrinsics;
 	args.imgSize_rgb = viewHierarchy_intensity->GetLevel(levelId)->intensity_prev->noDims;
-	args.intensityReferencePose = depthToRGBTransform * intensityReferencePose;
+	args.T_ref_CW = depthToRGBTransform * intensityReferencePose;
+	args.T_scene_WC = renderedScenePose.inv();
 	args.viewFrustum_max = 6; // FIXME: use parameter
 	args.intensityThresh = colourThresh[levelId];
 	args.minGradient = parameters.minColourGradient;
@@ -454,17 +462,56 @@ int ITMICPTracker_CUDA::ComputeGandH_RGB(float& f, float* nabla, float* hessian,
 
 	for (int r = 0, counter = 0; r < noPara; r++)
 		for (int c = 0; c <= r; c++, counter++)
-			hessian[r + c * 6] = accu_host.h[counter];
+			hessian[r + c * 6] = accu_host.h[counter] * invNoPoints;
 	for (int r = 0; r < noPara; ++r)
 		for (int c = r + 1; c < noPara; c++)
 			hessian[r + c * 6] = hessian[c + r * 6];
 
 	for (int c = 0; c < noPara; c++)
-		nabla[c] = accu_host.g[c];
+		nabla[c] = accu_host.g[c] * invNoPoints;
 
 	f = accu_host.f * invNoPoints;
 
 	return accu_host.numPoints;
+}
+
+void ITMICPTracker_CUDA::RenderRGBError(ITMUChar4Image* image_out, const Matrix4f& deltaT)
+{
+	Vector2i imageSize_depth = viewHierarchy_depth->GetLevel(levelId)->data->noDims;
+	Vector2i imageSize_rgb = viewHierarchy_depth->GetLevel(levelId)->data->noDims;
+
+	if (iterationType == TRACKER_ITERATION_NONE) return;
+
+	bool shortIteration = iterationType == TRACKER_ITERATION_ROTATION
+	                      || iterationType == TRACKER_ITERATION_TRANSLATION;
+	int noPara = shortIteration ? 3 : 6;
+
+	dim3 blockSize(16, 16);
+	dim3 gridSize((int) ceil((float) imageSize_depth.x / (float) blockSize.x),
+	              (int) ceil((float) imageSize_depth.y / (float) blockSize.y));
+	size_t numBlocks = gridSize.x * gridSize.y;
+
+	ORcudaSafeCall(cudaMemset(accumulator_device, 0, numBlocks * sizeof(AccuCell)));
+
+	struct RGBKernelParameters args;
+	args.accu = accumulator_device;
+	args.points_current = reprojectedPointsHierarchy->GetLevel(levelId)->data->GetData(MEMORYDEVICE_CUDA);
+	args.intensity_current = projectedIntensityHierarchy->GetLevel(levelId)->data->GetData(MEMORYDEVICE_CUDA);
+	args.intensity_reference = viewHierarchy_intensity->GetLevel(levelId)->intensity_prev->GetData(MEMORYDEVICE_CUDA);
+	args.gradient_reference = viewHierarchy_intensity->GetLevel(levelId)->gradients->GetData(MEMORYDEVICE_CUDA);
+	args.deltaT = deltaT;
+	args.intrinsics_depth = viewHierarchy_depth->GetLevel(levelId)->intrinsics;
+	args.imgSize_depth = viewHierarchy_depth->GetLevel(levelId)->data->noDims;
+	args.intrinsics_rgb = viewHierarchy_intensity->GetLevel(levelId)->intrinsics;
+	args.imgSize_rgb = viewHierarchy_intensity->GetLevel(levelId)->intensity_prev->noDims;
+	args.T_ref_CW = depthToRGBTransform * intensityReferencePose;
+	args.T_scene_WC = renderedScenePose.inv();
+	args.viewFrustum_max = 6; // FIXME: use parameter
+	args.intensityThresh = colourThresh[levelId];
+	args.minGradient = parameters.minColourGradient;
+
+	RGBTrackerErrorImage_device << < gridSize, blockSize >> >(image_out->GetData(MEMORYDEVICE_CUDA), args, 0.05);
+	ORcudaKernelCheck;
 }
 
 __global__
@@ -508,19 +555,143 @@ void ITMLib::ITMICPTracker_CUDA::ComputeDepthPointAndIntensity(ITMFloat4Image* p
 	ORcudaKernelCheck;
 }
 
+/**
+ * @param h in [0, 360]
+ * @param s in [0, 1]
+ * @param v in [0, 1]
+ * @return
+ */
+_CPU_AND_GPU_CODE_ inline
+Vector3f HSVtoRGB(const float h, const float s, const float v)
+{
+	int sector = static_cast<int>(floor(h / 60));
+	float f = (h / 60 - sector);
+	float p = v * (1 - s);
+	float q = v * (1 - s * f);
+	float t = v * (1 - s * (1 - f));
+	switch (sector)
+	{
+		case 0:
+		case 6:
+			return Vector3f(v, t, p);
+		case 1:
+			return Vector3f(q, v, p);
+		case 2:
+			return Vector3f(p, v, t);
+		case 3:
+			return Vector3f(p, q, v);
+		case 4:
+			return Vector3f(t, p, v);
+		case 5:
+			return Vector3f(v, p, q);
+	}
+
+	return Vector3f(0, 0, 0);
+}
+
+__device__ void
+RGBTrackerErrorImage_device_main(Vector4u* outRendering,
+                                 const Matrix4f& deltaT, const Matrix4f& T_ref_CW, const Matrix4f& T_scene_WC,
+                                 const Vector4f* points_current,
+                                 const float* intensity_current,
+                                 const float* intensity_reference,
+                                 const Vector2f* gradient_reference,
+                                 const Vector4f& intrinsics_depth,
+                                 const Vector4f& intrinsics_rgb,
+                                 Vector2i imgSize_depth,
+                                 Vector2i imgSize_rgb,
+                                 float viewFrustum_max,
+                                 float intensityThresh,
+                                 float minGradient,
+                                 float maxError)
+{
+	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
+
+	int threadId = threadIdx.x + threadIdx.y * blockDim.x;
+	size_t blockId = blockIdx.x + blockIdx.y * gridDim.x;
+
+	__shared__ bool blockHasValidPoint;
+
+	blockHasValidPoint = false;
+	__syncthreads();
+
+	float A[6];
+	float b;
+	float weight;
+	bool isValidPoint = false;
+
+	for (int i = 0; i < 6; i++) A[i] = 0.0f;
+
+	if (x >= imgSize_depth.x || y >= imgSize_depth.y)
+		return;
+
+	isValidPoint = computePerPointGH_RGB_Ab<false, false>(A, b, weight, x, y,
+	                                                      deltaT,
+	                                                      T_ref_CW,
+	                                                      T_scene_WC,
+	                                                      points_current,
+	                                                      intensity_current,
+	                                                      intensity_reference,
+	                                                      gradient_reference,
+	                                                      imgSize_depth,
+	                                                      imgSize_rgb,
+	                                                      intrinsics_depth,
+	                                                      intrinsics_rgb,
+	                                                      viewFrustum_max,
+	                                                      intensityThresh,
+	                                                      minGradient
+	);
+
+	int locId = PixelCoordsToIndex(x, y, imgSize_depth);
+	if (!isValidPoint)
+	{
+		outRendering[locId] = Vector4u(0, 0, 0, 0);
+		return;
+	}
+
+	b = MIN(fabs(b / maxError), 1); // normalize
+
+	Vector4f color = Vector4f(HSVtoRGB((1 - b) * 240, 1, 1) * 255, 255);
+
+	outRendering[locId] = color.toUChar();
+}
+
+__global__ void
+RGBTrackerErrorImage_device(Vector4u* outRendering,
+                            RGBKernelParameters para,
+                            float maxError)
+{
+	RGBTrackerErrorImage_device_main(outRendering,
+	                                 para.deltaT,
+	                                 para.T_ref_CW,
+	                                 para.T_scene_WC,
+	                                 para.points_current,
+	                                 para.intensity_current,
+	                                 para.intensity_reference,
+	                                 para.gradient_reference,
+	                                 para.intrinsics_depth,
+	                                 para.intrinsics_rgb,
+	                                 para.imgSize_depth,
+	                                 para.imgSize_rgb,
+	                                 para.viewFrustum_max,
+	                                 para.intensityThresh,
+	                                 para.minGradient,
+	                                 maxError);
+}
+
+
 // device functions
 
 template<bool shortIteration, bool rotationOnly>
 __device__ void
 RGBTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu,
+                                    const Matrix4f& deltaT, const Matrix4f& T_ref_CW, const Matrix4f& T_scene_WC,
                                     const Vector4f* points_current,
                                     const float* intensity_current,
                                     const float* intensity_reference,
                                     const Vector2f* gradient_reference,
-                                    Matrix4f approxInvPose,
-                                    Matrix4f intensityReferencePose,
-                                    Vector4f intrinsics_depth,
-                                    Vector4f intrinsics_rgb,
+                                    const Vector4f& intrinsics_depth,
+                                    const Vector4f& intrinsics_rgb,
                                     Vector2i imgSize_depth,
                                     Vector2i imgSize_rgb,
                                     float viewFrustum_max,
@@ -541,13 +712,17 @@ RGBTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu,
 	const int noParaSQ = shortIteration ? 3 + 2 + 1 : 6 + 5 + 4 + 3 + 2 + 1;
 	float A[noPara];
 	float b;
+	float weight;
 	bool isValidPoint = false;
 
 	for (int i = 0; i < noPara; i++) A[i] = 0.0f;
 
 	if (x < imgSize_depth.x && y < imgSize_depth.y)
 	{
-		isValidPoint = computePerPointGH_RGB_Ab<shortIteration, rotationOnly>(A, b, x, y,
+		isValidPoint = computePerPointGH_RGB_Ab<shortIteration, rotationOnly>(A, b, weight, x, y,
+		                                                                      deltaT,
+		                                                                      T_ref_CW,
+		                                                                      T_scene_WC,
 		                                                                      points_current,
 		                                                                      intensity_current,
 		                                                                      intensity_reference,
@@ -556,8 +731,6 @@ RGBTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu,
 		                                                                      imgSize_rgb,
 		                                                                      intrinsics_depth,
 		                                                                      intrinsics_rgb,
-		                                                                      approxInvPose,
-		                                                                      intensityReferencePose,
 		                                                                      viewFrustum_max,
 		                                                                      intensityThresh,
 		                                                                      minGradient
@@ -569,6 +742,7 @@ RGBTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu,
 	{
 		for (int i = 0; i < noPara; i++) A[i] = 0.0f;
 		b = 0.0f;
+		weight = 1.0f;
 	}
 
 	__syncthreads();
@@ -578,14 +752,16 @@ RGBTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu,
 	// reduction for valid number of points
 	parallelReduce<256>(accu[blockId].numPoints, (int) isValidPoint, threadId);
 
+//#define USE_COLOR_HUBER
+#ifndef USE_COLOR_HUBER
 	// reduction for error
-	parallelReduce<256>(accu[blockId].f, b * b, threadId);
+	parallelReduce<256>(accu[blockId].f, weight * b * b, threadId);
 
 	// reduction for nabla (b * A)
 	for (unsigned char paraId = 0; paraId < noPara; paraId += 3)
 	{
 		parallelReduceArray3<256>(accu[blockId].g + paraId,
-		                          Vector3f(b * A[paraId + 0], b * A[paraId + 1], b * A[paraId + 2]).v,
+		                          (weight * b * Vector3f(A[paraId + 0], A[paraId + 1], A[paraId + 2])).v,
 		                          threadId);
 	}
 
@@ -598,7 +774,7 @@ RGBTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu,
 #if (defined(__CUDACC__) && defined(__CUDA_ARCH__))
 #pragma unroll
 #endif
-		for (int c = 0; c <= r; c++, counter++) localHessian[counter] = A[r] * A[c];
+		for (int c = 0; c <= r; c++, counter++) localHessian[counter] = weight * A[r] * A[c];
 	}
 
 	//reduction for hessian
@@ -608,15 +784,54 @@ RGBTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu,
 		                          localHessian + paraId,
 		                          threadId);
 	}
+
+#else
+
+	// reduction for valid number of points
+	parallelReduce<256>(accu[blockId].numPoints, (int) isValidPoint, threadId);
+
+	const float delta = 0.1;
+
+	// reduction for error
+	parallelReduce<256>(accu[blockId].f, weight * huber(b, delta), threadId);
+
+	// reduction for nabla (b * A)
+	for (unsigned char paraId = 0; paraId < noPara; paraId += 3)
+	{
+		parallelReduceArray3<256>(accu[blockId].g + paraId,
+		                          (weight * huber_deriv(b, delta) * Vector3f(A[paraId + 0], A[paraId + 1], A[paraId + 2])).v,
+		                          threadId);
+	}
+
+	float localHessian[noParaSQ];
+#if (defined(__CUDACC__) && defined(__CUDA_ARCH__))
+#pragma unroll
+#endif
+	for (unsigned char r = 0, counter = 0; r < noPara; r++)
+	{
+#if (defined(__CUDACC__) && defined(__CUDA_ARCH__))
+#pragma unroll
+#endif
+		for (int c = 0; c <= r; c++, counter++) localHessian[counter] = weight * huber_deriv2(b, delta) * A[r] * A[c];
+	}
+
+	//reduction for hessian
+	for (unsigned char paraId = 0; paraId < noParaSQ; paraId += 3)
+	{
+		parallelReduceArray3<256>(accu[blockId].h + paraId,
+		                          localHessian + paraId,
+		                          threadId);
+	}
+#endif
 }
 
 template<bool shortIteration, bool rotationOnly>
 __device__ void
-depthTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu, float* depth, Matrix4f approxInvPose,
-                                      Vector4f* pointsMap,
-                                      Vector4f* normalsMap, Vector4f sceneIntrinsics, Vector2i sceneImageSize,
-                                      Matrix4f scenePose, Vector4f viewIntrinsics, Vector2i viewImageSize,
-                                      float distThresh)
+depthTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu,
+                                      const Matrix4f& deltaT, const Matrix4f& T_scene_CW,
+                                      const float* depth, const Vector4f* pointsMap, const Vector4f* normalsMap,
+                                      const Vector4f sceneIntrinsics, const Vector2i sceneImageSize,
+                                      Vector4f viewIntrinsics, Vector2i viewImageSize, float distThresh)
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
 
@@ -632,14 +847,16 @@ depthTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu, float*
 	const int noParaSQ = shortIteration ? 3 + 2 + 1 : 6 + 5 + 4 + 3 + 2 + 1;
 	float A[noPara];
 	float b;
+	float weight;
 	bool isValidPoint = false;
 
 	if (x < viewImageSize.x && y < viewImageSize.y)
 	{
-		isValidPoint = computePerPointGH_Depth_Ab<shortIteration, rotationOnly>(A, b, x, y, depth,
-		                                                                        viewImageSize, viewIntrinsics,
+		isValidPoint = computePerPointGH_Depth_Ab<shortIteration, rotationOnly>(A, b, weight, x, y,
+		                                                                        deltaT, T_scene_CW,
+		                                                                        depth, viewImageSize, viewIntrinsics,
 		                                                                        sceneImageSize, sceneIntrinsics,
-		                                                                        approxInvPose, scenePose, pointsMap,
+		                                                                        pointsMap,
 		                                                                        normalsMap, distThresh);
 		if (isValidPoint) blockHasValidPoint = true;
 	}
@@ -652,19 +869,22 @@ depthTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu, float*
 	{
 		for (int i = 0; i < noPara; i++) A[i] = 0.0f;
 		b = 0.0f;
+		weight = 1.0f;
 	}
 
+//#define USE_DEPTH_HUBER
+#ifndef USE_DEPTH_HUBER
 	// reduction for valid number of points
 	parallelReduce<256>(accu[blockId].numPoints, (int) isValidPoint, threadId);
 
 	// reduction for error
-	parallelReduce<256>(accu[blockId].f, b * b, threadId);
+	parallelReduce<256>(accu[blockId].f, weight * b * b, threadId);
 
 	// reduction for nabla (b * A)
 	for (unsigned char paraId = 0; paraId < noPara; paraId += 3)
 	{
 		parallelReduceArray3<256>(accu[blockId].g + paraId,
-		                          Vector3f(b * A[paraId + 0], b * A[paraId + 1], b * A[paraId + 2]).v,
+		                          (weight * b * Vector3f(A[paraId + 0], A[paraId + 1], A[paraId + 2])).v,
 		                          threadId);
 	}
 
@@ -677,7 +897,7 @@ depthTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu, float*
 #if (defined(__CUDACC__) && defined(__CUDA_ARCH__))
 #pragma unroll
 #endif
-		for (int c = 0; c <= r; c++, counter++) localHessian[counter] = A[r] * A[c];
+		for (int c = 0; c <= r; c++, counter++) localHessian[counter] = weight * A[r] * A[c];
 	}
 
 	//reduction for hessian
@@ -687,6 +907,46 @@ depthTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu, float*
 		                          localHessian + paraId,
 		                          threadId);
 	}
+
+#else
+
+	const float delta = distThresh;
+
+	// reduction for valid number of points
+	parallelReduce<256>(accu[blockId].numPoints, (int) isValidPoint, threadId);
+
+	// reduction for error
+	parallelReduce<256>(accu[blockId].f, weight * huber(b, delta), threadId);
+
+	// reduction for nabla (b * A)
+	for (unsigned char paraId = 0; paraId < noPara; paraId += 3)
+	{
+		parallelReduceArray3<256>(accu[blockId].g + paraId,
+		                          (huber_deriv(b, delta) * weight *
+		                           Vector3f(A[paraId + 0], A[paraId + 1], A[paraId + 2])).v,
+		                          threadId);
+	}
+
+	float localHessian[noParaSQ];
+#if (defined(__CUDACC__) && defined(__CUDA_ARCH__))
+#pragma unroll
+#endif
+	for (unsigned char r = 0, counter = 0; r < noPara; r++)
+	{
+#if (defined(__CUDACC__) && defined(__CUDA_ARCH__))
+#pragma unroll
+#endif
+		for (int c = 0; c <= r; c++, counter++) localHessian[counter] = huber_deriv2(b, delta) * weight * A[r] * A[c];
+	}
+
+	//reduction for hessian
+	for (unsigned char paraId = 0; paraId < noParaSQ; paraId += 3)
+	{
+		parallelReduceArray3<256>(accu[blockId].h + paraId,
+		                          localHessian + paraId,
+		                          threadId);
+	}
+#endif
 }
 
 __global__ void
@@ -835,11 +1095,11 @@ template<bool shortIteration, bool rotationOnly>
 __global__ void
 depthTrackerOneLevel_g_rt_device(KernelParameters para)
 {
-	depthTrackerOneLevel_g_rt_device_main<shortIteration, rotationOnly>(para.accu, para.depth,
-	                                                                    para.approxInvPose,
-	                                                                    para.pointsMap, para.normalsMap,
+	depthTrackerOneLevel_g_rt_device_main<shortIteration, rotationOnly>(para.accu,
+	                                                                    para.deltaT, para.T_scene_CW,
+	                                                                    para.depth, para.pointsMap, para.normalsMap,
 	                                                                    para.sceneIntrinsics, para.sceneImageSize,
-	                                                                    para.scenePose, para.viewIntrinsics,
+	                                                                    para.viewIntrinsics,
 	                                                                    para.viewImageSize,
 	                                                                    para.distThresh);
 }
@@ -848,12 +1108,13 @@ template<bool shortIteration, bool rotationOnly>
 __global__ void RGBTrackerOneLevel_g_rt_device(RGBKernelParameters para)
 {
 	RGBTrackerOneLevel_g_rt_device_main<shortIteration, rotationOnly>(para.accu,
+	                                                                  para.deltaT,
+	                                                                  para.T_ref_CW,
+	                                                                  para.T_scene_WC,
 	                                                                  para.points_current,
 	                                                                  para.intensity_current,
 	                                                                  para.intensity_reference,
 	                                                                  para.gradient_reference,
-	                                                                  para.approxInvPose,
-	                                                                  para.intensityReferencePose,
 	                                                                  para.intrinsics_depth,
 	                                                                  para.intrinsics_rgb,
 	                                                                  para.imgSize_depth,

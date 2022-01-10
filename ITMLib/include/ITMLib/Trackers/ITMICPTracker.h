@@ -15,6 +15,7 @@
 
 #include <ORUtils/HomkerMap.h>
 #include <ORUtils/SVMClassifier.h>
+#include <sophus/se3.hpp>
 
 namespace ITMLib
 {
@@ -30,10 +31,31 @@ class ITMICPTracker : public ITMTracker
 public:
 	struct Parameters
 	{
+		enum class ColourMode
+		{
+			FRAME_TO_FRAME,
+			FRAME_TO_KEYFRAME,
+			FRAME_TO_RENDER,
+			UNKNOWN
+		};
+
+		ColourMode ColourModeFromString(const std::string& s)
+		{
+			if (s == "f2f")
+				return ColourMode::FRAME_TO_FRAME;
+			else if (s == "f2kf")
+				return ColourMode::FRAME_TO_KEYFRAME;
+			else if (s == "f2r")
+				return ColourMode::FRAME_TO_RENDER;
+			return ColourMode::UNKNOWN;
+		}
+
 		std::vector<TrackerIterationType> levels;
+		bool useDepth = true;
 		bool useColour = false;
 		float colourWeight = 0.1f;
-		bool optimizeScale = true;
+		ColourMode colourMode = ColourMode::FRAME_TO_FRAME;
+		bool optimizeScale = false;
 		float minColourGradient = 0.01f;
 		float smallStepSizeCriterion = 1e-3f;
 		float outlierDistanceFine = 0.002f;
@@ -48,7 +70,7 @@ public:
 	void TrackCamera(ITMTrackingState* trackingState, const ITMView* view);
 
 	bool requiresColourRendering() const
-	{ return false; }
+	{ return parameters.useColour && parameters.colourMode == Parameters::ColourMode::FRAME_TO_RENDER; }
 
 	bool requiresDepthReliability() const
 	{ return false; }
@@ -80,9 +102,10 @@ private:
 
 	void SetEvaluationParams(int levelId);
 
-	void ComputeDelta(Eigen::Matrix<EigenT, 6, 1>& delta, Eigen::Matrix<EigenT, 6, 1>& nabla, Eigen::Matrix<EigenT, 6, 6>& hessian, bool shortIteration) const;
+	void ComputeDelta(Eigen::Matrix<EigenT, 6, 1>& delta, Eigen::Matrix<EigenT, 6, 1>& nabla,
+	                  Eigen::Matrix<EigenT, 6, 6>& hessian, bool shortIteration) const;
 
-	void ApplyDelta(const Matrix4f& para_old, const Eigen::Matrix<EigenT, 6, 1>& delta, Matrix4f& para_new) const;
+	void ApplyDelta(const Eigen::Matrix<EigenT, 6, 1>& deltaSE3, Sophus::SE3<EigenT>& deltaT) const;
 
 	bool HasConverged(const Eigen::Matrix<EigenT, 6, 1>& delta) const;
 
@@ -98,6 +121,12 @@ protected:
 
 	float* distThresh;
 	float* colourThresh;
+
+	double lastNegativeEntropy = 0;
+	double maxNegativeEntropy = 0;
+	double averageNegativeEntropy = 0;
+	double averageNegativeEntropy2 = 0;
+	int averageNegativeEntropyCounter = 0;
 
 	int levelId;
 	TrackerIterationType iterationType;
@@ -124,13 +153,23 @@ protected:
 
 	Matrix4f depthToRGBTransform;
 
-	virtual int ComputeGandH_Depth(float& f, float* nabla, float* hessian, Matrix4f approxInvPose) = 0;
+	/**
+	 * @param deltaT current estimate. Transform from current frame to rendered scene
+	 */
+	virtual int ComputeGandH_Depth(float& f, float* nabla, float* hessian, const Matrix4f& deltaT) = 0;
 
-	virtual int ComputeGandH_RGB(float& f, float* nabla, float* hessian, Matrix4f approxPose) = 0;
+	/**
+	 * @param deltaT current estimate. Transform from current frame to rendered scene
+	 */
+	virtual int ComputeGandH_RGB(float& f, float* nabla, float* hessian, const Matrix4f& deltaT) = 0;
 
-	virtual size_t ComputeGandHSim3_Depth(float& f, Eigen::Matrix<EigenT, 7, 7>& H, Eigen::Matrix<EigenT, 7, 1>& g, const Matrix4f& approxInvPose) = 0;
+	virtual void RenderRGBError(ITMUChar4Image* image_out, const Matrix4f& deltaT) = 0;
 
-	virtual size_t ComputeGandHSim3_RGB(float& f, Eigen::Matrix<EigenT, 7, 7>& H, Eigen::Matrix<EigenT, 7, 1>& g, const Matrix4f& approxInvPose) = 0;
+	virtual size_t ComputeGandHSim3_Depth(float& f, Eigen::Matrix<EigenT, 7, 7>& H, Eigen::Matrix<EigenT, 7, 1>& g,
+	                                      const Matrix4f& approxInvPose) = 0;
+
+	virtual size_t ComputeGandHSim3_RGB(float& f, Eigen::Matrix<EigenT, 7, 7>& H, Eigen::Matrix<EigenT, 7, 1>& g,
+	                                    const Matrix4f& approxInvPose) = 0;
 
 	virtual void ComputeDepthPointAndIntensity(ITMFloat4Image* points_out,
 	                                           ITMFloatImage* intensity_out,

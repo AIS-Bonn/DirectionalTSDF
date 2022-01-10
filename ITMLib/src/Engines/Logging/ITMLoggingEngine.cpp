@@ -104,6 +104,8 @@ void ITMLoggingEngine::LogPose(const ITMTrackingState& trackingState)
 	m_trackingFile << T.x << " " << T.y << " " << T.z << " " << Q.x << " " << Q.y << " " << Q.z << " " << Q.w;
 	m_trackingFile << " " << trackingState.trackerScore;
 	m_trackingFile << " " << trackingState.trackerResult;
+	m_trackingFile << " " << trackingState.f_depth;
+	m_trackingFile << " " << trackingState.f_rgb;
 	m_trackingFile << std::endl;
 }
 

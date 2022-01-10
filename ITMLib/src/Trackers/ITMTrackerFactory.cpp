@@ -153,10 +153,17 @@ ITMTrackerFactory::MakeICPTracker(const Vector2i& imgSize_rgb, const Vector2i& i
 	cfg.parseStrProperty("levels", "resolution hierarchy levels", levelSetup, verbose);
 	parameters.levels = parseLevelConfig(levelSetup);
 
+	cfg.parseBoolProperty("useDepth", "use depth based tracking", parameters.useDepth, verbose);
 	cfg.parseBoolProperty("useColour", "use colour based tracking", parameters.useColour, verbose);
 	cfg.parseFltProperty("colourWeight",
 	                     "weight used to scale colour errors and jacobians when both useColour and useWeights are set",
 	                     parameters.colourWeight, verbose);
+	const char* colourMode = "f2f";
+	cfg.parseStrProperty("colourMode",
+	                     "weight used to scale colour errors and jacobians when both useColour and useWeights are set",
+	                     colourMode, verbose);
+	parameters.colourMode = parameters.ColourModeFromString(colourMode);
+	cfg.parseBoolProperty("optimizeScale", "optimize in sim3 to also estimate scale factor", parameters.optimizeScale, verbose);
 	cfg.parseFltProperty("minstep", "step size threshold for convergence", parameters.smallStepSizeCriterion, verbose);
 	cfg.parseFltProperty("outlierDistanceC", "distance outlier threshold at coarsest level",
 	                     parameters.outlierDistanceCoarse, verbose);

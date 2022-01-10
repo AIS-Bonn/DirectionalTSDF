@@ -311,25 +311,26 @@ void ITMVisualisationEngine_CUDA::CreatePointCloud(const Scene* scene,
                                                    bool skipPoints) const
 {
 	Vector2i imgSize = renderState->raycastResult->noDims;
-	Matrix4f invM = trackingState->pose_d->GetInvM() * view->calib.trafo_rgb_to_depth.calib;
+	Matrix4f invM = trackingState->pose_d->GetInvM();
 
 	GenericRaycast(scene, imgSize, invM, view->calib.intrinsics_rgb.projectionParamsSimple.all, renderState, true);
 	trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
 
 	ORcudaSafeCall(cudaMemsetAsync(noTotalPoints_device, 0, sizeof(uint)));
 
-	Vector3f lightSource = Vector3f(invM.getColumn(3));
-	Vector4f* locations = trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CUDA);
 	Vector4f* colours = trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CUDA);
 	Vector4f* pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CUDA);
 
 	dim3 cudaBlockSize(8, 8);
 	dim3 gridSize = getGridSize(imgSize, cudaBlockSize);
 
-	renderPointCloud_device << < gridSize, cudaBlockSize >> > (locations, colours, noTotalPoints_device, pointsRay,
-		renderingTSDF->toCUDA()->getMap(),
-		skipPoints, scene->sceneParams->voxelSize, imgSize, lightSource);
+	auto tsdf = GetRenderingTSDF(scene)->toCUDA();
+	renderColourFloat_device << < gridSize, cudaBlockSize >> > (colours, pointsRay, tsdf->getMap(),
+		scene->sceneParams->voxelSize, imgSize);
 	ORcudaKernelCheck;
+
+	trackingState->pointCloud->locations->SetFrom(renderState->raycastResult, ORUtils::CUDA_TO_CUDA);
+	trackingState->pointCloud->normals->SetFrom(renderState->raycastNormals, ORUtils::CUDA_TO_CUDA);
 
 	ORcudaSafeCall(
 		cudaMemcpy(&trackingState->pointCloud->noTotalPoints, noTotalPoints_device, sizeof(uint), cudaMemcpyDeviceToHost));

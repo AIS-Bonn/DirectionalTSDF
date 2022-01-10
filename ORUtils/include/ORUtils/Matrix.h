@@ -34,6 +34,7 @@ namespace ORUtils {
 			T m[16];
 		};
 	};
+	template<class T> class Matrix4;
 
 	template <class T> struct Matrix3_{
 		union { // Warning: see the header in this file for the special matrix order
@@ -45,8 +46,9 @@ namespace ORUtils {
 			T m[9];
 		};
 	};
+	template<class T> class Matrix3;
 
-	template<class T, int s> struct MatrixSQX_{
+template<class T, int s> struct MatrixSQX_{
 		int dim;
 		int sq;
 		T m[s*s];
@@ -144,19 +146,27 @@ public:
 			return mtrans;
 		}
 
-		_CPU_AND_GPU_CODE_ inline friend Matrix4 operator * (const Matrix4 &lhs, const T &rhs)	{ 
+		/// Get rotation component (upper left 3x3 matrix)
+		_CPU_AND_GPU_CODE_ inline Matrix3<T> getRotationMatrix() const
+		{
+			return Matrix3<T>(this->m00, this->m01, this->m02,
+			                  this->m10, this->m11, this->m12,
+			                  this->m20, this->m21, this->m22);
+		}
+
+		_CPU_AND_GPU_CODE_ inline friend Matrix4 operator * (const Matrix4 &lhs, const T &rhs)	{
 			Matrix4 r;
 			for (int i = 0; i < 16; i++) r.m[i] = lhs.m[i] * rhs;
 			return r;
 		}
 
-		_CPU_AND_GPU_CODE_ inline friend Matrix4 operator / (const Matrix4 &lhs, const T &rhs)	{ 
+		_CPU_AND_GPU_CODE_ inline friend Matrix4 operator / (const Matrix4 &lhs, const T &rhs)	{
 			Matrix4 r;
 			for (int i = 0; i < 16; i++) r.m[i] = lhs.m[i] / rhs;
 			return r;
 		}
 
-		_CPU_AND_GPU_CODE_ inline friend Matrix4 operator * (const Matrix4 &lhs, const Matrix4 &rhs)	{ 
+		_CPU_AND_GPU_CODE_ inline friend Matrix4 operator * (const Matrix4 &lhs, const Matrix4 &rhs)	{
 			Matrix4 r;
 			r.setZeros();
 			for (int x = 0; x < 4; x++) for (int y = 0; y < 4; y++) for (int k = 0; k < 4; k++)
@@ -277,6 +287,12 @@ public:
 
 			out *= 1 / det;
 			return true;
+		}
+
+		_CPU_AND_GPU_CODE_ inline Matrix4 inv() const {
+			Matrix4 out;
+			this->inv(out);
+			return out;
 		}
 
 		friend std::ostream& operator<<(std::ostream& os, const Matrix4<T>& dt) {

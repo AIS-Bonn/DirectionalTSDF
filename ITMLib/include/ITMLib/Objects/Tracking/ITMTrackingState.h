@@ -38,6 +38,9 @@ public:
 	/// Current scale factor for depth camera
 	float scaleFactor = 0; //1;
 
+	float f_depth = 0;
+	float f_rgb = 0;
+
 	/// Tracking quality: 1.0: success, 0.0: failure
 	enum TrackingResult
 	{
@@ -111,6 +114,8 @@ public:
 		this->pose_pointCloud->SetFrom(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
 		this->trackerResult = TRACKING_GOOD;
 		this->trackerScore = 0.0f;
+		this->f_rgb = 0;
+		this->f_depth = 0;
 	}
 
 	// Suppress the default copy constructor and assignment operator

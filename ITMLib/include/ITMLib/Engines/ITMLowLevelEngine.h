@@ -18,6 +18,8 @@ public:
 
 	virtual void ConvertColourToIntensity(ITMFloatImage* image_out, const ITMUChar4Image* image_in) const = 0;
 
+	virtual void ConvertColourToIntensity(ITMFloatImage* image_out, const ITMFloat4Image* image_in) const = 0;
+
 	virtual void FilterIntensity(ITMFloatImage* image_out, const ITMFloatImage* image_in) const = 0;
 
 	virtual void FilterSubsample(ITMUChar4Image* image_out, const ITMUChar4Image* image_in) const = 0;

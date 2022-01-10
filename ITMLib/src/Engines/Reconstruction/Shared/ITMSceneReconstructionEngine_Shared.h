@@ -770,7 +770,7 @@ findAllocationBlocks(Set<TIndex, Args...>& allocationBlocks,
 	float angles[N_DIRECTIONS];
 	ComputeDirectionAngle(normalWorld, angles);
 
-	Vector3s lastBlockIdx(MAX_SHORT, MAX_SHORT, MAX_SHORT);
+		Vector3s lastBlockIdx(MAX_SHORT, MAX_SHORT, MAX_SHORT);
 	while (blockTraversalBefore.HasNextBlock() or blockTraversalBehind.HasNextBlock())
 	{
 		Vector3i voxelPos;
@@ -783,11 +783,11 @@ findAllocationBlocks(Set<TIndex, Args...>& allocationBlocks,
 		if (blockIdx == lastBlockIdx)
 			continue;
 
-		if (fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL)
+			if (fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL)
 		{
 			for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
 			{
-				if (angles[directionIdx] > M_PI_4)
+				if (angles[directionIdx] > M_PI_4 * 1.05) // some minimal overlap against corner cases
 					continue;
 //				if (DirectionWeight(angles[directionIdx]) <= 0)
 //					continue;
@@ -804,20 +804,16 @@ findAllocationBlocks(Set<TIndex, Args...>& allocationBlocks,
 
 template<bool checkEnlarged>
 _CPU_AND_GPU_CODE_ inline void checkPointVisibility(bool& isVisible, bool& isVisibleEnlarged,
-                                                    const Vector4f& pt_image, const Matrix4f& M_d,
+                                                    const Vector4f& pt_world, const Matrix4f& M_d,
                                                     const Vector4f& projParams_d,
                                                     const Vector2i& imgSize)
 {
-	Vector4f pt_buff;
+	Vector3f pt_image = (M_d * pt_world).toVector3();
 
-	pt_buff = M_d * pt_image;
+	if (pt_image.z < 1e-10f) return;
 
-	if (pt_buff.z < 1e-10f) return;
-
-	pt_buff.x = projParams_d.x * pt_buff.x / pt_buff.z + projParams_d.z;
-	pt_buff.y = projParams_d.y * pt_buff.y / pt_buff.z + projParams_d.w;
-
-	if (pt_buff.x >= 0 && pt_buff.x < imgSize.x && pt_buff.y >= 0 && pt_buff.y < imgSize.y)
+	Vector2f image_coords = project(pt_image, projParams_d);
+	if (image_coords.x >= 0 && image_coords.x < imgSize.x && image_coords.y >= 0 && image_coords.y < imgSize.y)
 	{
 		isVisible = true;
 		isVisibleEnlarged = true;
@@ -829,7 +825,7 @@ _CPU_AND_GPU_CODE_ inline void checkPointVisibility(bool& isVisible, bool& isVis
 		lims.z = -imgSize.y / 8;
 		lims.w = imgSize.y + imgSize.y / 8;
 
-		if (pt_buff.x >= lims.x && pt_buff.x < lims.y && pt_buff.y >= lims.z && pt_buff.y < lims.w)
+		if (image_coords.x >= lims.x && image_coords.x < lims.y && image_coords.y >= lims.z && image_coords.y < lims.w)
 			isVisibleEnlarged = true;
 	}
 }
@@ -840,56 +836,56 @@ _CPU_AND_GPU_CODE_ inline void checkBlockVisibility(bool& isVisible, bool& isVis
                                                     const Vector4f& projParams_d,
                                                     const float& voxelSize, const Vector2i& imgSize)
 {
-	Vector4f pt_image;
+	Vector4f pt_world;
 	float factor = (float) SDF_BLOCK_SIZE * voxelSize;
 
 	isVisible = false;
 	isVisibleEnlarged = false;
 
 	// 0 0 0
-	pt_image.x = (float) blockPos.x * factor;
-	pt_image.y = (float) blockPos.y * factor;
-	pt_image.z = (float) blockPos.z * factor;
-	pt_image.w = 1.0f;
-	checkPointVisibility<checkEnlarged>(isVisible, isVisibleEnlarged, pt_image, M_d, projParams_d, imgSize);
+	pt_world.x = (float) blockPos.x * factor;
+	pt_world.y = (float) blockPos.y * factor;
+	pt_world.z = (float) blockPos.z * factor;
+	pt_world.w = 1.0f;
+	checkPointVisibility<checkEnlarged>(isVisible, isVisibleEnlarged, pt_world, M_d, projParams_d, imgSize);
 	if (isVisible) return;
 
 	// 0 0 1
-	pt_image.z += factor;
-	checkPointVisibility<checkEnlarged>(isVisible, isVisibleEnlarged, pt_image, M_d, projParams_d, imgSize);
+	pt_world.z += factor;
+	checkPointVisibility<checkEnlarged>(isVisible, isVisibleEnlarged, pt_world, M_d, projParams_d, imgSize);
 	if (isVisible) return;
 
 	// 0 1 1
-	pt_image.y += factor;
-	checkPointVisibility<checkEnlarged>(isVisible, isVisibleEnlarged, pt_image, M_d, projParams_d, imgSize);
+	pt_world.y += factor;
+	checkPointVisibility<checkEnlarged>(isVisible, isVisibleEnlarged, pt_world, M_d, projParams_d, imgSize);
 	if (isVisible) return;
 
 	// 1 1 1
-	pt_image.x += factor;
-	checkPointVisibility<checkEnlarged>(isVisible, isVisibleEnlarged, pt_image, M_d, projParams_d, imgSize);
+	pt_world.x += factor;
+	checkPointVisibility<checkEnlarged>(isVisible, isVisibleEnlarged, pt_world, M_d, projParams_d, imgSize);
 	if (isVisible) return;
 
 	// 1 1 0 
-	pt_image.z -= factor;
-	checkPointVisibility<checkEnlarged>(isVisible, isVisibleEnlarged, pt_image, M_d, projParams_d, imgSize);
+	pt_world.z -= factor;
+	checkPointVisibility<checkEnlarged>(isVisible, isVisibleEnlarged, pt_world, M_d, projParams_d, imgSize);
 	if (isVisible) return;
 
 	// 1 0 0 
-	pt_image.y -= factor;
-	checkPointVisibility<checkEnlarged>(isVisible, isVisibleEnlarged, pt_image, M_d, projParams_d, imgSize);
+	pt_world.y -= factor;
+	checkPointVisibility<checkEnlarged>(isVisible, isVisibleEnlarged, pt_world, M_d, projParams_d, imgSize);
 	if (isVisible) return;
 
 	// 0 1 0
-	pt_image.x -= factor;
-	pt_image.y += factor;
-	checkPointVisibility<checkEnlarged>(isVisible, isVisibleEnlarged, pt_image, M_d, projParams_d, imgSize);
+	pt_world.x -= factor;
+	pt_world.y += factor;
+	checkPointVisibility<checkEnlarged>(isVisible, isVisibleEnlarged, pt_world, M_d, projParams_d, imgSize);
 	if (isVisible) return;
 
 	// 1 0 1
-	pt_image.x += factor;
-	pt_image.y -= factor;
-	pt_image.z += factor;
-	checkPointVisibility<checkEnlarged>(isVisible, isVisibleEnlarged, pt_image, M_d, projParams_d, imgSize);
+	pt_world.x += factor;
+	pt_world.y -= factor;
+	pt_world.z += factor;
+	checkPointVisibility<checkEnlarged>(isVisible, isVisibleEnlarged, pt_world, M_d, projParams_d, imgSize);
 	if (isVisible) return;
 }
 
@@ -929,7 +925,7 @@ struct findVisibleBlocksFunctor
 		const Vector3s blockIdx = block.first.getPosition().toShort();
 
 		float dist = (pose_M * Vector4f(blockIdx.toFloat() * 8 * sceneParams.voxelSize, 1)).z;
-		if (dist > 8) return;
+		if (dist > sceneParams.viewFrustum_max) return;
 
 		bool isVisible, isVisibleEnlarged;
 		checkBlockVisibility<true>(isVisible, isVisibleEnlarged, blockIdx, pose_M, projParams, sceneParams.voxelSize,
@@ -943,6 +939,7 @@ struct findVisibleBlocksFunctor
 			visibleBlocks_ref.insert(ITMIndex(blockIdx));
 #endif
 		}
+
 		if (isVisible and dist <= sceneParams.viewFrustum_max + 8 * sceneParams.voxelSize)
 		{
 #ifdef __CUDA_ARCH__

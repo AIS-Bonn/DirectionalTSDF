@@ -69,4 +69,57 @@ _CPU_AND_GPU_CODE_ inline void computeDepthPointAndColour(
 	out_points[sceneIdx] = Vector4f(pt_camera, 1.f);
 }
 
+/**
+ * Huber-like? loss
+ */
+_CPU_AND_GPU_CODE_ inline float rho(float r, float huber_b)
+{
+	float tmp = fabs(r) - huber_b;
+	tmp = MAX(tmp, 0.0f);
+	return r * r - tmp * tmp;
+}
+
+/**
+ * First derivative of Huber loss
+ */
+_CPU_AND_GPU_CODE_ inline float rho_deriv(float r, float huber_b)
+{
+	return 2.0f * CLAMP(r, -huber_b, huber_b);
+}
+
+/**
+ * Second derivative of Huber loss
+ */
+_CPU_AND_GPU_CODE_ inline float rho_deriv2(float r, float huber_b)
+{
+	return fabs(r) < huber_b ? 2.0f : 0.0f;
+}
+
+/**
+ * Huber loss
+ */
+_CPU_AND_GPU_CODE_ inline float huber(float r, float delta)
+{
+	float r_abs = fabs(r);
+	if (r_abs < delta)
+		return 0.5 * r * r;
+	return delta * r_abs - 0.5 * delta * delta;
+}
+
+/**
+ * Huber loss
+ */
+_CPU_AND_GPU_CODE_ inline float huber_deriv(float r, float delta)
+{
+	return CLAMP(r, -delta, delta);
+}
+
+/**
+ * Huber loss
+ */
+_CPU_AND_GPU_CODE_ inline float huber_deriv2(float r, float delta)
+{
+	return fabs(r) < delta ? 1.0f : 0.0f;
+}
+
 } // ITMLib

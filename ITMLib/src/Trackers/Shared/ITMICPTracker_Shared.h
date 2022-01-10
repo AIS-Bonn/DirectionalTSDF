@@ -4,6 +4,10 @@
 
 #include <Utils/ITMPixelUtils.h>
 #include <ITMLib/Utils/ITMProjectionUtils.h>
+#include "ITMTracker_Shared.h"
+
+//#define USE_COLOR_WEIGHT
+#define USE_DEPTH_WEIGHT
 
 namespace ITMLib
 {
@@ -12,8 +16,7 @@ namespace ITMLib
  * Project point form depth image view into (rendered) scene view, resulting in 2D coordinates
  * @param sceneCoords result 2D coordinates for scene point map
  * @param depthPoint_view depth point in depth view frame
- * @param approxInvPose assumed pose of current view (basis for projective DA hypothesis)
- * @param scenePose pose from which scene was rendered
+ * @param deltaT current estimate of transform between current(view) frame and reference(scene) frame
  */
 _CPU_AND_GPU_CODE_ inline bool projectiveDataAssociation(Vector2f& sceneCoords,
                                                          const Vector4f& depthPoint_view,
@@ -21,13 +24,11 @@ _CPU_AND_GPU_CODE_ inline bool projectiveDataAssociation(Vector2f& sceneCoords,
                                                          const Vector4f& viewIntrinsics,
                                                          const Vector2i& sceneImageSize,
                                                          const Vector4f& sceneIntrinsics,
-                                                         const Matrix4f& approxInvPose,
-                                                         const Matrix4f& scenePose)
+                                                         const Matrix4f& deltaT)
 {
-	Vector4f depthPoint_world = approxInvPose * depthPoint_view;
+	Vector4f depthPoint_scene = deltaT * depthPoint_view;
 
 	// project into previous rendered image (scene)
-	Vector4f depthPoint_scene = scenePose * depthPoint_world;
 	if (depthPoint_scene.z <= 0.0f) return false;
 	Vector2f depthPoint2DCoords = project(depthPoint_scene.toVector3(), sceneIntrinsics);
 
@@ -55,7 +56,7 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointError(float& error,
 
 	Vector2f sceneCoords;
 	if (!projectiveDataAssociation(sceneCoords, depthPoint_view, viewImageSize, viewIntrinsics,
-	                               sceneImageSize, sceneIntrinsics, approxInvPose, scenePose))
+	                               sceneImageSize, sceneIntrinsics, scenePose * approxInvPose))
 		return false;
 	Vector3f depthPoint_world = (approxInvPose * depthPoint_view).toVector3();
 
@@ -72,10 +73,16 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointError(float& error,
 
 /**
  * Compute Jacobian (A) and residual (residual) for intensity at the given coordinate
+ *
+ * @param deltaT current estimate of transform between current frame and reference frame
+ * @param T_ref_CW transforms world point into reference frame
  */
 template<bool shortIteration, bool rotationOnly>
-_CPU_AND_GPU_CODE_ inline bool computePerPointGH_RGB_Ab(float* A, float& residual,
+_CPU_AND_GPU_CODE_ inline bool computePerPointGH_RGB_Ab(float* A, float& residual, float& weight,
                                                         const int x, const int y,
+                                                        const Matrix4f& deltaT,
+                                                        const Matrix4f& T_ref_CW,
+                                                        const Matrix4f& T_scene_WC,
                                                         const Vector4f* points_current,
                                                         const float* intensities_current,
                                                         const float* intensities_reference,
@@ -84,8 +91,6 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_RGB_Ab(float* A, float& residua
                                                         const Vector2i imgSize_rgb,
                                                         const Vector4f& intrinsics_depth,
                                                         const Vector4f& intrinsics_rgb,
-                                                        const Matrix4f& approxInvPose,
-                                                        const Matrix4f& intensityReferencePose,
                                                         const float viewFrustum_max,
                                                         const float intensityThresh,
                                                         const float minGradient)
@@ -93,34 +98,54 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_RGB_Ab(float* A, float& residua
 	if (x >= imgSize_depth.x || y >= imgSize_depth.y) return false;
 	int idx = PixelCoordsToIndex(x, y, imgSize_depth);
 
-	const Vector4f point_current = points_current[idx];
+
+	const Vector4f depthPoint_view = points_current[idx];
 	const float intensity_current = intensities_current[idx];
 
-	if (point_current.w < 0.f || intensity_current < 0.f || point_current.z < 1e-3f ||
-	    point_current.z > viewFrustum_max)
+	if (depthPoint_view.w < 0.f || intensity_current < 0.f || depthPoint_view.z < 1e-3f ||
+	    depthPoint_view.z > viewFrustum_max)
 		return false;
 
-	const Vector3f point_world = (approxInvPose * point_current).toVector3();
-	const Vector3f point_reference = intensityReferencePose * point_world;
+	const Vector3f depthPoint_scene = deltaT * depthPoint_view.toVector3();
+	// transform point into intensity reference frame (deltaT is from current frame to rendered scene frame)
+	const Matrix4f T_ReferenceScene = T_ref_CW * T_scene_WC;
+	const Vector3f depthPoint_reference = T_ReferenceScene * depthPoint_scene;
 
-	if (point_reference.z <= 0) return false;
+	if (depthPoint_reference.z <= 0) return false;
 
-	// Project the point in the reference intensity frame
-	const Vector2f point_reference_proj = project(point_reference, intrinsics_rgb);
+	// Project the depth point into the reference intensity frame
+	const Vector2f imageCoords = project(depthPoint_reference, intrinsics_rgb);
 
 	// Outside the image plane
-	if (point_reference_proj.x < 0 || point_reference_proj.x >= imgSize_rgb.x - 1 ||
-	    point_reference_proj.y < 0 || point_reference_proj.y >= imgSize_rgb.y - 1)
+	if (imageCoords.x < 0 || imageCoords.x >= imgSize_rgb.x - 1 ||
+	    imageCoords.y < 0 || imageCoords.y >= imgSize_rgb.y - 1)
 		return false;
 
-	const float intensity_reference = interpolateBilinear_single(intensities_reference, point_reference_proj,
+	const float intensity_reference = interpolateBilinear_single(intensities_reference, imageCoords,
 	                                                             imgSize_rgb);
-	const Vector2f gradient_reference = interpolateBilinear_Vector2(gradients_reference, point_reference_proj,
-	                                                                imgSize_rgb);
+
 
 	float diff = intensity_reference - intensity_current;
+	Vector2f gradient_reference = interpolateBilinear_Vector2(gradients_reference, imageCoords,
+	                                                          imgSize_rgb);
 	if (fabs(diff) > intensityThresh) return false;
 	if (fabs(gradient_reference.x) < minGradient || fabs(gradient_reference.y) < minGradient) return false;
+
+	const float sobelScale = 1.0f / pow(2, 3); // from Kintinuous
+	gradient_reference *= sobelScale;
+
+	weight = 1;
+#ifdef USE_COLOR_WEIGHT
+	weight *= 0.05 * intensityThresh / MAX(fabs(diff), 0.001);
+#endif
+
+//	weight *= 50.0f * sqrt(ORUtils::dot(gradient_reference, gradient_reference));
+
+#ifdef USE_DEPTH_WEIGHT
+		weight *= CLAMP(1.0f / pow(depthPoint_scene.z, 2), 0, 1);
+//		weight *= CLAMP(1.0f / depthPoint_scene.z, 0, 1);
+#endif
+
 	residual = diff;
 
 	// detailed derivative
@@ -128,15 +153,15 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_RGB_Ab(float* A, float& residua
 	// ------ * ------ * --- * -------
 	// d proj     d K    d p     d Xi
 
-//	const float inv_z = 1 / point_reference.z;
+//	const float inv_z = 1 / depthPoint_reference.z;
 //	const float inv_z_sq = inv_z * inv_z;
 //	MatrixXf<2, 3> d_proj;
 //	d_proj(0, 0) = inv_z;
 //	d_proj(1, 0) = 0;
-//	d_proj(2, 0) = -(point_reference.x * intrinsics_rgb.x + intrinsics_rgb.z * point_reference.z) * inv_z_sq;
+//	d_proj(2, 0) = -depthPoint_reference.x * inv_z_sq;
 //	d_proj(0, 1) = 0;
 //	d_proj(1, 1) = inv_z;
-//	d_proj(2, 1) = -(point_reference.y * intrinsics_rgb.y + intrinsics_rgb.w * point_reference.z) * inv_z_sq;
+//	d_proj(2, 1) = -depthPoint_reference.y * inv_z_sq;
 //
 //
 //	MatrixXf<1, 2> d_grad;
@@ -158,13 +183,13 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_RGB_Ab(float* A, float& residua
 //		if (rotationOnly)
 //		{
 //			d_point(0, 0) = 0;
-//			d_point(0, 1) = -point_reference.z;
-//			d_point(0, 2) = point_reference.y;
-//			d_point(1, 0) = point_reference.z;
+//			d_point(0, 1) = -depthPoint_reference.z;
+//			d_point(0, 2) = depthPoint_reference.y;
+//			d_point(1, 0) = depthPoint_reference.z;
 //			d_point(1, 1) = 0;
-//			d_point(1, 2) = -point_reference.x;
-//			d_point(2, 0) = -point_reference.y;
-//			d_point(2, 1) = point_reference.x;
+//			d_point(1, 2) = -depthPoint_reference.x;
+//			d_point(2, 0) = -depthPoint_reference.y;
+//			d_point(2, 1) = depthPoint_reference.x;
 //			d_point(2, 2) = 0;
 //		} else
 //		{
@@ -172,58 +197,70 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_RGB_Ab(float* A, float& residua
 //			d_point(1, 1) = 1;
 //			d_point(2, 2) = 1;
 //		}
-//		MatrixXf<1, 3> J = d_grad * d_proj * K * d_point;
+//		MatrixXf<3, 3> R;
+//		memcpy(R.m, T_ReferenceScene.getRotationMatrix().m, sizeof(R.m));
+//
+//		MatrixXf<1, 3> J = d_grad * d_proj * K * R * d_point;
 //		memcpy(A, J.m, sizeof(J.m));
 //	} else
 //	{
 //		MatrixXf<3, 6> d_point;
 //		d_point.setZeros();
-//		d_point(0, 0) = 0;
-//		d_point(0, 1) = -point_reference.z;
-//		d_point(0, 2) = point_reference.y;
-//		d_point(1, 0) = point_reference.z;
-//		d_point(1, 1) = 0;
-//		d_point(1, 2) = -point_reference.x;
-//		d_point(2, 0) = -point_reference.y;
-//		d_point(2, 1) = point_reference.x;
-//		d_point(2, 2) = 0;
+//		d_point(0, 0) = 1;
+//		d_point(1, 1) = 1;
+//		d_point(2, 2) = 1;
 //
-//		d_point(3, 0) = 1;
-//		d_point(4, 1) = 1;
-//		d_point(5, 2) = 1;
+//		d_point(3, 0) = 0;
+//		d_point(3, 1) = -depthPoint_scene.z;
+//		d_point(3, 2) = depthPoint_scene.y;
+//		d_point(4, 0) = depthPoint_scene.z;
+//		d_point(4, 1) = 0;
+//		d_point(4, 2) = -depthPoint_scene.x;
+//		d_point(5, 0) = -depthPoint_scene.y;
+//		d_point(5, 1) = depthPoint_scene.x;
+//		d_point(5, 2) = 0;
 //
-//		MatrixXf<1, 6> J = d_grad * d_proj * K * d_point;
+//		MatrixXf<3, 3> R;
+//		memcpy(R.m, T_ReferenceScene.getRotationMatrix().m, sizeof(R.m));
+//
+//		MatrixXf<1, 6> J = d_grad * d_proj * K * R * d_point;
 //		memcpy(A, J.m, sizeof(J.m));
 //  }
 
+
 	// compact form of the above
-	const float inv_z = 1 / point_reference.z;
-	Vector3f dI_dproj_dK;
-	dI_dproj_dK.x = gradient_reference.x * intrinsics_rgb.x * inv_z;
-	dI_dproj_dK.y = gradient_reference.y * intrinsics_rgb.y * inv_z;
-	dI_dproj_dK.z = -(dI_dproj_dK.x * point_reference.x + dI_dproj_dK.y * point_reference.y) * inv_z;
+	const float inv_z = 1 / depthPoint_reference.z;
+	MatrixXf<1, 3> dI_dproj_dK;
+	dI_dproj_dK(0, 0) = gradient_reference.x * intrinsics_rgb.x * inv_z;
+	dI_dproj_dK(1, 0) = gradient_reference.y * intrinsics_rgb.y * inv_z;
+	dI_dproj_dK(2, 0) = gradient_reference.x * (intrinsics_rgb.z * inv_z - depthPoint_reference.x * inv_z * inv_z)
+	                    + gradient_reference.y * (intrinsics_rgb.w * inv_z - depthPoint_reference.y * inv_z * inv_z);
+
+	MatrixXf<3, 3> R;
+	memcpy(R.m, T_ReferenceScene.getRotationMatrix().m, sizeof(R.m));
+	dI_dproj_dK = dI_dproj_dK * R;
 
 	if (shortIteration)
 	{
 		if (rotationOnly)
 		{
-			A[0] = -point_reference.z * dI_dproj_dK.y + point_reference.y * dI_dproj_dK.z;
-			A[1] = point_reference.z * dI_dproj_dK.x - point_reference.x * dI_dproj_dK.z;
-			A[2] = -point_reference.y * dI_dproj_dK.x + point_reference.x * dI_dproj_dK.y;
+			A[0] = -depthPoint_scene.z * dI_dproj_dK(1, 0) + depthPoint_scene.y * dI_dproj_dK(2, 0);
+			A[1] = depthPoint_scene.z * dI_dproj_dK(0, 0) - depthPoint_scene.x * dI_dproj_dK(2, 0);
+			A[2] = -depthPoint_scene.y * dI_dproj_dK(0, 0) + depthPoint_scene.x * dI_dproj_dK(1, 0);
 		} else
 		{
-			A[0] = dI_dproj_dK.x;
-			A[1] = dI_dproj_dK.y;
-			A[2] = dI_dproj_dK.z;
+			A[0] = dI_dproj_dK(0, 0);
+			A[1] = dI_dproj_dK(1, 0);
+			A[2] = dI_dproj_dK(2, 0);
 		}
 	} else
 	{
-		A[0] = -point_reference.z * dI_dproj_dK.y + point_reference.y * dI_dproj_dK.z;
-		A[1] = point_reference.z * dI_dproj_dK.x - point_reference.x * dI_dproj_dK.z;
-		A[2] = -point_reference.y * dI_dproj_dK.x + point_reference.x * dI_dproj_dK.y;
-		A[3] = dI_dproj_dK.x;
-		A[4] = dI_dproj_dK.y;
-		A[5] = dI_dproj_dK.z;
+		A[0] = dI_dproj_dK(0, 0);
+		A[1] = dI_dproj_dK(1, 0);
+		A[2] = dI_dproj_dK(2, 0);
+		A[3] = -depthPoint_scene.z * dI_dproj_dK(1, 0) + depthPoint_scene.y * dI_dproj_dK(2, 0);
+		A[4] = depthPoint_scene.z * dI_dproj_dK(0, 0) - depthPoint_scene.x * dI_dproj_dK(2, 0);
+		A[5] = -depthPoint_scene.y * dI_dproj_dK(0, 0) + depthPoint_scene.x * dI_dproj_dK(1, 0);
 	}
 
 	return true;
@@ -231,15 +268,18 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_RGB_Ab(float* A, float& residua
 
 /**
  * Compute Jacobian (A) and residual (b) for depth point at the given coordinate
+ *
+ * @param deltaT current estimate of transform between current frame and reference(scene) frame
+ * @param T_scene_CW transforms world point into reference frame
  */
 template<bool shortIteration, bool rotationOnly>
-_CPU_AND_GPU_CODE_ inline bool computePerPointGH_Depth_Ab(float* A, float& b,
+_CPU_AND_GPU_CODE_ inline bool computePerPointGH_Depth_Ab(float* A, float& b, float& weight,
                                                           const int& x, const int& y,
+                                                          const Matrix4f& deltaT, const Matrix4f& T_scene_CW,
                                                           const float* depth, const Vector2i& viewImageSize,
                                                           const Vector4f& viewIntrinsics,
                                                           const Vector2i& sceneImageSize,
                                                           const Vector4f& sceneIntrinsics,
-                                                          const Matrix4f& approxInvPose, const Matrix4f& scenePose,
                                                           const Vector4f* pointsMap,
                                                           const Vector4f* normalsMap,
                                                           float distThresh)
@@ -250,46 +290,56 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_Depth_Ab(float* A, float& b,
 
 	Vector2f sceneCoords;
 	if (!projectiveDataAssociation(sceneCoords, depthPoint_view, viewImageSize, viewIntrinsics,
-	                               sceneImageSize, sceneIntrinsics, approxInvPose, scenePose))
+	                               sceneImageSize, sceneIntrinsics, deltaT))
 		return false;
-	Vector3f depthPoint_world = (approxInvPose * depthPoint_view).toVector3();
+	Vector3f depthPoint_scene = (deltaT * depthPoint_view).toVector3();
+
 
 	Vector4f scenePoint_world = interpolateBilinear_withHoles(pointsMap, sceneCoords, sceneImageSize);
 	if (scenePoint_world.w < 0.0f) return false;
 
-	Vector3f ptDiff = scenePoint_world.toVector3() - depthPoint_world;
+	Vector3f scenePoint_scene = T_scene_CW * scenePoint_world.toVector3();
+
+	Vector3f ptDiff = scenePoint_scene - depthPoint_scene;
 	float dist = ORUtils::dot(ptDiff, ptDiff);
 	if (dist > distThresh or dist != dist) return false;
 
-	Vector3f sceneNormal = interpolateBilinear_withHoles(normalsMap, sceneCoords, sceneImageSize).toVector3();
-//	if (sceneNormal.w < 0.0f) return false;
+	Vector3f sceneNormal_world = interpolateBilinear_withHoles(normalsMap, sceneCoords, sceneImageSize).toVector3();
+	Vector3f sceneNormal_scene = (T_scene_CW * Vector4f(sceneNormal_world, 0)).toVector3();
+//	if (sceneNormal_world.w < 0.0f) return false;
 
-	b = ORUtils::dot(sceneNormal, ptDiff);
+	weight = 1;
+#ifdef USE_DEPTH_WEIGHT
+		weight *= CLAMP(1.0f / pow(depthPoint_scene.z, 2), 0, 1);
+//	weight *= CLAMP(1.0f / depthPoint_scene.z, 0, 1);
+#endif
+
+	b = ORUtils::dot(sceneNormal_scene, ptDiff);
 
 	// TODO check whether normal matches normal from image, done in the original paper, but does not seem to be required
 	if (shortIteration)
 	{
 		if (rotationOnly)
 		{
-			Vector3f XP = ORUtils::cross(depthPoint_world, sceneNormal);
+			Vector3f XP = ORUtils::cross(depthPoint_scene, sceneNormal_scene);
 			A[0] = -XP.x;
 			A[1] = -XP.y;
 			A[2] = -XP.z;
 		} else
 		{
-			A[0] = -sceneNormal.x;
-			A[1] = -sceneNormal.y;
-			A[2] = -sceneNormal.z;
+			A[0] = -sceneNormal_scene.x;
+			A[1] = -sceneNormal_scene.y;
+			A[2] = -sceneNormal_scene.z;
 		}
 	} else
 	{
-		Vector3f XP = ORUtils::cross(depthPoint_world, sceneNormal);
-		A[0] = -XP.x;
-		A[1] = -XP.y;
-		A[2] = -XP.z;
-		A[3] = -sceneNormal.x;
-		A[4] = -sceneNormal.y;
-		A[5] = -sceneNormal.z;
+		Vector3f XP = ORUtils::cross(depthPoint_scene, sceneNormal_scene);
+		A[0] = -sceneNormal_scene.x;
+		A[1] = -sceneNormal_scene.y;
+		A[2] = -sceneNormal_scene.z;
+		A[3] = -XP.x;
+		A[4] = -XP.y;
+		A[5] = -XP.z;
 	}
 
 	return true;
@@ -330,7 +380,7 @@ _CPU_AND_GPU_CODE_ inline bool computeSim3Derivative_Depth(MatrixXf<1, 7>& J, fl
 
 	Vector2f sceneCoords;
 	if (!projectiveDataAssociation(sceneCoords, depthPoint_view, viewImageSize, viewIntrinsics,
-	                               sceneImageSize, sceneIntrinsics, approxInvPose, scenePose))
+	                               sceneImageSize, sceneIntrinsics, scenePose * approxInvPose))
 		return false;
 	Vector3f depthPoint_world = (approxInvPose * depthPoint_view).toVector3();
 
@@ -461,19 +511,22 @@ _CPU_AND_GPU_CODE_ inline bool computeSim3Derivative_RGB(MatrixXf<1, 7>& J, floa
 template<bool shortIteration, bool rotationOnly>
 _CPU_AND_GPU_CODE_ inline bool computePerPointGH_Depth(float* localNabla, float* localHessian, float& localF,
                                                        const int& x, const int& y,
+                                                       const Matrix4f& deltaT, const Matrix4f& T_ref_CW,
                                                        const float* depth, const Vector2i& viewImageSize,
                                                        const Vector4f& viewIntrinsics, const Vector2i& sceneImageSize,
-                                                       const Vector4f& sceneIntrinsics, const Matrix4f& approxInvPose,
-                                                       const Matrix4f& scenePose, const Vector4f* pointsMap,
+                                                       const Vector4f& sceneIntrinsics,
+                                                       const Vector4f* pointsMap,
                                                        const Vector4f* normalsMap, float distThresh)
 {
 	const int noPara = shortIteration ? 3 : 6;
 	float A[noPara];
 	float b;
+	float weight;
 
-	bool ret = computePerPointGH_Depth_Ab<shortIteration, rotationOnly>(A, b, x, y, depth, viewImageSize, viewIntrinsics,
-	                                                                    sceneImageSize, sceneIntrinsics, approxInvPose,
-	                                                                    scenePose, pointsMap, normalsMap,
+	bool ret = computePerPointGH_Depth_Ab<shortIteration, rotationOnly>(A, b, weight, x, y, deltaT, T_ref_CW, depth,
+	                                                                    viewImageSize, viewIntrinsics,
+	                                                                    sceneImageSize, sceneIntrinsics, pointsMap,
+	                                                                    normalsMap,
 	                                                                    distThresh);
 
 	if (!ret) return false;

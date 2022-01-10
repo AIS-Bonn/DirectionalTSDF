@@ -16,6 +16,15 @@ _CPU_AND_GPU_CODE_ inline void convertColourToIntensity(float* imageData_out, in
 	imageData_out[linear_pos] = (0.299f * colour.x + 0.587f * colour.y + 0.114f * colour.z) / 255.f;
 }
 
+_CPU_AND_GPU_CODE_ inline void convertColourToIntensity(float* imageData_out, int x, int y, Vector2i dims,
+                                                        const Vector4f* imageData_in)
+{
+	const int linear_pos = y * dims.x + x;
+	const Vector4f colour = imageData_in[linear_pos];
+
+	imageData_out[linear_pos] = 0.299f * colour.x + 0.587f * colour.y + 0.114f * colour.z;
+}
+
 _CPU_AND_GPU_CODE_ inline void filterSubsample(Vector4u* imageData_out, int x, int y, Vector2i newDims,
                                                const Vector4u* imageData_in, Vector2i oldDims)
 {

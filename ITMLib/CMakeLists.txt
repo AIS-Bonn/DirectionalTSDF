@@ -26,6 +26,8 @@ file(GLOB_RECURSE headers
 
 SOURCE_GROUP("" FILES ${sources} ${headers})
 
+ADD_COMPILE_DEFINITIONS(SOPHUS_USE_BASIC_LOGGING)
+
 INCLUDE(${PROJECT_SOURCE_DIR}/cmake/Flags.cmake)
 IF (WITH_CUDA)
   CUDA_ADD_LIBRARY(${targetname})
@@ -35,7 +37,7 @@ ENDIF ()
 ADD_LIBRARY(ITMLib::${targetname} ALIAS ${targetname})
 
 TARGET_SOURCES(${targetname} PRIVATE ${sources})
-TARGET_LINK_LIBRARIES(${targetname} ITMLib::ORUtils ITMLib::FernRelocLib yaml::yaml stdgpu::stdgpu stdc++fs sophus)
+TARGET_LINK_LIBRARIES(${targetname} ITMLib::ORUtils ITMLib::FernRelocLib yaml::yaml stdgpu::stdgpu stdc++fs)
 
 TARGET_COMPILE_OPTIONS(${targetname} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:
   ${ITM_CUDA_NVCC_FLAGS}
@@ -46,13 +48,13 @@ TARGET_INCLUDE_DIRECTORIES(${targetname}
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/${CMAKE_INSTALL_INCLUDEDIR}>
   $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/External/eigen>
-#  $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/External/Sophus>
+  $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/External/Sophus>
   PRIVATE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
   )
 
 # install the target and create export-set
-INSTALL(TARGETS ${targetname} ORUtils FernRelocLib yaml-cpp stdgpu sophus
+INSTALL(TARGETS ${targetname} ORUtils FernRelocLib yaml-cpp stdgpu
   EXPORT ${targetname}Targets
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}

@@ -11,7 +11,7 @@ createMeshingEngine: true
 swappingMode: disabled # [disabled, enabled, delete]
 
 # what to do on tracker failure: ignore, relocalise or stop integration - not supported in loop closure version
-behaviourOnFailure: relocalise  # [ignore, relocalise, stopIntegration]
+behaviourOnFailure: ignore  # [ignore, relocalise, stopIntegration]
 
 # enable or disable pre-filtering of depth images (removes extreme outliers)
 useDepthFilter: true
@@ -63,12 +63,14 @@ fusionParams:
   useWeighting: true
   useSpaceCarving: true
 
-# Defautl ICP tracking:
-voxelTrackerConfig: "type=icp,levels=rrbb,useColour=0,colourWeight=0.1,
+# Default ICP tracking:
+voxelTrackerConfig: "type=icp,levels=bbbb,
+  useDepth=1,useColour=1,
+  colourWeight=1.0,colourMode=f2kf,
   minstep=1e-6,
-  outlierDistanceC=0.05,outlierDistanceF=0.01,
-  outlierColourC=0.175,outlierColourF=0.05,
-  numiterC=20,numiterF=50,failureDec=30.0" # 5 for normal, 20 for loop closure
+  outlierDistanceC=0.05,outlierDistanceF=0.005,
+  outlierColourC=0.175,outlierColourF=0.05,minColourGradient=0.001,
+  numiterC=20,numiterF=50,failureDec=50.0"
 
 ## Depth-only extended tracking:
 #voxelTrackerConfig: "type=extended,levels=rrbb,useDepth=1,minstep=1e-5,

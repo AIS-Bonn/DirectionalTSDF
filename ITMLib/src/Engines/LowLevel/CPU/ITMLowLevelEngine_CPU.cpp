@@ -50,6 +50,19 @@ void ITMLowLevelEngine_CPU::ConvertColourToIntensity(ITMFloatImage* image_out, c
 			convertColourToIntensity(dest, x, y, dims, src);
 }
 
+void ITMLowLevelEngine_CPU::ConvertColourToIntensity(ITMFloatImage* image_out, const ITMFloat4Image* image_in) const
+{
+	const Vector2i dims = image_in->noDims;
+	image_out->ChangeDims(dims);
+
+	float* dest = image_out->GetData(MEMORYDEVICE_CPU);
+	const Vector4f* src = image_in->GetData(MEMORYDEVICE_CPU);
+
+	for (int y = 0; y < dims.y; y++)
+		for (int x = 0; x < dims.x; x++)
+			convertColourToIntensity(dest, x, y, dims, src);
+}
+
 void ITMLowLevelEngine_CPU::FilterIntensity(ITMFloatImage* image_out, const ITMFloatImage* image_in) const
 {
 	Vector2i dims = image_in->noDims;

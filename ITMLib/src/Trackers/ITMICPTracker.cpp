@@ -4,6 +4,7 @@
 #include <ORUtils/Cholesky.h>
 #include <ORUtils/EigenConversion.h>
 #include <sophus/sim3.hpp>
+#include <sophus/se3.hpp>
 
 #include <cmath>
 #include <iostream>
@@ -131,6 +132,9 @@ void ITMICPTracker::SetupLevels()
 	}
 }
 
+
+#include <ORUtils/FileUtils.h>
+
 void ITMICPTracker::SetEvaluationData(ITMTrackingState* trackingState, const ITMView* view)
 {
 	this->trackingState = trackingState;
@@ -146,24 +150,62 @@ void ITMICPTracker::SetEvaluationData(ITMTrackingState* trackingState, const ITM
 
 	if (parameters.useColour)
 	{
-		viewHierarchy_intensity->GetLevel(0)->intrinsics = view->calib.intrinsics_rgb.projectionParamsSimple.all;
-
-		if (trackingState->framesProcessed % 20 == 2)
+		if (parameters.colourMode == Parameters::ColourMode::FRAME_TO_RENDER)
 		{
+			lowLevelEngine->ConvertColourToIntensity(viewHierarchy_intensity->GetLevel(0)->intensity_prev,
+			                                         trackingState->pointCloud->colours);
+			intensityReferencePose = trackingState->pose_pointCloud->GetM();
+			viewHierarchy_intensity->GetLevel(0)->intrinsics = sceneHierarchy->GetLevel(0)->intrinsics;
+
+			// Compute first level gradients
+			lowLevelEngine->GradientXY(viewHierarchy_intensity->GetLevel(0)->gradients,
+			                           viewHierarchy_intensity->GetLevel(0)->intensity_prev);
+			depthToRGBTransform.setIdentity();
+		} else if (parameters.colourMode == Parameters::ColourMode::FRAME_TO_FRAME)
+		{
+			viewHierarchy_intensity->GetLevel(0)->intrinsics = view->calib.intrinsics_rgb.projectionParamsSimple.all;
+
 			// Convert RGB to intensity
 			viewHierarchy_intensity->GetLevel(0)->intensity_prev->SetFrom(
 				viewHierarchy_intensity->GetLevel(0)->intensity_current, ORUtils::CUDA_TO_CUDA);
-		}
-		lowLevelEngine->ConvertColourToIntensity(viewHierarchy_intensity->GetLevel(0)->intensity_current, view->rgb);
+			intensityReferencePose = trackingState->pose_d->GetM();
 
-		// Compute first level gradients
-		lowLevelEngine->GradientXY(viewHierarchy_intensity->GetLevel(0)->gradients,
-		                           viewHierarchy_intensity->GetLevel(0)->intensity_prev);
+			// Compute first level gradients
+			lowLevelEngine->GradientXY(viewHierarchy_intensity->GetLevel(0)->gradients,
+			                           viewHierarchy_intensity->GetLevel(0)->intensity_prev);
+			depthToRGBTransform = view->calib.trafo_rgb_to_depth.calib_inv;
+		} else if (parameters.colourMode == Parameters::ColourMode::FRAME_TO_KEYFRAME)
+		{
+			viewHierarchy_intensity->GetLevel(0)->intrinsics = view->calib.intrinsics_rgb.projectionParamsSimple.all;
+
+//		if (trackingState->framesProcessed <= 1 or lastNegativeEntropy / maxNegativeEntropy < 0.85)
+//		if (trackingState->framesProcessed <= 1 or lastNegativeEntropy / averageNegativeEntropy2 < 0.95)
+//		if (trackingState->framesProcessed <= 1 or averageNegativeEntropy / maxNegativeEntropy < 0.96)
+//if (parameters.colourMode == Parameters::ColourMode::FRAME_TO_FRAME)
+			if (trackingState->framesProcessed <= 1 or trackingState->framesProcessed % 10 == 2)
+			{
+//			printf("New Keyframe: %i\n", trackingState->framesProcessed);
+				maxNegativeEntropy = 0;
+				averageNegativeEntropy = 0;
+				averageNegativeEntropy2 = 0;
+				averageNegativeEntropyCounter = 0;
+				// Convert RGB to intensity
+				viewHierarchy_intensity->GetLevel(0)->intensity_prev->SetFrom(
+					viewHierarchy_intensity->GetLevel(0)->intensity_current, ORUtils::CUDA_TO_CUDA);
+				intensityReferencePose = trackingState->pose_d->GetM();
+
+				// Compute first level gradients
+				lowLevelEngine->GradientXY(viewHierarchy_intensity->GetLevel(0)->gradients,
+				                           viewHierarchy_intensity->GetLevel(0)->intensity_prev);
+			}
+
+			depthToRGBTransform = view->calib.trafo_rgb_to_depth.calib_inv;
+		}
+
+		lowLevelEngine->ConvertColourToIntensity(viewHierarchy_intensity->GetLevel(0)->intensity_current, view->rgb);
 	}
 
 	renderedScenePose = trackingState->pose_pointCloud->GetM();
-	intensityReferencePose = trackingState->pose_pointCloud->GetM();
-	depthToRGBTransform = view->calib.trafo_rgb_to_depth.calib_inv;
 }
 
 void ITMICPTracker::PrepareForEvaluation()
@@ -249,6 +291,11 @@ void ITMICPTracker::ComputeDelta(Eigen::Matrix<EigenT, 6, 1>& delta, Eigen::Matr
 	{
 		delta = hessian.llt().solve(-nabla); // negative, because error term of form || J x + r ||^2
 	}
+	if (delta.hasNaN())
+	{
+		std::cout << "ICP tracking broken solution (contains NaN)" << std::endl;
+		delta.setZero();
+	}
 }
 
 bool ITMICPTracker::HasConverged(const Eigen::Matrix<EigenT, 6, 1>& delta) const
@@ -256,34 +303,26 @@ bool ITMICPTracker::HasConverged(const Eigen::Matrix<EigenT, 6, 1>& delta) const
 	return (delta.norm() / 6) < parameters.smallStepSizeCriterion;
 }
 
-template<class Derived>
-inline Eigen::Matrix<typename Derived::Scalar, 3, 3> VectorToSkewSymmetricMatrix(const Eigen::MatrixBase<Derived>& vec)
-{
-	EIGEN_STATIC_ASSERT_VECTOR_SPECIFIC_SIZE(Derived, 3);
-	return (Eigen::Matrix<typename Derived::Scalar, 3, 3>() << 0.0, -vec[2], vec[1],
-		vec[2], 0.0, -vec[0],
-		-vec[1], vec[0], 0.0).finished();
-}
-
 void
-ITMICPTracker::ApplyDelta(const Matrix4f& para_old, const Eigen::Matrix<EigenT, 6, 1>& delta, Matrix4f& para_new) const
+ITMICPTracker::ApplyDelta(const Eigen::Matrix<EigenT, 6, 1>& deltaSE3, Sophus::SE3<EigenT>& deltaT) const
 {
-	Eigen::Matrix<EigenT, 4, 4> Tinc = Eigen::Matrix<EigenT, 4, 4>::Identity();
+	Eigen::Matrix<EigenT, 6, 1> deltaSE3_;
 	switch (iterationType)
 	{
 		case TRACKER_ITERATION_ROTATION:
-			Tinc.block<3, 3>(0, 0) += VectorToSkewSymmetricMatrix(delta.block<3, 1>(0, 0));
+			deltaSE3_.block<3, 1>(0, 0).setZero();
+			deltaSE3_.block<3, 1>(3, 0) = deltaSE3.block<3, 1>(0, 0);
 			break;
 		case TRACKER_ITERATION_TRANSLATION:
-			Tinc.block<3, 1>(0, 3) = Eigen::Matrix<EigenT, 3, 1>(delta.block<3, 1>(0, 0));
+			deltaSE3_.block<3, 1>(0, 0) = deltaSE3.block<3, 1>(0, 0);
+			deltaSE3_.block<3, 1>(3, 0).setZero();
 			break;
 		default:
 		case TRACKER_ITERATION_BOTH:
-			Tinc.block<3, 3>(0, 0) += VectorToSkewSymmetricMatrix(delta.block<3, 1>(0, 0));
-			Tinc.block<3, 1>(0, 3) = delta.block<3, 1>(3, 0);
+			deltaSE3_ = deltaSE3;
 			break;
 	}
-	para_new = ORUtils::FromEigen<Matrix4f>(Tinc) * para_old;
+	deltaT = Sophus::SE3<EigenT>::exp(deltaSE3) * deltaT;
 }
 
 void
@@ -336,10 +375,9 @@ ITMICPTracker::UpdatePoseQuality(int noValidPoints_old, const Eigen::Matrix<Eige
 
 void ITMICPTracker::TrackCameraSE3(ITMTrackingState* trackingState, const ITMView* view)
 {
-	float f_old = 1e10, f_new;
-	float f_depth, f_rgb;
-	int noValidPoints_depth = 0;
-	int noValidPoints_RGB = 0;
+	float f_old = 1e10;
+	float f_depth = 0, f_rgb = 0;
+	int noValidPoints_rgb = 0;
 	int noValidPoints_old = 0;
 
 	/** Approximated Hessian of error function
@@ -354,73 +392,154 @@ void ITMICPTracker::TrackCameraSE3(ITMTrackingState* trackingState, const ITMVie
 	Eigen::Matrix<EigenT, 6, 1> nabla_good;
 	nabla_good.setZero();
 
+	Eigen::Matrix<float, 6, 6> hessian_rgb;
+	Eigen::Matrix<float, 6, 1> nabla_rgb;
+
+	Sophus::SE3<EigenT> lastKnownGoodDeltaT;
+	Sophus::SE3<EigenT> deltaT; // approximation target, transform from depth frame to rendered scene frame
+	auto deltaTMat = ORUtils::FromEigen<Matrix4f>(deltaT.matrix());
+
+	Matrix4f previousPose_WC = renderedScenePose.inv();
 	for (int levelId = viewHierarchy_depth->GetNoLevels() - 1; levelId >= 0; levelId--)
 	{
 		this->SetEvaluationParams(levelId);
 		if (iterationType == TRACKER_ITERATION_NONE) continue;
 
-		Matrix4f approxInvPose = trackingState->pose_d->GetInvM();
-		ORUtils::SE3Pose lastKnownGoodPose(*(trackingState->pose_d));
+		const float minNoPoints = 0.05f * viewHierarchy_depth->GetLevel(levelId)->data->noDims.width * viewHierarchy_depth->GetLevel(levelId)->data->noDims.height;
+
 		f_old = 1e20f;
 		noValidPoints_old = 0;
 
-		/// Levenber-Marquardt (Fletcher) damping factor
+		/// Levenber-Marquardt (Fletcher) damping alpha
 		float lambda = 1.0;
+		float lambdaUp = 2.0;
 
 		for (int iterNo = 0; iterNo < noIterationsPerLevel[levelId]; iterNo++)
 		{
+			Eigen::Matrix<float, 6, 6> hessian_depth;
+			Eigen::Matrix<float, 6, 1> nabla_depth;
+
 			Eigen::Matrix<float, 6, 6> hessian_new;
+			hessian_new.setZero();
 			Eigen::Matrix<float, 6, 1> nabla_new;
+			nabla_new.setZero();
+			float f_new = 0;
+			int noValidPoints = 0;
 
-			noValidPoints_depth = this->ComputeGandH_Depth(f_depth, nabla_new.data(), hessian_new.data(), approxInvPose);
-
-			f_new = f_depth;
+			if (parameters.useDepth or trackingState->framesProcessed <= 1)
+			{
+				noValidPoints = this->ComputeGandH_Depth(f_depth, nabla_depth.data(), hessian_depth.data(), deltaTMat);
+				if (noValidPoints < minNoPoints)
+					continue;
+				f_new = f_depth;
+				hessian_new = hessian_depth;
+				nabla_new = nabla_depth;
+			}
 
 			if (parameters.useColour)
 			{
-				Eigen::Matrix<float, 6, 6> hessian_RGB;
-				Eigen::Matrix<float, 6, 1> nabla_RGB;
-				noValidPoints_RGB = this->ComputeGandH_RGB(f_rgb, nabla_RGB.data(), hessian_RGB.data(), approxInvPose);
-				if (noValidPoints_RGB > 0)
+				noValidPoints_rgb = this->ComputeGandH_RGB(f_rgb, nabla_rgb.data(), hessian_rgb.data(), deltaTMat);
+				if (noValidPoints_rgb < minNoPoints)
+					continue;
+				if (noValidPoints_rgb > 0)
 				{
-					float normalizationFactor =  hessian_new.squaredNorm() / hessian_RGB.squaredNorm();
-					hessian_new = hessian_new + normalizationFactor * parameters.colourWeight * hessian_RGB;
-					nabla_new = nabla_new + std::sqrt(normalizationFactor) * std::sqrt(parameters.colourWeight) * nabla_RGB;
+					float normalizationFactor = hessian_new.norm() / hessian_rgb.norm();
+					normalizationFactor = 0.1; // temporarily fixed
+//					printf("%f\n", hessian_new.norm() / (normalizationFactor * hessian_rgb).norm());
+					if (not parameters.useDepth and trackingState->framesProcessed > 1)
+					{
+						normalizationFactor = 1;
+						noValidPoints = noValidPoints_rgb; // usually only use number valid depth points
+					}
+					f_rgb *= normalizationFactor;
+					hessian_new = hessian_new + normalizationFactor * parameters.colourWeight * hessian_rgb;
+					nabla_new = nabla_new + normalizationFactor * std::sqrt(parameters.colourWeight) * nabla_rgb;
 					f_new = f_new + parameters.colourWeight * f_rgb;
 				}
 			}
-
+			float fDiff = f_old - f_new;
 			// check if error increased. If so, revert
-			if ((noValidPoints_depth <= 0 && noValidPoints_RGB <= 0) || (f_new > f_old))
+			if (noValidPoints <= 0 || f_new > f_old)
 			{
-				trackingState->pose_d->SetFrom(&lastKnownGoodPose);
-				approxInvPose = trackingState->pose_d->GetInvM();
-				lambda *= 10.0f;
+				deltaT = lastKnownGoodDeltaT;
 			} else
 			{
-				lastKnownGoodPose.SetFrom(trackingState->pose_d);
+				lastKnownGoodDeltaT = deltaT;
 				f_old = f_new;
-				noValidPoints_old = noValidPoints_depth; // use only number of depth point for computing pose quality
+				noValidPoints_old = noValidPoints;
 
 				hessian_good = hessian_new.cast<EigenT>();
 				nabla_good = nabla_new.cast<EigenT>();
-				lambda /= 10.0f;
 			}
 			Eigen::Matrix<EigenT, 6, 6> A = hessian_good;
 			A.diagonal() *= (1 + lambda);
 
-			// compute a new step and make sure we've got an SE3
-			Eigen::Matrix<EigenT, 6, 1> delta;
-			ComputeDelta(delta, nabla_good, A, iterationType != TRACKER_ITERATION_BOTH);
-			ApplyDelta(approxInvPose, delta, approxInvPose);
-			trackingState->pose_d->SetInvM(approxInvPose);
-			trackingState->pose_d->Coerce();
-			approxInvPose = trackingState->pose_d->GetInvM();
+			// compute a update step and apply
+			Eigen::Matrix<EigenT, 6, 1> deltaSE3;
+			ComputeDelta(deltaSE3, nabla_good, A, iterationType != TRACKER_ITERATION_BOTH);
+			ApplyDelta(deltaSE3, deltaT);
+			deltaTMat = ORUtils::FromEigen<Matrix4f>(deltaT.matrix());
 
 			// if step is small, assume it's going to decrease the error and finish
-			if (HasConverged(delta)) break;
+			if (HasConverged(deltaSE3)) break;
+
+			// update lambda (2004, Madsen, Methods For Non-Linear Least Squares Problems)
+			if (fDiff > 0)
+			{
+				const double fDiff_predicted = 0.5 * deltaSE3.dot(deltaSE3 * lambda - (nabla_good));
+				float gainRatio = fDiff / fDiff_predicted; // actual error decrease vs predicted error decrease
+				lambdaUp = 2;
+				lambda *= std::max(1.0 / 3, 1 - std::pow(2 * gainRatio - 1, 3.0));
+			} else
+			{
+				lambda *= lambdaUp;
+				lambdaUp *= 2;
+			}
 		}
 	}
+
+	// update pose with estimated delta
+	trackingState->pose_d->SetInvM(previousPose_WC * deltaTMat);
+	trackingState->pose_d->Coerce();
+
+	if (noValidPoints_rgb > 0)
+	{
+//		double negativeEntropy = 0.5 * 6 * (1 + std::log(2 * M_PI)) + 0.5 * std::log(std::abs((hessian_rgb).determinant()));
+		double negativeEntropy = std::log(std::abs((hessian_rgb).determinant()));
+		maxNegativeEntropy = std::max(maxNegativeEntropy, negativeEntropy);
+		lastNegativeEntropy = negativeEntropy;
+
+		// exponential moving average
+		if (averageNegativeEntropy == 0)
+			averageNegativeEntropy = negativeEntropy;
+		const double alpha = 0.1;
+		averageNegativeEntropy = (1 - alpha) * averageNegativeEntropy + alpha * negativeEntropy;
+
+		averageNegativeEntropyCounter++;
+		averageNegativeEntropy2 += (negativeEntropy - averageNegativeEntropy2) / averageNegativeEntropyCounter;
+
+//		std::cout << noValidPoints_rgb << std::endl;
+//		std::cout << negativeEntropy << std::endl;
+//		std::cout << noValidPoints_rgb << ", " << negativeEntropy << "\tratio: " << negativeEntropy / maxNegativeEntropy
+//		          << "  |  " << averageNegativeEntropy / maxNegativeEntropy
+//		          << "  |  " << negativeEntropy / averageNegativeEntropy2
+//		          << std::endl;
+	} else
+	{ // RGB tracking failed -> force new keyframe
+		lastNegativeEntropy = 0;
+		averageNegativeEntropy = 0;
+	}
+
+//	// Store RGB error image
+//	ITMUChar4Image image(view->depth->noDims, true, true);
+//	RenderRGBError(&image, deltaTMat);
+//	image.UpdateHostFromDevice();
+//	char str[256];
+//	sprintf(str, "Output/error/rgb_%04zu.png", trackingState->framesProcessed);
+//	SaveImageToFile(&image, str);
+
+	trackingState->f_depth = f_depth;
+	trackingState->f_rgb = f_rgb;
 
 	this->UpdatePoseQuality(noValidPoints_old, hessian_good, f_old);
 }
@@ -428,10 +547,11 @@ void ITMICPTracker::TrackCameraSE3(ITMTrackingState* trackingState, const ITMVie
 void ITMICPTracker::TrackCameraSim3(ITMTrackingState* trackingState, const ITMView* view)
 {
 	float f_old = 1e10, f_new;
-	float f_depth, f_rgb;
+	float f_depth = 0, f_rgb = 0;
 	int noValidPoints_depth = 0;
 	int noValidPoints_rgb = 0;
 	int noValidPoints_old = 0;
+
 
 	/** Approximated Hessian of error function
 	 * H ~= 2 * J^T * J  (J = Jacobian)
@@ -478,6 +598,14 @@ void ITMICPTracker::TrackCameraSim3(ITMTrackingState* trackingState, const ITMVi
 			Eigen::Matrix<EigenT, 7, 1> nabla_new;
 			noValidPoints_depth = this->ComputeGandHSim3_Depth(f_depth, hessian_new, nabla_new, approxInvPose);
 
+			bool useDepth = true;
+			if (not useDepth and trackingState->framesProcessed > 2)
+			{
+				hessian_new.setZero();
+				nabla_new.setZero();
+				f_depth = 0;
+			}
+
 			f_new = f_depth;
 
 			if (parameters.useColour)
@@ -488,8 +616,14 @@ void ITMICPTracker::TrackCameraSim3(ITMTrackingState* trackingState, const ITMVi
 				if (noValidPoints_rgb > 0)
 				{
 					// normalize hessian and residual s.t. same magnitude as depth
-					float normalizationFactor =  hessian_new.squaredNorm() / hessian_rgb.squaredNorm();
+					float normalizationFactor = hessian_new.norm() / hessian_rgb.norm();
+					if (not useDepth and trackingState->framesProcessed > 2)
+					{
+						normalizationFactor = 1;
+						noValidPoints_depth = noValidPoints_rgb;
+					}
 
+					f_rgb *= normalizationFactor;
 					hessian_new = hessian_new + normalizationFactor * parameters.colourWeight * hessian_rgb;
 					nabla_new = nabla_new + std::sqrt(normalizationFactor) * std::sqrt(parameters.colourWeight) * nabla_rgb;
 					f_new = f_new + parameters.colourWeight * f_rgb;
@@ -547,6 +681,9 @@ void ITMICPTracker::TrackCameraSim3(ITMTrackingState* trackingState, const ITMVi
 	trackingState->pose_d->SetFrom(tangent[0], tangent[1], tangent[2], tangent[3], tangent[4], tangent[5]);
 	trackingState->pose_d->Coerce();
 
+	trackingState->f_depth = f_depth;
+	trackingState->f_rgb = f_rgb;
+
 	std::cout << "scale: " << std::exp(trackingState->scaleFactor) << std::endl;
 //	std::cout << trackingState->pose_d->GetInvM() << std::endl;
 
@@ -555,7 +692,9 @@ void ITMICPTracker::TrackCameraSim3(ITMTrackingState* trackingState, const ITMVi
 
 void ITMICPTracker::TrackCamera(ITMTrackingState* trackingState, const ITMView* view)
 {
-	this->SetEvaluationData(trackingState, view); // populate evaluation data, even if no current point cloud (set previous)
+	this->SetEvaluationData(trackingState,
+	                        view); // populate evaluation data, even if no current point cloud (set previous)
+	trackingState->framesProcessed++;
 	if (!trackingState->HasValidPointCloud()) return;
 	this->PrepareForEvaluation();
 
@@ -563,4 +702,5 @@ void ITMICPTracker::TrackCamera(ITMTrackingState* trackingState, const ITMView* 
 		TrackCameraSim3(trackingState, view);
 	else
 		TrackCameraSE3(trackingState, view);
+
 }

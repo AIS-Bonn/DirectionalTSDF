@@ -48,24 +48,6 @@ _CPU_AND_GPU_CODE_ inline float tukey_rho_deriv2(float r, float c)
 	return fabs(r) < c ? 1.0f : 0.0f;
 }
 
-// Depth Tracker Norm
-_CPU_AND_GPU_CODE_ inline float rho(float r, float huber_b)
-{
-	float tmp = fabs(r) - huber_b;
-	tmp = MAX(tmp, 0.0f);
-	return r * r - tmp * tmp;
-}
-
-_CPU_AND_GPU_CODE_ inline float rho_deriv(float r, float huber_b)
-{
-	return 2.0f * CLAMP(r, -huber_b, huber_b);
-}
-
-_CPU_AND_GPU_CODE_ inline float rho_deriv2(float r, float huber_b)
-{
-	return fabs(r) < huber_b ? 2.0f : 0.0f;
-}
-
 template<bool shortIteration, bool rotationOnly, bool useWeights>
 _CPU_AND_GPU_CODE_ inline bool computePerPointGH_exDepth_Ab(float* A, float& b,
                                                             const int& x, const int& y, const float& depth,
@@ -242,7 +224,7 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_exRGB_inv_Ab(
 	const int numPara = shortIteration ? 3 : 6;
 	for (int para = 0; para < numPara; para++)
 	{
-		// Derivatives of approxInvPose wrt. the current parameter
+		// Derivatives of deltaT wrt. the current parameter
 		Vector3f d_point_col;
 		switch (para + (shortIteration && !rotationOnly ? 3 : 0))
 		{

@@ -9,9 +9,11 @@ namespace ITMLib
 class ITMICPTracker_CPU : public ITMICPTracker
 {
 protected:
-	int ComputeGandH_Depth(float& f, float* nabla, float* hessian, Matrix4f approxInvPose) override;
+	int ComputeGandH_Depth(float& f, float* nabla, float* hessian, const Matrix4f& deltaT) override;
 
-	int ComputeGandH_RGB(float& f, float* nabla, float* hessian, Matrix4f approxInvPose) override;
+	int ComputeGandH_RGB(float& f, float* nabla, float* hessian, const Matrix4f& deltaT) override;
+
+	void RenderRGBError(ITMUChar4Image* image_out, const Matrix4f& deltaT) override {};
 
 	size_t ComputeGandHSim3_Depth(float& f, Eigen::Matrix<EigenT, 7, 7>& H, Eigen::Matrix<EigenT, 7, 1>& g, const Matrix4f& approxInvPose) override;
 

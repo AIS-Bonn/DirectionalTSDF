@@ -25,7 +25,9 @@ ITMLowLevelEngine_CUDA::~ITMLowLevelEngine_CUDA()
 	ORcudaSafeCall(cudaFreeHost(counterTempData_host));
 }
 
-__global__ void convertColourToIntensity_device(float* imageData_out, Vector2i dims, const Vector4u* imageData_in);
+template<typename T>
+__global__ void
+convertColourToIntensity_device(float* imageData_out, Vector2i dims, const ORUtils::Vector4<T>* imageData_in);
 
 __global__ void boxFilter2x2_device(float* imageData_out, const float* imageData_in, Vector2i dims);
 
@@ -100,7 +102,22 @@ void ITMLowLevelEngine_CUDA::ConvertColourToIntensity(ITMFloatImage* image_out, 
 	dim3 blockSize(16, 16);
 	dim3 gridSize((int) ceil((float) dims.x / (float) blockSize.x), (int) ceil((float) dims.y / (float) blockSize.y));
 
-	convertColourToIntensity_device << < gridSize, blockSize >> >(dest, dims, src);
+	convertColourToIntensity_device<unsigned char> << < gridSize, blockSize >> >(dest, dims, src);
+	ORcudaKernelCheck;
+}
+
+void ITMLowLevelEngine_CUDA::ConvertColourToIntensity(ITMFloatImage* image_out, const ITMFloat4Image* image_in) const
+{
+	const Vector2i dims = image_in->noDims;
+	image_out->ChangeDims(dims);
+
+	float* dest = image_out->GetData(MEMORYDEVICE_CUDA);
+	const Vector4f* src = image_in->GetData(MEMORYDEVICE_CUDA);
+
+	dim3 blockSize(16, 16);
+	dim3 gridSize((int) ceil((float) dims.x / (float) blockSize.x), (int) ceil((float) dims.y / (float) blockSize.y));
+
+	convertColourToIntensity_device<float> << < gridSize, blockSize >> >(dest, dims, src);
 	ORcudaKernelCheck;
 }
 
@@ -238,8 +255,28 @@ void ITMLowLevelEngine_CUDA::GradientY(ITMShort4Image* grad_out, const ITMUChar4
 	ORcudaKernelCheck;
 }
 
+__constant__ float gsobel_x3x3[9];
+__constant__ float gsobel_y3x3[9];
+
 void ITMLowLevelEngine_CUDA::GradientXY(ITMFloat2Image* grad_out, const ITMFloatImage* image_in) const
 {
+	static bool once = false;
+	if(!once)
+	{
+		// combination of blur and sobel filter (Whelan 2015, Kintinuos)
+		float gsx3x3[9] = {0.52201,  0.00000, -0.52201,
+		                   0.79451, -0.00000, -0.79451,
+		                   0.52201,  0.00000, -0.52201};
+
+		float gsy3x3[9] = {0.52201, 0.79451, 0.52201,
+		                   0.00000, 0.00000, 0.00000,
+		                   -0.52201, -0.79451, -0.52201};
+
+		ORcudaSafeCall(cudaMemcpyToSymbol(gsobel_x3x3, gsx3x3, sizeof(float) * 9));
+		ORcudaSafeCall(cudaMemcpyToSymbol(gsobel_y3x3, gsy3x3, sizeof(float) * 9));
+		once = true;
+	}
+
 	Vector2i imgSize = image_in->noDims;
 	grad_out->ChangeDims(imgSize);
 	grad_out->Clear();
@@ -402,7 +439,9 @@ void computeDepthCloudCenter_device(PointCloudAccumulator* accumulator, const fl
 	parallelReduceVector3<256>(accumulator->pointSum, point, locId_local);
 }
 
-__global__ void convertColourToIntensity_device(float* imageData_out, Vector2i dims, const Vector4u* imageData_in)
+template<typename T>
+__global__ void
+convertColourToIntensity_device(float* imageData_out, Vector2i dims, const ORUtils::Vector4<T>* imageData_in)
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
 
@@ -478,13 +517,43 @@ __global__ void gradientY_device(Vector4s* grad, const Vector4u* image, Vector2i
 	gradientY(grad, x, y, image, imgSize);
 }
 
+/**
+ * From Kintinous (Whelan 2015)
+ * @param grad
+ * @param x
+ * @param y
+ * @param image
+ * @param imgSize
+ */
+__device__
+void sobelXY(Vector2f* grad, const int x, const int y, const float* image, Vector2i imgSize)
+{
+	float dxVal = 0;
+	float dyVal = 0;
+
+	int kernelIndex = 8;
+	for (int j = max(y - 1, 0); j <= min(y + 1, imgSize.height - 1); j++)
+	{
+		for (int i = max(x - 1, 0); i <= min(x + 1, imgSize.width - 1); i++)
+		{
+			dxVal += (float) image[PixelCoordsToIndex(i, j, imgSize)] * gsobel_x3x3[kernelIndex];
+			dyVal += (float) image[PixelCoordsToIndex(i, j, imgSize)] * gsobel_y3x3[kernelIndex];
+			--kernelIndex;
+		}
+	}
+
+	grad[PixelCoordsToIndex(x, y, imgSize)].x = dxVal;
+	grad[PixelCoordsToIndex(x, y, imgSize)].y = dyVal;
+}
+
 __global__ void gradientXY_device(Vector2f* grad, const float* image, Vector2i imgSize)
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
 
 	if (x < 1 || x > imgSize.x - 2 || y < 1 || y > imgSize.y - 2) return;
 
-	gradientXY(grad, x, y, image, imgSize);
+//	gradientXY(grad, x, y, image, imgSize);
+	sobelXY(grad, x, y, image, imgSize);
 }
 
 __global__ void countValidDepths_device(const float* imageData_in, int imgSizeTotal, int* counterTempData_device)

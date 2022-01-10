@@ -186,6 +186,17 @@ ITMBasicEngine::ProcessFrame(ITMUChar4Image* rgbImage, ITMShortImage* rawDepthIm
 	this->timeStats.Reset();
 	ITMTimer timer;
 
+	if (view)
+	{
+		if (rawDepthImage->noDims.width == 2000)
+		{
+			ITMRGBDCalib calibration;
+
+			readRGBDCalib("/home/splietke/code/DirectionalTSDF/Files/COLMAP3.txt", calibration);
+			view = new ITMView(calibration, rgbImage->noDims, rawDepthImage->noDims, true);
+		}
+	}
+
 	bool computeNormals = true;
 //	(
 //		settings->fusionParams.useWeighting or
@@ -209,10 +220,18 @@ ITMBasicEngine::ProcessFrame(ITMUChar4Image* rgbImage, ITMShortImage* rawDepthIm
 	{
 		trackingState->trackerResult = ITMTrackingState::TRACKING_GOOD;
 		trackingState->pose_d->SetFrom(pose);
+		if (rawDepthImage->noDims.width == 2000)
+		{
+			Vector3f trans, rot;
+			pose->GetParams(trans, rot);
+			trackingState->pose_d->SetFrom(trans * (view->calib.disparityCalib.GetParams().x / 0.001), rot);
+		}
 	}
-
-	// track pose (or refine, if pose given)
-	if (trackingActive) trackingController->Track(trackingState, view);
+	else
+	{
+		// track pose (or refine, if pose given)
+		if (trackingActive) trackingController->Track(trackingState, view);
+	}
 
 	// Rescale input according to computed scale factor
 	lowLevelEngine->RescaleDepthImage(view->depth, std::exp(trackingState->scaleFactor));
@@ -271,7 +290,8 @@ ITMBasicEngine::ProcessFrame(ITMUChar4Image* rgbImage, ITMShortImage* rawDepthIm
 	this->timeStats.relocalization.relocalization = timer.Tock();
 
 	bool didFusion = false;
-	if ((trackerResult != ITMTrackingState::TRACKING_FAILED || !trackingInitialised)
+//	if ((trackerResult != ITMTrackingState::TRACKING_FAILED || !trackingInitialised)
+	if ((trackerResult == ITMTrackingState::TRACKING_GOOD || !trackingInitialised)
 	    && (fusionActive)
 	    && (relocalisationCount == 0))
 	{
@@ -360,11 +380,13 @@ ITMRenderError ITMBasicEngine::ComputeICPError()
 		{
 			float A[6];
 			float error, icpError;
+			float weight;
 			bool isValidPoint = computePerPointGH_Depth_Ab<false, false>(
-				A, icpError, x, y, depth,
-				view->calib.intrinsics_d.imgSize, view->calib.intrinsics_d.projectionParamsSimple.all,
-				view->calib.intrinsics_d.imgSize, view->calib.intrinsics_d.projectionParamsSimple.all,
+				A, icpError, weight, x, y,
 				depthImageInvPose, sceneRenderingPose,
+				depth,
+				view->calib.intrinsics_d.imgSize, view->calib.intrinsics_d.projectionParamsSimple.all,
+				view->calib.intrinsics_d.imgSize, view->calib.intrinsics_d.projectionParamsSimple.all,
 				pointsRay, normalsRay, 100.0);
 
 			isValidPoint &= computePerPointError<false, false>(

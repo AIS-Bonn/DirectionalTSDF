@@ -34,6 +34,7 @@ void ITMTrackingController::Prepare(ITMTrackingState* trackingState, const Scene
 		visualisationEngine->CreateExpectedDepths(scene, &pose_rgb, &(view->calib.intrinsics_rgb), renderState);
 		visualisationEngine->CreatePointCloud(scene, view, trackingState, renderState, settings->skipPoints);
 		trackingState->age_pointCloud = 0;
+		trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
 	} else
 	{
 		visualisationEngine->CreateExpectedDepths(scene, trackingState->pose_d, &(view->calib.intrinsics_d), renderState);

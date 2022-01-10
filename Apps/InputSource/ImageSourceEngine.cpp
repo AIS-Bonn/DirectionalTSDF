@@ -313,7 +313,10 @@ TUMPathGenerator::TUMPathGenerator(const std::string& dir)
 		if (!(iss >> timestamp >> filename)) {
 			std::cout << "error parsing line: \"" << line << "\"" << std::endl;
 		}
-		rgbImagePaths.push_back(directory / filename);
+		if (fs::is_regular_file(filename)) // absolute filename
+			rgbImagePaths.push_back(filename);
+		else
+			rgbImagePaths.push_back(directory / filename);
 	}
 
 	std::ifstream depth_file(directory / "depth.txt");
@@ -327,7 +330,10 @@ TUMPathGenerator::TUMPathGenerator(const std::string& dir)
 		if (!(iss >> timestamp >> filename)) {
 			std::cout << "error parsing line: \"" << line << "\"" << std::endl;
 		}
-		depthImagePaths.push_back(directory / filename);
+		if (fs::is_regular_file(filename)) // absolute filename
+			depthImagePaths.push_back(filename);
+		else
+			depthImagePaths.push_back(directory / filename);
 	}
 }
 
