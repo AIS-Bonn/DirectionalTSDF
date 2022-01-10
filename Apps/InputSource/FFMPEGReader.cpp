@@ -17,7 +17,7 @@
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
-#include <libavfilter/avfiltergraph.h>
+#include <libavfilter/avfilter.h>
 #include <libavfilter/buffersink.h>
 #include <libavfilter/buffersrc.h>
 #include <libavutil/opt.h>
@@ -181,8 +181,6 @@ int FFMPEGReader::PrivateData::init_filter(FilteringContext* fctx, AVCodecContex
 {
 	char args[512];
 	int ret = 0;
-	AVFilter *buffersrc = NULL;
-	AVFilter *buffersink = NULL;
 	AVFilterContext *buffersrc_ctx = NULL;
 	AVFilterContext *buffersink_ctx = NULL;
 	AVFilterInOut *outputs = avfilter_inout_alloc();
@@ -193,12 +191,12 @@ int FFMPEGReader::PrivateData::init_filter(FilteringContext* fctx, AVCodecContex
 	//       AV_PIX_FMT_GRAY16BE
 	AVPixelFormat requiredOutput = isDepth?AV_PIX_FMT_GRAY16LE:AV_PIX_FMT_RGBA;
 
+	const AVFilter *buffersrc = avfilter_get_by_name("buffer");
+	const AVFilter *buffersink = avfilter_get_by_name("buffersink");
 	if (!outputs || !inputs || !filter_graph) {
 		ret = AVERROR(ENOMEM);
 		goto end;
 	}
-	buffersrc = avfilter_get_by_name("buffer");
-	buffersink = avfilter_get_by_name("buffersink");
 	if (!buffersrc || !buffersink) {
 		std::cerr << "filtering source or sink element not found" << std::endl;
 		ret = AVERROR_UNKNOWN;

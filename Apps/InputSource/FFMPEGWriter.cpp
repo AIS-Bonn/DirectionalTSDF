@@ -17,7 +17,7 @@
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
-#include <libavfilter/avfiltergraph.h>
+#include <libavfilter/avfilter.h>
 #include <libavfilter/buffersink.h>
 #include <libavfilter/buffersrc.h>
 #include <libavutil/opt.h>
@@ -109,7 +109,7 @@ int FFMPEGWriter::PrivateData::open(const char *filename, int size_x, int size_y
 		return ret;
 	}
 	if (ofmt_ctx->oformat->flags & AVFMT_GLOBALHEADER) {
-		enc_ctx->flags |= /*AV_*/CODEC_FLAG_GLOBAL_HEADER;
+		enc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 	}
 //	av_dump_format(ofmt_ctx, 0, filename, 1);
 	if (!(ofmt_ctx->oformat->flags & AVFMT_NOFILE)) {
@@ -135,20 +135,18 @@ int FFMPEGWriter::PrivateData::init_filter(FilteringContext* fctx, AVCodecContex
 {
 	char args[512];
 	int ret = 0;
-	AVFilter *buffersrc = NULL;
-	AVFilter *buffersink = NULL;
 	AVFilterContext *buffersrc_ctx = NULL;
 	AVFilterContext *buffersink_ctx = NULL;
 	AVFilterInOut *outputs = avfilter_inout_alloc();
 	AVFilterInOut *inputs  = avfilter_inout_alloc();
 	AVFilterGraph *filter_graph = avfilter_graph_alloc();
+
+	const AVFilter *buffersrc = avfilter_get_by_name("buffer");
+	const AVFilter *buffersink = avfilter_get_by_name("buffersink");
 	if (!outputs || !inputs || !filter_graph) {
 		ret = AVERROR(ENOMEM);
 		goto end;
 	}
-
-	buffersrc = avfilter_get_by_name("buffer");
-	buffersink = avfilter_get_by_name("buffersink");
 	if (!buffersrc || !buffersink) {
 		std::cerr << "filtering source or sink element not found" << std::endl;
 		ret = AVERROR_UNKNOWN;
@@ -285,7 +283,7 @@ int FFMPEGWriter::PrivateData::flush_encoder(unsigned int stream_index)
 {
 	int ret;
 	int got_frame;
-	if (!(ofmt_ctx->streams[stream_index]->codec->codec->capabilities & /*AV_*/CODEC_CAP_DELAY)) return 0;
+	if (!(ofmt_ctx->streams[stream_index]->codec->codec->capabilities & AV_CODEC_CAP_DELAY)) return 0;
 
 	while (1) {
 		ret = encode_write_frame(NULL, stream_index, &got_frame);
