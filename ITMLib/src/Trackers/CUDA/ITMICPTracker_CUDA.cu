@@ -103,7 +103,7 @@ Sim3DerivativeRGB_device(AccumulatorSim3* accumulator,
                          float* intensity_current, float* intensity_reference, Vector2f* gradient_reference,
                          Vector4f intrinsics_depth, Vector4f intrinsics_rgb,
                          Vector2i imgSize_depth, Vector2i imgSize_rgb,
-                         Matrix4f approxInvPose, Matrix4f intensityReferencePose,
+                         Matrix4f deltaT, Matrix4f T_ref_CW, Matrix4f T_scene_WC,
                          float viewFrustum_max,
                          float intensityThresh,
                          float minGradient);
@@ -163,7 +163,7 @@ __global__ void reduceAccumulatorSim3(AccumulatorSim3* accu, size_t N)
 
 size_t
 ITMICPTracker_CUDA::ComputeGandHSim3_Depth(float& f, Eigen::Matrix<EigenT, 7, 7>& H, Eigen::Matrix<EigenT, 7, 1>& g,
-                                           const Matrix4f& approxInvPose)
+                                           const Matrix4f& deltaT)
 {
 	Vector4f* pointsMap = sceneHierarchy->GetLevel(0)->pointsMap->GetData(MEMORYDEVICE_CUDA);
 	Vector4f* normalsMap = sceneHierarchy->GetLevel(0)->normalsMap->GetData(MEMORYDEVICE_CUDA);
@@ -186,7 +186,7 @@ ITMICPTracker_CUDA::ComputeGandHSim3_Depth(float& f, Eigen::Matrix<EigenT, 7, 7>
 
 	Sim3DerivativeDepth_device << < gridSize, blockSize >> >(accumulator_device, depth, pointsMap, normalsMap,
 		sceneIntrinsics, sceneImageSize, viewIntrinsics, viewImageSize,
-		approxInvPose, renderedScenePose, distThresh[levelId]);
+		deltaT, renderedScenePose, distThresh[levelId]);
 	reduceAccumulatorSim3<1024><<<1, 1024>>>(accumulator_device, numBlocks);
 	ORcudaKernelCheck;
 
@@ -216,7 +216,7 @@ ITMICPTracker_CUDA::ComputeGandHSim3_Depth(float& f, Eigen::Matrix<EigenT, 7, 7>
 
 size_t
 ITMICPTracker_CUDA::ComputeGandHSim3_RGB(float& f, Eigen::Matrix<EigenT, 7, 7>& H, Eigen::Matrix<EigenT, 7, 1>& g,
-                                         const Matrix4f& approxInvPose)
+                                         const Matrix4f& deltaT)
 {
 	Vector2i viewImageSize = viewHierarchy_depth->GetLevel(levelId)->data->noDims;
 
@@ -230,6 +230,7 @@ ITMICPTracker_CUDA::ComputeGandHSim3_RGB(float& f, Eigen::Matrix<EigenT, 7, 7>& 
 	ORcudaSafeCall(cudaMalloc(&accumulator_device, numBlocks * sizeof(AccumulatorSim3)));
 	ORcudaSafeCall(cudaMemset(accumulator_device, 0, numBlocks * sizeof(AccumulatorSim3)));
 
+
 	Sim3DerivativeRGB_device << < gridSize, blockSize >> >(
 		accumulator_device,
 			reprojectedPointsHierarchy->GetLevel(levelId)->data->GetData(MEMORYDEVICE_CUDA),
@@ -240,8 +241,9 @@ ITMICPTracker_CUDA::ComputeGandHSim3_RGB(float& f, Eigen::Matrix<EigenT, 7, 7>& 
 			viewHierarchy_intensity->GetLevel(levelId)->intrinsics,
 			viewHierarchy_depth->GetLevel(levelId)->data->noDims,
 			viewHierarchy_intensity->GetLevel(levelId)->intensity_prev->noDims,
-			approxInvPose,
+			deltaT,
 			depthToRGBTransform * intensityReferencePose,
+			renderedScenePose.inv(),
 			6, // FIXME: use parameter
 			colourThresh[levelId],
 			parameters.minColourGradient
@@ -506,7 +508,7 @@ void ITMICPTracker_CUDA::RenderRGBError(ITMUChar4Image* image_out, const Matrix4
 	args.imgSize_rgb = viewHierarchy_intensity->GetLevel(levelId)->intensity_prev->noDims;
 	args.T_ref_CW = depthToRGBTransform * intensityReferencePose;
 	args.T_scene_WC = renderedScenePose.inv();
-	args.viewFrustum_max = 6; // FIXME: use parameter
+	args.viewFrustum_max = 10; // FIXME: use parameter
 	args.intensityThresh = colourThresh[levelId];
 	args.minGradient = parameters.minColourGradient;
 
@@ -954,7 +956,7 @@ Sim3DerivativeDepth_device(AccumulatorSim3* accumulator,
                            const float* depth, const Vector4f* pointsMap, const Vector4f* normalsMap,
                            Vector4f sceneIntrinsics, Vector2i sceneImageSize,
                            Vector4f viewIntrinsics, Vector2i viewImageSize,
-                           Matrix4f approxInvPose, Matrix4f scenePose,
+                           Matrix4f deltaT, Matrix4f T_scene_CW,
                            const float distThresh)
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
@@ -970,13 +972,15 @@ Sim3DerivativeDepth_device(AccumulatorSim3* accumulator,
 	MatrixXf<1, 7> J;
 	float r;
 	float f;
+	float weight;
 	bool isValidPoint = false;
 	if (x < viewImageSize.x && y < viewImageSize.y)
 	{
-		isValidPoint = computeSim3Derivative_Depth(J, r, x, y,
+		isValidPoint = computeSim3Derivative_Depth(J, r, weight, x, y,
 		                                           depth, viewImageSize,
 		                                           viewIntrinsics, sceneImageSize, sceneIntrinsics,
-		                                           approxInvPose, scenePose, pointsMap, normalsMap, distThresh);
+		                                           deltaT, T_scene_CW,
+		                                           pointsMap, normalsMap, distThresh);
 
 		if (isValidPoint) blockHasValidPoint = true;
 	}
@@ -991,12 +995,13 @@ Sim3DerivativeDepth_device(AccumulatorSim3* accumulator,
 		J.setZeros();
 		f = 0;
 		r = 0;
+		weight = 1;
 	}
 
 	parallelReduce<256>(accumulator[blockId].numPoints, (int) isValidPoint, threadId);
-	parallelReduce<256>(accumulator[blockId].f, r * r, threadId);
+	parallelReduce<256>(accumulator[blockId].f, weight * r * r, threadId);
 
-	MatrixXf<1, 7> localG = (J * r);
+	MatrixXf<1, 7> localG = weight * (J * r);
 	parallelReduceArray4<256>(accumulator[blockId].g, localG.m, threadId);
 	parallelReduceArray3<256>(accumulator[blockId].g + 4, localG.m + 4, threadId);
 
@@ -1006,7 +1011,7 @@ Sim3DerivativeDepth_device(AccumulatorSim3* accumulator,
 	for (unsigned char row = 0, counter = 0; row < 7; row++)
 	{
 #pragma unroll
-		for (int col = 0; col <= row; col++, counter++) localHessian[counter] = J.at(row, 0) * J.at(col, 0);
+		for (int col = 0; col <= row; col++, counter++) localHessian[counter] = weight * J.at(row, 0) * J.at(col, 0);
 	}
 
 	//reduction for hessian
@@ -1024,7 +1029,7 @@ Sim3DerivativeRGB_device(AccumulatorSim3* accumulator,
                          float* intensity_current, float* intensity_reference, Vector2f* gradient_reference,
                          Vector4f intrinsics_depth, Vector4f intrinsics_rgb,
                          Vector2i imgSize_depth, Vector2i imgSize_rgb,
-                         Matrix4f approxInvPose, Matrix4f intensityReferencePose,
+                         const Matrix4f deltaT, const Matrix4f T_ref_CW, const Matrix4f T_scene_WC,
                          const float viewFrustum_max, const float intensityThresh, const float minGradient)
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x, y = threadIdx.y + blockIdx.y * blockDim.y;
@@ -1040,15 +1045,16 @@ Sim3DerivativeRGB_device(AccumulatorSim3* accumulator,
 	MatrixXf<1, 7> J;
 	float r;
 	float f;
+	float weight;
 	bool isValidPoint = false;
 	if (x < imgSize_depth.x && y < imgSize_depth.y)
 	{
-		isValidPoint = computeSim3Derivative_RGB(J, r, x, y,
+		isValidPoint = computeSim3Derivative_RGB(J, r, weight, x, y,
 		                                         points_current,
 		                                         intensity_current, intensity_reference, gradient_reference,
 		                                         imgSize_depth, imgSize_rgb,
 		                                         intrinsics_depth, intrinsics_rgb,
-		                                         approxInvPose, intensityReferencePose,
+		                                         deltaT, T_ref_CW, T_scene_WC,
 		                                         viewFrustum_max, intensityThresh, minGradient);
 
 		if (isValidPoint) blockHasValidPoint = true;
@@ -1064,12 +1070,13 @@ Sim3DerivativeRGB_device(AccumulatorSim3* accumulator,
 		J.setZeros();
 		f = 0;
 		r = 0;
+		weight = 1;
 	}
 
 	parallelReduce<256>(accumulator[blockId].numPoints, (int) isValidPoint, threadId);
-	parallelReduce<256>(accumulator[blockId].f, r * r, threadId);
+	parallelReduce<256>(accumulator[blockId].f, weight * r * r, threadId);
 
-	MatrixXf<1, 7> localG = (J * r);
+	MatrixXf<1, 7> localG = weight * (J * r);
 	parallelReduceArray4<256>(accumulator[blockId].g, localG.m, threadId);
 	parallelReduceArray3<256>(accumulator[blockId].g + 4, localG.m + 4, threadId);
 
@@ -1079,7 +1086,7 @@ Sim3DerivativeRGB_device(AccumulatorSim3* accumulator,
 	for (unsigned char row = 0, counter = 0; row < 7; row++)
 	{
 #pragma unroll
-		for (int col = 0; col <= row; col++, counter++) localHessian[counter] = J.at(row, 0) * J.at(col, 0);
+		for (int col = 0; col <= row; col++, counter++) localHessian[counter] = weight * J.at(row, 0) * J.at(col, 0);
 	}
 
 	//reduction for hessian

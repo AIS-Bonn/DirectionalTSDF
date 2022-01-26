@@ -185,10 +185,20 @@ __global__ void integrateIntoScene_device(stdgpu::unordered_map<TIndex, ITMVoxel
 	Vector4f pt_model = Vector4f(voxelIdxToWorldPos(index.getPosition() * SDF_BLOCK_SIZE + Vector3s(x, y, z), _voxelSize),
 	                             1.0f);
 
-	std::conditional<ITMVoxel::hasColorInformation, ComputeUpdatedVoxelInfo<true, ITMVoxel>, ComputeUpdatedVoxelInfo<false, ITMVoxel>>::type::compute(
-		localVoxelBlock[locId], index.getDirection(),
-		pt_model, M_d, projParams_d, M_rgb, projParams_rgb, fusionParams, sceneParams, depth, depthNormals,
-		depthImgSize, rgb, rgbImgSize);
+	if (depthImgSize.height == 1544)
+	{
+		std::conditional<false, ComputeUpdatedVoxelInfo<true, ITMVoxel>, ComputeUpdatedVoxelInfo<false, ITMVoxel>>::type::compute(
+			localVoxelBlock[locId], index.getDirection(),
+			pt_model, M_d, projParams_d, M_rgb, projParams_rgb, fusionParams, sceneParams, depth, depthNormals,
+			depthImgSize, rgb, rgbImgSize);
+	}
+	else
+	{
+		std::conditional<ITMVoxel::hasColorInformation, ComputeUpdatedVoxelInfo<true, ITMVoxel>, ComputeUpdatedVoxelInfo<false, ITMVoxel>>::type::compute(
+			localVoxelBlock[locId], index.getDirection(),
+			pt_model, M_d, projParams_d, M_rgb, projParams_rgb, fusionParams, sceneParams, depth, depthNormals,
+			depthImgSize, rgb, rgbImgSize);
+	}
 }
 
 template<typename TIndex>

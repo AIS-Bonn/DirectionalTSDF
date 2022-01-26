@@ -59,6 +59,8 @@ public:
 	/// For ITMColorTracker: skip every other point in energy function evaluation.
 	bool skipPoints;
 
+	bool refinePoses;
+
 	bool createMeshingEngine;
 
 	FailureMode behaviourOnFailure;

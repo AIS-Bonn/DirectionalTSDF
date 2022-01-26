@@ -168,7 +168,7 @@ void ITMICPTracker::SetEvaluationData(ITMTrackingState* trackingState, const ITM
 			// Convert RGB to intensity
 			viewHierarchy_intensity->GetLevel(0)->intensity_prev->SetFrom(
 				viewHierarchy_intensity->GetLevel(0)->intensity_current, ORUtils::CUDA_TO_CUDA);
-			intensityReferencePose = trackingState->pose_d->GetM();
+			intensityReferencePose = trackingState->pose_pointCloud->GetM();
 
 			// Compute first level gradients
 			lowLevelEngine->GradientXY(viewHierarchy_intensity->GetLevel(0)->gradients,
@@ -192,7 +192,7 @@ void ITMICPTracker::SetEvaluationData(ITMTrackingState* trackingState, const ITM
 				// Convert RGB to intensity
 				viewHierarchy_intensity->GetLevel(0)->intensity_prev->SetFrom(
 					viewHierarchy_intensity->GetLevel(0)->intensity_current, ORUtils::CUDA_TO_CUDA);
-				intensityReferencePose = trackingState->pose_d->GetM();
+				intensityReferencePose = trackingState->pose_pointCloud->GetM();
 
 				// Compute first level gradients
 				lowLevelEngine->GradientXY(viewHierarchy_intensity->GetLevel(0)->gradients,
@@ -375,6 +375,21 @@ ITMICPTracker::UpdatePoseQuality(int noValidPoints_old, const Eigen::Matrix<Eige
 
 void ITMICPTracker::TrackCameraSE3(ITMTrackingState* trackingState, const ITMView* view)
 {
+
+//	{
+//		// Store RGB error image
+//		this->SetEvaluationParams(0);
+//		Matrix4f deltaTMat = renderedScenePose * trackingState->pose_d->GetInvM();
+//		ITMUChar4Image image(view->depth->noDims, true, true);
+//		RenderRGBError(&image, deltaTMat);
+//		image.UpdateHostFromDevice();
+//		char str[256];
+//		sprintf(str, "Output/error/rgb_%04zu.png", trackingState->framesProcessed);
+//		SaveImageToFile(&image, str);
+//
+//		return;
+//	}
+
 	float f_old = 1e10;
 	float f_depth = 0, f_rgb = 0;
 	int noValidPoints_rgb = 0;
@@ -395,17 +410,20 @@ void ITMICPTracker::TrackCameraSE3(ITMTrackingState* trackingState, const ITMVie
 	Eigen::Matrix<float, 6, 6> hessian_rgb;
 	Eigen::Matrix<float, 6, 1> nabla_rgb;
 
-	Sophus::SE3<EigenT> lastKnownGoodDeltaT;
-	Sophus::SE3<EigenT> deltaT; // approximation target, transform from depth frame to rendered scene frame
-	auto deltaTMat = ORUtils::FromEigen<Matrix4f>(deltaT.matrix());
-
 	Matrix4f previousPose_WC = renderedScenePose.inv();
+	Matrix4f deltaTMat = renderedScenePose * trackingState->pose_d->GetInvM();
+
+	// approximation target, transform from depth frame to rendered scene frame (initialize with prior ,if available)
+	Sophus::SE3<EigenT> deltaT = Sophus::SE3<EigenT>::fitToSE3(ORUtils::ToEigen<Eigen::Matrix<EigenT, 4, 4>>(deltaTMat));
+	Sophus::SE3<EigenT> lastKnownGoodDeltaT(deltaT);
+
 	for (int levelId = viewHierarchy_depth->GetNoLevels() - 1; levelId >= 0; levelId--)
 	{
 		this->SetEvaluationParams(levelId);
 		if (iterationType == TRACKER_ITERATION_NONE) continue;
 
-		const float minNoPoints = 0.05f * viewHierarchy_depth->GetLevel(levelId)->data->noDims.width * viewHierarchy_depth->GetLevel(levelId)->data->noDims.height;
+		const float minNoPoints = 0.05f * viewHierarchy_depth->GetLevel(levelId)->data->noDims.width *
+		                          viewHierarchy_depth->GetLevel(levelId)->data->noDims.height;
 
 		f_old = 1e20f;
 		noValidPoints_old = 0;
@@ -530,14 +548,6 @@ void ITMICPTracker::TrackCameraSE3(ITMTrackingState* trackingState, const ITMVie
 		averageNegativeEntropy = 0;
 	}
 
-//	// Store RGB error image
-//	ITMUChar4Image image(view->depth->noDims, true, true);
-//	RenderRGBError(&image, deltaTMat);
-//	image.UpdateHostFromDevice();
-//	char str[256];
-//	sprintf(str, "Output/error/rgb_%04zu.png", trackingState->framesProcessed);
-//	SaveImageToFile(&image, str);
-
 	trackingState->f_depth = f_depth;
 	trackingState->f_rgb = f_rgb;
 
@@ -565,19 +575,12 @@ void ITMICPTracker::TrackCameraSim3(ITMTrackingState* trackingState, const ITMVi
 	Eigen::Matrix<EigenT, 7, 1> nabla_good;
 	nabla_good.setZero();
 
-	Sophus::Sim3<EigenT> invPose;
-	{
-		Eigen::Matrix<EigenT, 7, 1> tangent;
-		tangent << trackingState->pose_d->GetParams()[0], trackingState->pose_d->GetParams()[1],
-			trackingState->pose_d->GetParams()[2], trackingState->pose_d->GetParams()[3],
-			trackingState->pose_d->GetParams()[4], trackingState->pose_d->GetParams()[5], -trackingState->scaleFactor; // invert scale, as it is applied to inverse trackingState->pose_d
-		invPose = Sophus::Sim3<EigenT>::exp(tangent).inverse();
-	}
+	Matrix4f deltaTMat = renderedScenePose * trackingState->pose_d->GetInvM();
 
-	Sophus::Sim3<EigenT> lastKnownGoodInvPose(invPose);
-
-	/// all GPU computations require ORUtils Matrix. Note, that this pose includes the scale factor!
-	Matrix4f approxInvPose = ORUtils::FromEigen<Matrix4f>(invPose.matrix());
+	// approximation target, transform from depth frame to rendered scene frame (initialize with prior ,if available)
+	Sophus::Sim3<EigenT> deltaT(ORUtils::ToEigen<Eigen::Matrix<EigenT, 4, 4>>(deltaTMat));
+	deltaT.setScale(std::exp(trackingState->scaleFactor));
+	Sophus::Sim3<EigenT> lastKnownGoodDeltaT(deltaT);
 
 	const float weightNormalizer = 1 / (1 + parameters.colourWeight);
 
@@ -596,7 +599,7 @@ void ITMICPTracker::TrackCameraSim3(ITMTrackingState* trackingState, const ITMVi
 		{
 			Eigen::Matrix<EigenT, 7, 7> hessian_new;
 			Eigen::Matrix<EigenT, 7, 1> nabla_new;
-			noValidPoints_depth = this->ComputeGandHSim3_Depth(f_depth, hessian_new, nabla_new, approxInvPose);
+			noValidPoints_depth = this->ComputeGandHSim3_Depth(f_depth, hessian_new, nabla_new, deltaTMat);
 
 			bool useDepth = true;
 			if (not useDepth and trackingState->framesProcessed > 2)
@@ -612,11 +615,11 @@ void ITMICPTracker::TrackCameraSim3(ITMTrackingState* trackingState, const ITMVi
 			{
 				Eigen::Matrix<EigenT, 7, 7> hessian_rgb;
 				Eigen::Matrix<EigenT, 7, 1> nabla_rgb;
-				noValidPoints_rgb = this->ComputeGandHSim3_RGB(f_rgb, hessian_rgb, nabla_rgb, approxInvPose);
+				noValidPoints_rgb = this->ComputeGandHSim3_RGB(f_rgb, hessian_rgb, nabla_rgb, deltaTMat);
 				if (noValidPoints_rgb > 0)
 				{
 					// normalize hessian and residual s.t. same magnitude as depth
-					float normalizationFactor = hessian_new.norm() / hessian_rgb.norm();
+					float normalizationFactor = 0.1; // temporarily fixed
 					if (not useDepth and trackingState->framesProcessed > 2)
 					{
 						normalizationFactor = 1;
@@ -635,10 +638,10 @@ void ITMICPTracker::TrackCameraSim3(ITMTrackingState* trackingState, const ITMVi
 			// check if error increased. If so, revert
 			if ((noValidPoints_depth <= 0 && noValidPoints_rgb <= 0) || (f_new > f_old))
 			{
-				invPose = lastKnownGoodInvPose;
+				deltaT = lastKnownGoodDeltaT;
 			} else
 			{
-				lastKnownGoodInvPose = invPose;
+				lastKnownGoodDeltaT = deltaT;
 				f_old = f_new;
 				noValidPoints_old = noValidPoints_depth; // use only number of depth point for computing pose quality
 
@@ -651,9 +654,19 @@ void ITMICPTracker::TrackCameraSim3(ITMTrackingState* trackingState, const ITMVi
 			A.diagonal() *= (1 + lambda);
 			Eigen::Matrix<EigenT, 7, 1> delta = A.llt().solve(-nabla_good);
 
+			if (delta.hasNaN())
+			{
+				std::cout << "ICP tracking broken solution (contains NaN)" << std::endl;
+				delta.setZero();
+			}
+
 			// update invPose
-			invPose = Sophus::Sim3<EigenT>::exp(delta) * invPose;
-			approxInvPose = ORUtils::FromEigen<Matrix4f>(invPose.matrix());
+			deltaT = Sophus::Sim3<EigenT>::exp(delta) * deltaT;
+			deltaTMat = ORUtils::FromEigen<Matrix4f>(deltaT.matrix());
+
+			// if step is small, assume it's going to decrease the error and finish
+			if (delta.norm() < parameters.smallStepSizeCriterion)
+				break;
 
 			// update lambda (2004, Madsen, Methods For Non-Linear Least Squares Problems)
 			if (fDiff > 0)
@@ -667,18 +680,19 @@ void ITMICPTracker::TrackCameraSim3(ITMTrackingState* trackingState, const ITMVi
 				lambda *= lambdaUp;
 				lambdaUp *= 2;
 			}
-
-			// if step is small, assume it's going to decrease the error and finish
-			if (delta.norm() < parameters.smallStepSizeCriterion)
-				break;
 		}
 	}
 
 	// write back estimated invPose and scale
-	Eigen::Matrix<EigenT, 7, 1> tangent = invPose.inverse().log();
+	Eigen::Matrix<EigenT, 7, 1> tangent = deltaT.inverse().log();
 
-	trackingState->scaleFactor = invPose.log()[6];
-	trackingState->pose_d->SetFrom(tangent[0], tangent[1], tangent[2], tangent[3], tangent[4], tangent[5]);
+	trackingState->scaleFactor = std::log(deltaT.scale());
+
+	Eigen::Matrix<EigenT, 4, 4> se3UpdateMat = Eigen::Matrix<EigenT, 4, 4>::Identity();
+	se3UpdateMat.block<3, 3>(0, 0) = deltaT.rotationMatrix();
+	se3UpdateMat.block<3, 1>(0, 3) = deltaT.translation();
+
+	trackingState->pose_d->SetInvM(renderedScenePose.inv() * ORUtils::FromEigen<Matrix4f>(se3UpdateMat));
 	trackingState->pose_d->Coerce();
 
 	trackingState->f_depth = f_depth;

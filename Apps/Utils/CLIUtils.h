@@ -31,7 +31,8 @@ struct AppData
 
 	AppData()
 		: imageSource(nullptr), imuSource(nullptr), trajectorySource(nullptr),
-		  internalSettings(nullptr), outputDirectory("./Output"), numberExportPointClouds(-1), maxNumFrames(-1), computePostError(false)
+		  internalSettings(nullptr), outputDirectory("./Output"), numberExportPointClouds(-1), maxNumFrames(-1),
+		  computePostError(false)
 	{}
 };
 
@@ -85,7 +86,7 @@ inline int ParseCLIOptions(int argc, char** argv,
 		->expected(7);
 
 	app.add_option("--export_point_clouds", appData.numberExportPointClouds,
-		"Export rendered point clouds from tracking poses after finishing. N number total number of point clouds (evenly spaced). Default (0) = every pose.")
+	               "Export rendered point clouds from tracking poses after finishing. N number total number of point clouds (evenly spaced). Default (0) = every pose.")
 		->type_name("N")
 		->default_str("0");
 
@@ -95,7 +96,7 @@ inline int ParseCLIOptions(int argc, char** argv,
 		->default_str("-1");
 
 	app.add_flag("--compute_post_error", appData.computePostError,
-	               "Re-render all views from tracked poses and compare to input data");
+	             "Re-render all views from tracked poses and compare to input data");
 
 	CLI11_PARSE(app, argc, argv)
 

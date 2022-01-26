@@ -109,6 +109,7 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_RGB_Ab(float* A, float& residua
 	const Vector3f depthPoint_scene = deltaT * depthPoint_view.toVector3();
 	// transform point into intensity reference frame (deltaT is from current frame to rendered scene frame)
 	const Matrix4f T_ReferenceScene = T_ref_CW * T_scene_WC;
+//	Matrix4f T_ReferenceScene; T_ReferenceScene.setIdentity();
 	const Vector3f depthPoint_reference = T_ReferenceScene * depthPoint_scene;
 
 	if (depthPoint_reference.z <= 0) return false;
@@ -142,7 +143,8 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_RGB_Ab(float* A, float& residua
 //	weight *= 50.0f * sqrt(ORUtils::dot(gradient_reference, gradient_reference));
 
 #ifdef USE_DEPTH_WEIGHT
-		weight *= CLAMP(1.0f / pow(depthPoint_scene.z, 2), 0, 1);
+	weight *= CLAMP(1.0f / pow(depthPoint_scene.z + (1 - 0.1), 2), 0, 1);
+//	weight *= CLAMP(1.0f / pow(depthPoint_scene.z, 2), 0, 1);
 //		weight *= CLAMP(1.0f / depthPoint_scene.z, 0, 1);
 #endif
 
@@ -310,7 +312,9 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_Depth_Ab(float* A, float& b, fl
 
 	weight = 1;
 #ifdef USE_DEPTH_WEIGHT
-		weight *= CLAMP(1.0f / pow(depthPoint_scene.z, 2), 0, 1);
+	weight *= (1.0 / pow(depthPoint_scene.z, 2) - 1.0 / (6*6)) / (1.0 / (0.1 * 0.1) - 1.0 / (6 * 6));
+//	weight *= CLAMP(1.0f / pow(depthPoint_scene.z + (1 - 0.1), 2), 0, 1);
+//	weight *= 1.0f / pow(depthPoint_scene.z, 2);
 //	weight *= CLAMP(1.0f / depthPoint_scene.z, 0, 1);
 #endif
 
@@ -363,13 +367,13 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_Depth_Ab(float* A, float& b, fl
  * @param distThresh
  * @return
  */
-_CPU_AND_GPU_CODE_ inline bool computeSim3Derivative_Depth(MatrixXf<1, 7>& J, float& r,
+_CPU_AND_GPU_CODE_ inline bool computeSim3Derivative_Depth(MatrixXf<1, 7>& J, float& r, float& weight,
                                                            const int& x, const int& y,
                                                            const float* depth, const Vector2i& viewImageSize,
                                                            const Vector4f& viewIntrinsics,
                                                            const Vector2i& sceneImageSize,
                                                            const Vector4f& sceneIntrinsics,
-                                                           const Matrix4f& approxInvPose, const Matrix4f& scenePose,
+                                                           const Matrix4f& deltaT, const Matrix4f& T_scene_CW,
                                                            const Vector4f* pointsMap,
                                                            const Vector4f* normalsMap,
                                                            float distThresh)
@@ -380,29 +384,41 @@ _CPU_AND_GPU_CODE_ inline bool computeSim3Derivative_Depth(MatrixXf<1, 7>& J, fl
 
 	Vector2f sceneCoords;
 	if (!projectiveDataAssociation(sceneCoords, depthPoint_view, viewImageSize, viewIntrinsics,
-	                               sceneImageSize, sceneIntrinsics, scenePose * approxInvPose))
+	                               sceneImageSize, sceneIntrinsics, deltaT))
 		return false;
-	Vector3f depthPoint_world = (approxInvPose * depthPoint_view).toVector3();
+	Vector3f depthPoint_scene = (deltaT * depthPoint_view).toVector3();
+
 
 	Vector4f scenePoint_world = interpolateBilinear_withHoles(pointsMap, sceneCoords, sceneImageSize);
 	if (scenePoint_world.w < 0.0f) return false;
 
-	Vector3f ptDiff = scenePoint_world.toVector3() - depthPoint_world;
+	Vector3f scenePoint_scene = T_scene_CW * scenePoint_world.toVector3();
+
+	Vector3f ptDiff = scenePoint_scene - depthPoint_scene;
 	float dist = ORUtils::dot(ptDiff, ptDiff);
 	if (dist > distThresh or dist != dist) return false;
 
-	Vector3f sceneNormal = interpolateBilinear_withHoles(normalsMap, sceneCoords, sceneImageSize).toVector3();
+	Vector3f sceneNormal_world = interpolateBilinear_withHoles(normalsMap, sceneCoords, sceneImageSize).toVector3();
+	Vector3f sceneNormal_scene = (T_scene_CW * Vector4f(sceneNormal_world, 0)).toVector3();
+//	if (sceneNormal_world.w < 0.0f) return false;
 
-	r = ORUtils::dot(sceneNormal, ptDiff);
+	weight = 1;
+#ifdef USE_DEPTH_WEIGHT
+	weight *= CLAMP(1.0f / pow(depthPoint_scene.z + (1 - 0.1), 2), 0, 1);
+//	weight *= CLAMP(1.0f / pow(depthPoint_scene.z, 2), 0, 1);
+//	weight *= CLAMP(1.0f / depthPoint_scene.z, 0, 1);
+#endif
 
-	Vector3f XP = ORUtils::cross(depthPoint_world, sceneNormal);
-	J(0, 0) = -sceneNormal.x;
-	J(1, 0) = -sceneNormal.y;
-	J(2, 0) = -sceneNormal.z;
+	r = ORUtils::dot(sceneNormal_scene, ptDiff);
+
+	Vector3f XP = ORUtils::cross(depthPoint_scene, sceneNormal_scene);
+	J(0, 0) = -sceneNormal_scene.x;
+	J(1, 0) = -sceneNormal_scene.y;
+	J(2, 0) = -sceneNormal_scene.z;
 	J(3, 0) = -XP.x;
 	J(4, 0) = -XP.y;
 	J(5, 0) = -XP.z;
-	J(6, 0) = -ORUtils::dot(sceneNormal, depthPoint_world);
+	J(6, 0) = -ORUtils::dot(sceneNormal_scene, depthPoint_scene);
 
 	return true;
 }
@@ -413,7 +429,7 @@ _CPU_AND_GPU_CODE_ inline bool computeSim3Derivative_Depth(MatrixXf<1, 7>& J, fl
  * @param r residual (value of error function)
  * @return
  */
-_CPU_AND_GPU_CODE_ inline bool computeSim3Derivative_RGB(MatrixXf<1, 7>& J, float& r,
+_CPU_AND_GPU_CODE_ inline bool computeSim3Derivative_RGB(MatrixXf<1, 7>& J, float& r, float& weight,
                                                          const int x, const int y,
                                                          const Vector4f* points_current,
                                                          const float* intensities_current,
@@ -423,8 +439,9 @@ _CPU_AND_GPU_CODE_ inline bool computeSim3Derivative_RGB(MatrixXf<1, 7>& J, floa
                                                          const Vector2i imgSize_rgb,
                                                          const Vector4f& intrinsics_depth,
                                                          const Vector4f& intrinsics_rgb,
-                                                         const Matrix4f& approxInvPose,
-                                                         const Matrix4f& intensityReferencePose,
+                                                         const Matrix4f& deltaT,
+                                                         const Matrix4f& T_ref_CW,
+                                                         const Matrix4f& T_scene_WC,
                                                          const float viewFrustum_max,
                                                          const float intensityThresh,
                                                          const float minGradient)
@@ -432,45 +449,59 @@ _CPU_AND_GPU_CODE_ inline bool computeSim3Derivative_RGB(MatrixXf<1, 7>& J, floa
 	if (x >= imgSize_depth.x || y >= imgSize_depth.y) return false;
 	int idx = PixelCoordsToIndex(x, y, imgSize_depth);
 
-	const Vector4f point_current = points_current[idx];
+	const Vector4f depthPoint_view = points_current[idx];
 	const float intensity_current = intensities_current[idx];
 
-	if (point_current.w < 0.f || intensity_current < 0.f || point_current.z < 1e-3f ||
-	    point_current.z > viewFrustum_max)
+	if (depthPoint_view.w < 0.f || intensity_current < 0.f || depthPoint_view.z < 1e-3f ||
+	    depthPoint_view.z > viewFrustum_max)
 		return false;
 
-	const Vector3f point_world = (approxInvPose * point_current).toVector3();
-	const Vector3f point_reference = intensityReferencePose * point_world;
+	const Vector3f depthPoint_scene = deltaT * depthPoint_view.toVector3();
+	// transform point into intensity reference frame (deltaT is from current frame to rendered scene frame)
+	const Matrix4f T_ReferenceScene = T_ref_CW * T_scene_WC;
+	const Vector3f depthPoint_reference = T_ReferenceScene * depthPoint_scene;
 
-	if (point_reference.z <= 0) return false;
+	if (depthPoint_reference.z <= 0) return false;
 
-	// Project the point in the reference intensity frame
-	const Vector2f point_reference_proj = project(point_reference, intrinsics_rgb);
+	// Project the depth point into the reference intensity frame
+	const Vector2f imageCoords = project(depthPoint_reference, intrinsics_rgb);
 
 	// Outside the image plane
-	if (point_reference_proj.x < 0 || point_reference_proj.x >= imgSize_rgb.x - 1 ||
-	    point_reference_proj.y < 0 || point_reference_proj.y >= imgSize_rgb.y - 1)
+	if (imageCoords.x < 0 || imageCoords.x >= imgSize_rgb.x - 1 ||
+	    imageCoords.y < 0 || imageCoords.y >= imgSize_rgb.y - 1)
 		return false;
 
-	const float intensity_reference = interpolateBilinear_single(intensities_reference, point_reference_proj,
+	const float intensity_reference = interpolateBilinear_single(intensities_reference, imageCoords,
 	                                                             imgSize_rgb);
-	const Vector2f gradient_reference = interpolateBilinear_Vector2(gradients_reference, point_reference_proj,
-	                                                                imgSize_rgb);
+
 
 	float diff = intensity_reference - intensity_current;
+	Vector2f gradient_reference = interpolateBilinear_Vector2(gradients_reference, imageCoords,
+	                                                          imgSize_rgb);
 	if (fabs(diff) > intensityThresh) return false;
 	if (fabs(gradient_reference.x) < minGradient || fabs(gradient_reference.y) < minGradient) return false;
+
+	const float sobelScale = 1.0f / pow(2, 3); // from Kintinuous
+	gradient_reference *= sobelScale;
+
+	weight = 1;
+#ifdef USE_DEPTH_WEIGHT
+	weight *= CLAMP(1.0f / pow(depthPoint_scene.z + (1 - 0.1), 2), 0, 1);
+//	weight *= CLAMP(1.0f / pow(depthPoint_reference.z, 2), 0, 1);
+//	weight *= CLAMP(1.0f / depthPoint_scene.z, 0, 1);
+#endif
+
 	r = diff;
 
 	MatrixXf<2, 3> d_proj;
-	const float inv_z = 1 / point_reference.z;
+	const float inv_z = 1 / depthPoint_reference.z;
 	const float inv_z_sq = inv_z * inv_z;
 	d_proj(0, 0) = inv_z;
 	d_proj(1, 0) = 0;
-	d_proj(2, 0) = -(point_reference.x * intrinsics_rgb.x + intrinsics_rgb.z * point_reference.z) * inv_z_sq;
+	d_proj(2, 0) = -depthPoint_reference.x * inv_z_sq;
 	d_proj(0, 1) = 0;
 	d_proj(1, 1) = inv_z;
-	d_proj(2, 1) = -(point_reference.y * intrinsics_rgb.y + intrinsics_rgb.w * point_reference.z) * inv_z_sq;
+	d_proj(2, 1) = -depthPoint_reference.y * inv_z_sq;
 
 	MatrixXf<1, 2> d_grad;
 	d_grad(0, 0) = gradient_reference.x;
@@ -491,18 +522,18 @@ _CPU_AND_GPU_CODE_ inline bool computeSim3Derivative_RGB(MatrixXf<1, 7>& J, floa
 	d_point(2, 2) = 1;
 
 	d_point(3, 0) = 0;
-	d_point(3, 1) = -point_reference.z;
-	d_point(3, 2) = point_reference.y;
-	d_point(4, 0) = point_reference.z;
+	d_point(3, 1) = -depthPoint_reference.z;
+	d_point(3, 2) = depthPoint_reference.y;
+	d_point(4, 0) = depthPoint_reference.z;
 	d_point(4, 1) = 0;
-	d_point(4, 2) = -point_reference.x;
-	d_point(5, 0) = -point_reference.y;
-	d_point(5, 1) = point_reference.x;
+	d_point(4, 2) = -depthPoint_reference.x;
+	d_point(5, 0) = -depthPoint_reference.y;
+	d_point(5, 1) = depthPoint_reference.x;
 	d_point(5, 2) = 0;
 
-	d_point(6, 0) = point_world.x;
-	d_point(6, 1) = point_world.y;
-	d_point(6, 2) = point_world.z;
+	d_point(6, 0) = depthPoint_reference.x;
+	d_point(6, 1) = depthPoint_reference.y;
+	d_point(6, 2) = depthPoint_reference.z;
 
 	J = d_grad * d_proj * K * d_point;
 	return true;

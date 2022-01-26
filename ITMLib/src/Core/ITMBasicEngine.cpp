@@ -188,13 +188,16 @@ ITMBasicEngine::ProcessFrame(ITMUChar4Image* rgbImage, ITMShortImage* rawDepthIm
 
 	if (view)
 	{
-		if (rawDepthImage->noDims.width == 2000)
-		{
-			ITMRGBDCalib calibration;
+#if SCALE_EXPERIMENT == 3
+		ITMRGBDCalib calibration;
 
-			readRGBDCalib("/home/splietke/code/DirectionalTSDF/Files/COLMAP3.txt", calibration);
-			view = new ITMView(calibration, rgbImage->noDims, rawDepthImage->noDims, true);
-		}
+		char path[256];
+		sprintf(path, "dataset/calib_%02i.txt", this->framesProcessed);
+
+		readRGBDCalib(path, calibration);
+		view->Initialize(calibration, rgbImage->noDims, rawDepthImage->noDims, true);
+		trackingState->scaleFactor = 0;
+#endif
 	}
 
 	bool computeNormals = true;
@@ -205,9 +208,11 @@ ITMBasicEngine::ProcessFrame(ITMUChar4Image* rgbImage, ITMShortImage* rawDepthIm
 //		settings->fusionParams.fusionMetric == FusionMetric::FUSIONMETRIC_POINT_TO_PLANE);
 	// prepare image and turn it into a depth image
 	if (imuMeasurement == nullptr)
-		viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useDepthFilter, settings->useBilateralFilter, computeNormals);
+		viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useDepthFilter, settings->useBilateralFilter,
+		                        computeNormals);
 	else
-		viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useDepthFilter, settings->useBilateralFilter, imuMeasurement,
+		viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useDepthFilter, settings->useBilateralFilter,
+		                        imuMeasurement,
 		                        computeNormals);
 
 	if (!mainProcessingActive) return ITMTrackingState::TRACKING_FAILED;
@@ -220,21 +225,48 @@ ITMBasicEngine::ProcessFrame(ITMUChar4Image* rgbImage, ITMShortImage* rawDepthIm
 	{
 		trackingState->trackerResult = ITMTrackingState::TRACKING_GOOD;
 		trackingState->pose_d->SetFrom(pose);
-		if (rawDepthImage->noDims.width == 2000)
-		{
-			Vector3f trans, rot;
-			pose->GetParams(trans, rot);
-			trackingState->pose_d->SetFrom(trans * (view->calib.disparityCalib.GetParams().x / 0.001), rot);
-		}
-	}
-	else
-	{
-		// track pose (or refine, if pose given)
-		if (trackingActive) trackingController->Track(trackingState, view);
+//		if (rawDepthImage->noDims.width == 2000)
+//		{
+//			Vector3f trans, rot;
+//			pose->GetParams(trans, rot);
+//			trackingState->pose_d->SetFrom(trans * (view->calib.disparityCalib.GetParams().x / 0.001), rot);
+//		}
 	}
 
-	// Rescale input according to computed scale factor
-	lowLevelEngine->RescaleDepthImage(view->depth, std::exp(trackingState->scaleFactor));
+	if (!pose or settings->refinePoses)
+	{
+#ifdef SCALE_EXPERIMENT
+		// set to scale factor estimate for current sensor
+		trackingState->scaleFactor = trackingState->scaleFactors[this->framesProcessed % SCALE_EXPERIMENT_NUM_SENSORS];
+#endif
+
+		// track pose (or refine, if pose given)
+		if (trackingActive) trackingController->Track(trackingState, view);
+
+		// Rescale input according to computed scale factor
+		if (trackingState->scaleFactor != 0.0f)
+			lowLevelEngine->RescaleDepthImage(view->depth, std::exp(trackingState->scaleFactor - trackingState->scaleFactors[0]));
+
+#ifdef SCALE_EXPERIMENT
+		if (this->framesProcessed % SCALE_EXPERIMENT_NUM_SENSORS == 0)
+		{
+			trackingState->scaleFactors[this->framesProcessed % SCALE_EXPERIMENT_NUM_SENSORS] = trackingState->scaleFactor;
+			trackingState->scaleFactor = 0;
+		}
+		else
+		{
+			trackingState->scaleFactor = trackingState->scaleFactor - trackingState->scaleFactors[0]; // use sensor 0 to remove bias (fix to 1, compensate rest)
+			trackingState->scaleFactors[this->framesProcessed % SCALE_EXPERIMENT_NUM_SENSORS] = trackingState->scaleFactor;
+		}
+
+//		printf("%f, %f, %f, %f, %f\n",
+//		       1.0,
+//		       std::exp(trackingState->scaleFactors[1]),
+//		       std::exp(trackingState->scaleFactors[2]),
+//		       std::exp(trackingState->scaleFactors[3]),
+//		       std::exp(trackingState->scaleFactors[4]));
+#endif
+	}
 
 	if (trackingState->trackerResult == ITMTrackingState::TRACKING_GOOD) consecutiveGoodFrames++;
 	else consecutiveGoodFrames = 0;
@@ -470,6 +502,12 @@ void ITMBasicEngine::GetImage(ITMUChar4Image* out, const GetImageType getImageTy
 		{
 			denseMapper->GetSceneReconstructionEngine()->FindVisibleBlocks(scene, trackingState->pose_d,
 			                                                               &(view->calib.intrinsics_d), renderState_live);
+			renderState_live->renderingRangeImage->ChangeDims(view->calib.intrinsics_d.imgSize);
+			renderState_live->raycastResult->ChangeDims(view->calib.intrinsics_d.imgSize);
+			renderState_live->raycastNormals->ChangeDims(view->calib.intrinsics_d.imgSize);
+			renderState_live->forwardProjection->ChangeDims(view->calib.intrinsics_d.imgSize);
+			renderState_live->fwdProjMissingPoints->ChangeDims(view->calib.intrinsics_d.imgSize);
+			renderState_live->renderedImage->ChangeDims(view->calib.intrinsics_d.imgSize);
 			visualisationEngine->CreateExpectedDepths(scene, trackingState->pose_d, &(view->calib.intrinsics_d),
 			                                          renderState_live);
 			visualisationEngine->CreateICPMaps(scene, view, trackingState, renderState_live);

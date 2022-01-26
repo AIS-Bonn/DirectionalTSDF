@@ -3,6 +3,7 @@
 #pragma once
 
 #include <ORUtils/SE3Pose.h>
+#include <ITMLib/Core/ITMConstants.h>
 #include "../Misc/ITMPointCloud.h"
 
 namespace ITMLib
@@ -36,7 +37,9 @@ public:
 	ORUtils::SE3Pose* pose_d = nullptr;
 
 	/// Current scale factor for depth camera
-	float scaleFactor = 0; //1;
+	float scaleFactor = 0;
+
+	float scaleFactors[SCALE_EXPERIMENT_NUM_SENSORS];
 
 	float f_depth = 0;
 	float f_rgb = 0;
@@ -111,6 +114,7 @@ public:
 		this->framesProcessed = 0;
 		this->pose_d->SetFrom(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
 		this->scaleFactor = 0;
+		memset(this->scaleFactors, 0, sizeof(this->scaleFactors));
 		this->pose_pointCloud->SetFrom(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
 		this->trackerResult = TRACKING_GOOD;
 		this->trackerScore = 0.0f;
