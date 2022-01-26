@@ -6,6 +6,7 @@
 #include <ITMLib/Utils/ITMMath.h>
 #include <ITMLib/Utils/ITMProjectionUtils.h>
 #include <ORUtils/PlatformIndependence.h>
+#include <ITMLib/Core/ITMConstants.h>
 
 namespace ITMLib
 {
@@ -66,6 +67,26 @@ convertDepthAffineToFloat(float* d_out, int x, int y, const short* d_in, Vector2
 		const int ids[8] = {(x + -1) + (y + 0) * imgSize.x, (x + 1) + (y + 0) * imgSize.x, (x + -1) + (y + 1) * imgSize.x,
 		                    (x + 0) + (y + 1) * imgSize.x, (x + 1) + (y + 1) * imgSize.x, (x + -1) + (y + -1) * imgSize.x,
 		                    (x + 0) + (y + -1) * imgSize.x, (x + 1) + (y + -1) * imgSize.x};
+
+#if SCALE_EXPERIMENT == 3 || SCALE_EXPERIMENT == 4
+//		uint8_t validNeighbors = 0;
+//		float meanSum = 0;
+//		for (int id : ids)
+//		{
+//			if (d_in[id] > 0)
+//			{
+//				validNeighbors += 1;
+//				meanSum += d_in[id];
+//			}
+//		}
+//
+//		// completion from neighboring pixels
+//		if (depth_in <= 0 and validNeighbors >= 4)
+//		{
+//			depth_in = meanSum / validNeighbors;
+//		}
+#endif
+
 		// not enough neighbors
 		uint8_t noNeighbors = 0;
 		for (int id : ids)

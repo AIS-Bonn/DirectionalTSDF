@@ -15,7 +15,7 @@ class ITMView
 {
 public:
 	/// Intrinsic calibration information for the view.
-	const ITMRGBDCalib calib;
+	ITMRGBDCalib calib;
 
 	/// RGB colour image for the current frame.
 	ITMUChar4Image* rgb = nullptr;
@@ -26,12 +26,18 @@ public:
 	/// surface normal of depth image
 	ITMFloat4Image* depthNormal = nullptr;
 
-	ITMView(const ITMRGBDCalib& calibration, Vector2i imgSize_rgb, Vector2i imgSize_d, bool useGPU)
-		: calib(calibration)
+	void Initialize(const ITMRGBDCalib& calibration, Vector2i imgSize_rgb, Vector2i imgSize_d, bool useGPU)
 	{
+		calib = calibration;
 		this->rgb = new ITMUChar4Image(imgSize_rgb, true, useGPU);
 		this->depth = new ITMFloatImage(imgSize_d, true, useGPU);
 		this->depthNormal = new ITMFloat4Image(imgSize_d, true, useGPU);
+	}
+
+	ITMView(const ITMRGBDCalib& calibration, Vector2i imgSize_rgb, Vector2i imgSize_d, bool useGPU)
+		: calib(calibration)
+	{
+		this->Initialize(calibration, imgSize_rgb, imgSize_d, useGPU);
 	}
 
 	virtual ~ITMView(void)

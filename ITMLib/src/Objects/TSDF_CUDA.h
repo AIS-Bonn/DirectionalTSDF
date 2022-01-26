@@ -59,7 +59,8 @@ __global__ void
 allocateBlocks_device(Map<TIndex, TVoxel*, Args...> tsdf, AllocationStats* allocationStats, TVoxel* voxels,
                       const TIndex* allocationBlocksList, const size_t N, const size_t maxAllocations)
 {
-	size_t index = blockIdx.x * blockDim.x + threadIdx.x;
+	size_t blockId = blockIdx.x + gridDim.x * blockIdx.y;
+	size_t index = blockId * blockDim.x + threadIdx.x;
 
 	if (index >= N)
 		return;
@@ -132,8 +133,8 @@ public:
 			cudaMemcpy(allocationStats_device, &this->allocationStats, sizeof(AllocationStats), cudaMemcpyHostToDevice));
 
 		dim3 blockSize(256, 1);
-		dim3 gridSize((int) ceil((float) N / (float) blockSize.x));
-		allocateBlocks_device<<<blockSize, gridSize>>>(this->getMap(), allocationStats_device, this->voxels, blocks, N,
+		dim3 gridSize((int) ceil((float) N / (float) (blockSize.x * 256)), 256);
+		allocateBlocks_device<<<gridSize, blockSize>>>(this->getMap(), allocationStats_device, this->voxels, blocks, N,
 		                                               this->allocatedBlocksMax);
 		ORcudaKernelCheck;
 

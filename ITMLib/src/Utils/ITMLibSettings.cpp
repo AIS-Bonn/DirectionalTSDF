@@ -178,6 +178,8 @@ ITMLibSettings::ITMLibSettings(const std::string& settingsFile)
 	useSDFNormals = root["useSDFNormals"].as<bool>();
 	skipPoints = root["skipPoints"].as<bool>();
 	useApproximateRaycast = root["useApproximateRaycast"].as<bool>();
+	refinePoses = root["refinePoses"].as<bool>(false);
+
 
 	const YAML::Node& voxelParamsNode = root["voxelSceneParams"];
 	if (voxelParamsNode["voxelSize"].IsDefined())

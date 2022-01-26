@@ -6,6 +6,7 @@
 #include <Utils/ITMTimer.h>
 #include <ORUtils/CUDADefines.h>
 #include <ORUtils/MemoryBlock.h>
+#include <ITMLib/Core/ITMConstants.h>
 
 using namespace ITMLib;
 using namespace ORUtils;
@@ -47,6 +48,7 @@ ComputeNormalAndWeight_device(const float* depth_in, Vector4f* normal_out, Vecto
 void ITMViewBuilder_CUDA::UpdateView(ITMView** view_ptr, ITMUChar4Image* rgbImage, ITMShortImage* rawDepthImage,
                                      bool useDepthFilter, bool useBilateralFilter, bool computeNormals)
 {
+	static int count = 0;
 	timeStats.Reset();
 	ITMTimer timer;
 	timer.Tick();
@@ -67,6 +69,37 @@ void ITMViewBuilder_CUDA::UpdateView(ITMView** view_ptr, ITMUChar4Image* rgbImag
 	view->rgb->SetFrom(rgbImage, ORUtils::CPU_TO_CUDA);
 	this->shortImage->SetFrom(rawDepthImage, ORUtils::CPU_TO_CUDA);
 
+	Vector2f affine = view->calib.disparityCalib.GetParams();
+
+#if SCALE_EXPERIMENT == 2
+//	float scales[] = {1, 1.1, 0.95, 1.05, 0.9};
+	float scales[] = {1, 1.05, 0.975, 1.025, 0.95};
+
+	affine.x /= scales[count % SCALE_EXPERIMENT_NUM_SENSORS];
+
+	// change scaling every Nth frame
+	count++;
+	if (count > 0 and count % 20 == 5)
+	{
+		// change scaling
+//		affine.x /= 1.1;
+
+		// cut off part of image
+//		this->shortImage->UpdateHostFromDevice();
+//		short* data = this->shortImage->GetData(MEMORYDEVICE_CPU);
+//		for (int x = 0; x < 300; x++)
+//		{
+//			for (int y = 0; y < this->shortImage->noDims.height; y++)
+//			{
+//				int idx = PixelCoordsToIndex(x, y, this->shortImage->noDims);
+//				data[idx] = 0;
+//			}
+//		}
+//		this->shortImage->UpdateDeviceFromHost();
+	}
+#endif
+
+
 	switch (view->calib.disparityCalib.GetType())
 	{
 		case ITMDisparityCalib::TRAFO_KINECT:
@@ -74,7 +107,7 @@ void ITMViewBuilder_CUDA::UpdateView(ITMView** view_ptr, ITMUChar4Image* rgbImag
 			                              view->calib.disparityCalib.GetParams(), useDepthFilter);
 			break;
 		case ITMDisparityCalib::TRAFO_AFFINE:
-			this->ConvertDepthAffineToFloat(view->depth, this->shortImage, view->calib.disparityCalib.GetParams(), useDepthFilter);
+			this->ConvertDepthAffineToFloat(view->depth, this->shortImage, affine, useDepthFilter);
 			break;
 		default:
 			break;
@@ -82,6 +115,8 @@ void ITMViewBuilder_CUDA::UpdateView(ITMView** view_ptr, ITMUChar4Image* rgbImag
 	timeStats.copyImages += timer.Tock();
 
 	timer.Tick();
+	this->floatImage->ChangeDims(view->depth->noDims);
+	this->normals->ChangeDims(view->depth->noDims);
 	this->DepthBilateralFiltering(this->floatImage, view->depth);
 	if (useBilateralFilter)
 	{ // user filtered depth image
@@ -142,7 +177,8 @@ void ITMViewBuilder_CUDA::ConvertDisparityToDepth(ITMFloatImage* depth_out, cons
 	dim3 gridSize((int) ceil((float) imgSize.x / (float) blockSize.x),
 	              (int) ceil((float) imgSize.y / (float) blockSize.y));
 
-	convertDisparityToDepth_device << < gridSize, blockSize >> >(d_out, d_in, disparityCalibParams, fx_depth, imgSize, filterDepth);
+	convertDisparityToDepth_device << <
+	gridSize, blockSize >> >(d_out, d_in, disparityCalibParams, fx_depth, imgSize, filterDepth);
 	ORcudaKernelCheck;
 }
 
@@ -267,4 +303,3 @@ ComputeNormalAndWeight_device(const float* depth_in, Vector4f* normal_out, Vecto
 
 	computeNormalAndWeight(depth_in, normal_out, x, y, imgDims, intrinsic);
 }
-
