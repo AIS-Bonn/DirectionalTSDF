@@ -110,7 +110,9 @@ void ITMBasicEngine::SaveSceneToMesh(const char* objFileName)
 	auto* mesh = new ITMMesh();
 
 	meshingEngine->MeshScene(mesh, scene);
-	mesh->WriteSTL(objFileName);
+//	mesh->WriteSTL(objFileName);
+//	mesh->WriteOBJ(objFileName);
+	mesh->WritePLY(objFileName);
 
 	delete mesh;
 }

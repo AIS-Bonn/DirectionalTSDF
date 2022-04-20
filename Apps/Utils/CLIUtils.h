@@ -67,7 +67,7 @@ inline int ParseCLIOptions(int argc, char** argv,
 		->check(CLI::ExistingDirectory)
 		->type_name("DIRECTORY");
 	auto rawOption = app.add_option("--raw", rawPaths,
-	                                "Use raw dataset (e.g. rgb/%%04i.ppm depth/%%04i.pgm imu/%%04i.txt)")
+	                                "Use raw dataset (e.g. rgb/%04i.ppm depth/%04i.pgm imu/%04i.txt)")
 		->excludes(deviceOption, tumOption)
 		->type_name("RGB DEPTH [IMU]")
 		->expected(-2);

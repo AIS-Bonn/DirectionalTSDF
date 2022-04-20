@@ -17,12 +17,12 @@ _CPU_AND_GPU_CODE_ inline Vector4f interpolateBilinear(const ORUtils::Vector4<T>
 	const Vector2i p((int) floor(position.x), (int) floor(position.y));
 	const Vector2f delta(position.x - (float) p.x, position.y - (float) p.y);
 
-	ORUtils::Vector4<T> a = source[p.x + p.y * imgSize.x];
+	ORUtils::Vector4<T> a = source[PixelCoordsToIndex(p.x, p.y, imgSize)];
 	ORUtils::Vector4<T> b(T(0)), c(T(0)), d(T(0));
 
-	if (delta.x != 0) b = source[(p.x + 1) + p.y * imgSize.x];
-	if (delta.y != 0) c = source[p.x + (p.y + 1) * imgSize.x];
-	if (delta.x != 0 && delta.y != 0) d = source[(p.x + 1) + (p.y + 1) * imgSize.x];
+	if (delta.x != 0) b = source[PixelCoordsToIndex(p.x + 1, p.y, imgSize)];
+	if (delta.y != 0) c = source[PixelCoordsToIndex(p.x, p.y + 1, imgSize)];
+	if (delta.x != 0 && delta.y != 0) d = source[PixelCoordsToIndex(p.x + 1, p.y + 1, imgSize)];
 
 	Vector4f result;
 	result.x = ((float) a.x * (1.0f - delta.x) * (1.0f - delta.y) + (float) b.x * delta.x * (1.0f - delta.y) +

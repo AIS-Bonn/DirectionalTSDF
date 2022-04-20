@@ -169,15 +169,15 @@ computeUpdatedVoxelColorInfo(TVoxel& voxel, const TSDFDirection direction,
 	float colorWeight_new = 1;
 	Vector3f color_new;
 	Vector2f voxel_image_rgb = project(voxel_rgb.toVector3(), projParams_rgb);
-	if ((voxel_image_rgb.x < 1) || (voxel_image_rgb.x > imgSize_rgb.width - 2) || (voxel_image_rgb.y < 1) ||
-	    (voxel_image_rgb.y > imgSize_rgb.height - 2))
+	if ((voxel_image_rgb.x < 0) || (voxel_image_rgb.x > imgSize_rgb.width - 1) || (voxel_image_rgb.y < 0) ||
+	    (voxel_image_rgb.y > imgSize_rgb.height - 1))
 	{
 		colorWeight_new = 0;
 	} else
 	{
-		color_new = rgb[(int) (voxel_image_rgb.x + 0.5f) +
-		                (int) (voxel_image_rgb.y + 0.5f) * imgSize_rgb.width].toVector3().toFloat() / 255.0f;
-//		color_new = TO_VECTOR3(interpolateBilinear(rgb, voxel_image_rgb, imgSize_rgb)) / 255.0f;
+		color_new = rgb[PixelCoordsToIndex((int) (voxel_image_rgb.x + 0.5f), (int) (voxel_image_rgb.y + 0.5f),
+		                                   imgSize_rgb)].toVector3().toFloat() / 255.0f;
+//		color_new = interpolateBilinear(rgb, voxel_image_rgb, imgSize_rgb).toVector3() / 255.0f;
 	}
 
 	Matrix4f invM_d;
@@ -277,23 +277,25 @@ computeUpdatedVoxelColorInfo(TVoxel& voxel, const TSDFDirection direction,
 	if (depthWeight_new <= 0)
 		return;
 
-	// Compute updated values
+	// update depth
 	float depthWeight_old = ITMVoxel::weightToFloat(voxel.w_depth, sceneParams.maxW);
-	float colorWeight_old = ITMVoxel::weightToFloat(voxel.w_color, sceneParams.maxW);
 	sdf_new = depthWeight_old * sdf_old + depthWeight_new * sdf_new;
 	depthWeight_new = depthWeight_old + depthWeight_new;
 	sdf_new /= depthWeight_new;
 	depthWeight_new = MIN(depthWeight_new, sceneParams.maxW);
+	voxel.sdf = ITMVoxel::floatToValue(sdf_new);
+	voxel.w_depth = ITMVoxel::floatToWeight(depthWeight_new, sceneParams.maxW);
 
+	if (colorWeight_new <= 0)
+	return;
+
+	// update color
 	Vector3f color_old = TO_FLOAT3(voxel.clr) / 255.0f;
+	float colorWeight_old = ITMVoxel::weightToFloat(voxel.w_color, sceneParams.maxW);
 	color_new = color_old * colorWeight_old + color_new * colorWeight_new;
 	colorWeight_new = colorWeight_new + colorWeight_old;
 	color_new /= colorWeight_new;
 	colorWeight_new = MIN(colorWeight_new, sceneParams.maxW);
-
-	// write back
-	voxel.sdf = ITMVoxel::floatToValue(sdf_new);
-	voxel.w_depth = ITMVoxel::floatToWeight(depthWeight_new, sceneParams.maxW);
 	voxel.clr = TO_UCHAR3(color_new * 255.0f);
 	voxel.w_color = ITMVoxel::floatToWeight(colorWeight_new, sceneParams.maxW);
 }
@@ -770,7 +772,7 @@ findAllocationBlocks(Set<TIndex, Args...>& allocationBlocks,
 	float angles[N_DIRECTIONS];
 	ComputeDirectionAngle(normalWorld, angles);
 
-		Vector3s lastBlockIdx(MAX_SHORT, MAX_SHORT, MAX_SHORT);
+	Vector3s lastBlockIdx(MAX_SHORT, MAX_SHORT, MAX_SHORT);
 	while (blockTraversalBefore.HasNextBlock() or blockTraversalBehind.HasNextBlock())
 	{
 		Vector3i voxelPos;
@@ -783,7 +785,7 @@ findAllocationBlocks(Set<TIndex, Args...>& allocationBlocks,
 		if (blockIdx == lastBlockIdx)
 			continue;
 
-			if (fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL)
+		if (fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL)
 		{
 			for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
 			{

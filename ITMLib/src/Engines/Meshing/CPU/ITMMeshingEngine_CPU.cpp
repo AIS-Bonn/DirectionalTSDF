@@ -11,21 +11,6 @@
 
 using namespace ITMLib;
 
-template<typename TIndex>
-struct findAllocatedBlocksFunctor
-{
-	explicit findAllocatedBlocksFunctor(std::unordered_set<ITMIndex>& visibleBlocks)
-		: visibleBlocks(visibleBlocks)
-	{}
-
-	void operator()(thrust::pair<TIndex, ITMVoxel*> block)
-	{
-		visibleBlocks.insert(ITMIndex(block.first.getPosition()));
-	}
-
-	std::unordered_set<ITMIndex>& visibleBlocks;
-};
-
 /**
  * find all allocated blocks (xyz only), dropping direction component
  * @tparam TIndex
@@ -40,9 +25,8 @@ findAllocatedBlocks(const std::unordered_map<TIndex, ITMVoxel*>& tsdf, ITMIndex*
 	std::unordered_set<ITMIndex> allBlocks;
 	allBlocks.reserve(tsdf.size());
 
-	findAllocatedBlocksFunctor<TIndex> functor(allBlocks);
 	thrust::for_each(thrust::host, tsdf.begin(), tsdf.end(),
-	                 findAllocatedBlocksFunctor<TIndex>(allBlocks));
+	                 findAllocatedBlocksFunctor<TIndex, std::unordered_set>(allBlocks));
 
 	*allBlocksList = (ITMIndex*) malloc(allBlocks.size() * sizeof(ITMIndex));
 	thrust::copy(allBlocks.begin(), allBlocks.end(), *allBlocksList);

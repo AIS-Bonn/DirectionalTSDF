@@ -401,4 +401,26 @@ buildVertList(Vector3f* vertList, Vector3i globalPos, Vector3i localPos, const M
 	return cubeIndex;
 }
 
+
+template<typename TIndex, template<typename...> class Set, typename... Args>
+struct findAllocatedBlocksFunctor
+{
+	explicit findAllocatedBlocksFunctor(Set<ITMIndex, Args...>& visibleBlocks)
+		: visibleBlocks(visibleBlocks), visibleBlocks_ref(visibleBlocks)
+	{}
+
+	_CPU_AND_GPU_CODE_
+	void operator()(thrust::pair<TIndex, ITMVoxel*> block)
+	{
+#ifdef __CUDA_ARCH__
+		visibleBlocks.insert(ITMIndex(block.first.getPosition()));
+#else
+		visibleBlocks_ref.insert(ITMIndex(block.first.getPosition()));
+#endif
+	}
+
+	Set<ITMIndex, Args...> visibleBlocks;
+	Set<ITMIndex, Args...>& visibleBlocks_ref; // CPU needs container as reference, CUDA as value
+};
+
 } // namespace ITMLib
