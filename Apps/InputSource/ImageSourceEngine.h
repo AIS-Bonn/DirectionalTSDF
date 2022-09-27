@@ -67,6 +67,11 @@ namespace InputSource {
 		 * \return  true, if the image source engine is able to yield more RGB-D images, or false otherwise.
 		 */
 		virtual bool hasMoreImages(void) const = 0;
+
+		/**
+		 * Reset the image source, so on next query it starts with the first image again (only for file image source)
+		 */
+		virtual void reset() {};
 	};
 
 	class BaseImageSourceEngine : public ImageSourceEngine
@@ -149,6 +154,8 @@ namespace InputSource {
 		void getImages(ITMUChar4Image *rgb, ITMShortImage *rawDepth);
 		Vector2i getDepthImageSize(void) const;
 		Vector2i getRGBImageSize(void) const;
+
+		void reset() override;
 	};
 
 	class CalibSource : public BaseImageSourceEngine

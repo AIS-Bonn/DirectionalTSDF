@@ -144,6 +144,13 @@ void ImageFileReader<PathGenerator>::getImages(ITMUChar4Image *rgb, ITMShortImag
 }
 
 template <typename PathGenerator>
+void ImageFileReader<PathGenerator>::reset()
+{
+	currentFrameNo = 0;
+	cachedFrameNo = -1;
+}
+
+template <typename PathGenerator>
 Vector2i ImageFileReader<PathGenerator>::getDepthImageSize(void) const
 {
 	loadIntoCache();

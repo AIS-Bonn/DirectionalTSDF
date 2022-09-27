@@ -41,99 +41,114 @@ protected:
 	int currentFrameNo;
 
 //	void CollectICPErrorImages();
-	std::vector<std::pair<ITMUChar4Image*, ITMShortImage*>> inputImages;
 	std::vector<ORUtils::SE3Pose> trackingPoses;
 
 	inline void ComputeICPErrors()
 	{
-		if (inputImages.empty())
+		if (trackingPoses.empty())
 			return;
 
 		ITMLib::ITMView* view = nullptr;
 		ITMViewBuilder* viewBuilder = ITMViewBuilderFactory::MakeViewBuilder(appData->imageSource->getCalib(),
+
 		                                                                     appData->internalSettings->deviceType);
 		// needs to be called once with view=nullptr for initialization
-		viewBuilder->UpdateView(&view, inputImages.front().first, inputImages.front().second,
+		viewBuilder->UpdateView(&view, inputRGBImage, inputRawDepthImage,
 		                        appData->internalSettings->useDepthFilter, appData->internalSettings->useBilateralFilter);
 
 		view = mainEngine->GetView();
-
-		ITMUChar4Image* outputImage = new ITMUChar4Image(inputImages.front().first->noDims, true, false);
 
 		char str[250];
 		sprintf(str, "%s/icp_error.txt", outFolder);
 		std::ofstream icp_file(str);
 		icp_file << "# MAE RMSE ICP_MAE ICP_RMSE" << std::endl;
 
+		sprintf(str, "%s/photometric_error.txt", outFolder);
+		std::ofstream photometric_file(str);
+		photometric_file << "# MAE RMSE ICP_MAE ICP_RMSE" << std::endl;
+
 		printf("Compute ICP Error: ");
+		auto* rgbImage = new ITMUChar4Image(true, false);
+		auto* depthImage = new ITMShortImage(true, false);
 		int lastPercentile = -1;
-		for (size_t i = 0; i < inputImages.size(); i++)
+		int count = 0;
+		appData->imageSource->reset(); // reset to first image, re-iterate
+		while (appData->imageSource->hasMoreImages() and count < trackingPoses.size())
 		{
-			int percentile = (i * 10) / inputImages.size();
+
+			int percentile = (count * 10) / trackingPoses.size();
 			if (percentile != lastPercentile)
 			{
 				printf("%i%%\t", percentile * 10);
 				lastPercentile = percentile;
 			}
-			ITMUChar4Image* rgbImage = inputImages.at(i).first;
-			ITMShortImage* depthImage = inputImages.at(i).second;
+			appData->imageSource->getImages(rgbImage, depthImage);
 
 			viewBuilder->UpdateView(&view, rgbImage, depthImage,
 			                        appData->internalSettings->useDepthFilter,
 			                        appData->internalSettings->useBilateralFilter);
 
-			ORUtils::SE3Pose* pose = &trackingPoses.at(i);
+			ORUtils::SE3Pose* pose = &trackingPoses.at(count);
 			mainEngine->GetTrackingState()->pose_d->SetFrom(pose);
 
 			ITMRenderError result = mainEngine->ComputeICPError();
 			icp_file << result.MAE << " " << result.RMSE << " " << result.icpMAE << " " << result.icpRMSE << std::endl;
+
+			ITMRenderError resultPhotometric = mainEngine->ComputePhotometricError();
+			photometric_file << resultPhotometric.MAE << " " << resultPhotometric.RMSE << " " << resultPhotometric.icpMAE
+			                 << " " << resultPhotometric.icpRMSE << std::endl;
+			count += 1;
 		}
 		icp_file.close();
+		photometric_file.close();
 
-		free(outputImage);
+		free(rgbImage);
+		free(depthImage);
 		free(viewBuilder);
 	}
 
 	inline void CollectICPErrorImages()
 	{
-		if (inputImages.empty())
+		if (trackingPoses.empty())
 			return;
 
 		ITMLib::ITMView* view = nullptr;
 		ITMViewBuilder* viewBuilder = ITMViewBuilderFactory::MakeViewBuilder(appData->imageSource->getCalib(),
 		                                                                     appData->internalSettings->deviceType);
 		// needs to be called once with view=nullptr for initialization
-		viewBuilder->UpdateView(&view, inputImages.front().first, inputImages.front().second,
+		viewBuilder->UpdateView(&view, inputRGBImage, inputRawDepthImage,
 		                        appData->internalSettings->useDepthFilter,
 		                        appData->internalSettings->useBilateralFilter);
 		view = mainEngine->GetView();
 
-		ITMUChar4Image* outputImage = new ITMUChar4Image(inputImages.front().first->noDims, true, false);
+		ITMUChar4Image* outputImage = new ITMUChar4Image(inputRGBImage->noDims, true, false);
 		char str[250];
 
+		auto* rgbImage = new ITMUChar4Image(true, false);
+		auto* depthImage = new ITMShortImage(true, false);
 		int lastPercentile = -1;
-		for (size_t i = 0; i < inputImages.size(); i++)
+		int count = 0;
+		appData->imageSource->reset(); // reset to first image, re-iterate
+		while (appData->imageSource->hasMoreImages() and count < trackingPoses.size())
 		{
-			int percentile = (i * 10) / inputImages.size();
+			int percentile = (count * 10) / trackingPoses.size();
 			if (percentile != lastPercentile)
 			{
 				printf("%i%%\t", percentile * 10);
 				lastPercentile = percentile;
 			}
-			ITMUChar4Image* rgbImage = inputImages.at(i).first;
-			ITMShortImage* depthImage = inputImages.at(i).second;
 
 			viewBuilder->UpdateView(&view, rgbImage, depthImage,
 			                        appData->internalSettings->useDepthFilter,
 			                        appData->internalSettings->useBilateralFilter);
 
-			ORUtils::SE3Pose* pose = &trackingPoses.at(i);
+			ORUtils::SE3Pose* pose = &trackingPoses.at(count);
 			mainEngine->GetTrackingState()->pose_d->SetFrom(pose);
 
 			mainEngine->GetImage(outputImage, ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_ICP_ERROR,
 			                     pose, &view->calib.intrinsics_d, appData->internalSettings->useSDFNormals);
 
-			sprintf(str, "%s/recording/error_%04zu.ppm", outFolder, i);
+			sprintf(str, "%s/recording/error_%04zu.ppm", outFolder, count);
 			SaveImageToFile(outputImage, str);
 		}
 
@@ -147,20 +162,20 @@ protected:
 	 */
 	inline void CollectPointClouds(int N = 1)
 	{
-		if (inputImages.empty())
+		if (trackingPoses.empty())
 			return;
 
 		ITMLib::ITMView* view = nullptr;
 		ITMViewBuilder* viewBuilder = ITMViewBuilderFactory::MakeViewBuilder(appData->imageSource->getCalib(),
 		                                                                     appData->internalSettings->deviceType);
 		// needs to be called once with view=nullptr for initialization
-		viewBuilder->UpdateView(&view, inputImages.front().first, inputImages.front().second,
+		viewBuilder->UpdateView(&view, inputRGBImage, inputRawDepthImage,
 		                        appData->internalSettings->useDepthFilter,
 		                        appData->internalSettings->useBilateralFilter);
 		view = mainEngine->GetView();
 
 
-		ITMUChar4Image* outputImage = new ITMUChar4Image(inputImages.front().first->noDims, true, false);
+		ITMUChar4Image* outputImage = new ITMUChar4Image(inputRGBImage->noDims, true, false);
 		char str[250];
 
 		ORUtils::Image<ORUtils::Vector4<float>>* points = new ORUtils::Image<ORUtils::Vector4<float>>(
@@ -168,23 +183,25 @@ protected:
 		ORUtils::Image<ORUtils::Vector4<float>>* normals = new ORUtils::Image<ORUtils::Vector4<float>>(
 			mainEngine->GetView()->calib.intrinsics_d.imgSize, true, true);
 
+		auto* rgbImage = new ITMUChar4Image(true, false);
+		auto* depthImage = new ITMShortImage(true, false);
 		int lastPercentile = -1;
-		for (size_t i = 0; i < inputImages.size(); i += N)
+		int count = 0;
+		appData->imageSource->reset(); // reset to first image, re-iterate
+		while (appData->imageSource->hasMoreImages() and count < trackingPoses.size())
 		{
-			int percentile = (i * 10) / inputImages.size();
+			int percentile = (count * 10) / trackingPoses.size();
 			if (percentile != lastPercentile)
 			{
 				printf("%i%%\t", percentile * 10);
 				lastPercentile = percentile;
 			}
-			ITMUChar4Image* rgbImage = inputImages.at(i).first;
-			ITMShortImage* depthImage = inputImages.at(i).second;
 
 			viewBuilder->UpdateView(&view, rgbImage, depthImage,
 			                        appData->internalSettings->useDepthFilter,
 			                        appData->internalSettings->useBilateralFilter);
 
-			ORUtils::SE3Pose* pose = &trackingPoses.at(i);
+			ORUtils::SE3Pose* pose = &trackingPoses.at(count);
 			mainEngine->GetTrackingState()->pose_d->SetFrom(pose);
 
 			mainEngine->GetImage(outputImage, ITMMainEngine::InfiniTAM_IMAGE_COLOUR_FROM_ICP_ERROR,
@@ -205,10 +222,10 @@ protected:
 				                 ORUtils::CPU_TO_CPU);
 			}
 
-			sprintf(str, "%s/cloud_%04zu.pcd", outFolder, i);
+			sprintf(str, "%s/cloud_%04zu.pcd", outFolder, count);
 			SavePointCloudToPCL(
 				points->GetData(MEMORYDEVICE_CPU), normals->GetData(MEMORYDEVICE_CPU),
-				inputImages.front().second->noDims, *pose, str);
+				inputRawDepthImage->noDims, *pose, str);
 		}
 
 		free(points);
@@ -228,12 +245,6 @@ public:
 	{
 		sdkDeleteTimer(&timer_instant);
 		sdkDeleteTimer(&timer_average);
-
-		for (auto imgs: inputImages)
-		{
-//		delete imgs.first;
-			delete imgs.second;
-		}
 
 		delete inputRGBImage;
 		delete inputRawDepthImage;
@@ -261,15 +272,6 @@ public:
 			inputPose = &appData->initialPose;
 		}
 
-		// Safe input images
-		inputImages.emplace_back();
-//	inputImages.back().first = new ITMUChar4Image(true, false);
-//	inputImages.back().first->SetFrom(inputRGBImage, ORUtils::CPU_TO_CPU);
-		inputImages.back().first = inputRGBImage; // not required for error renderings, so only store reference
-		inputImages.back().second = new ITMShortImage(true, false);
-		inputImages.back().second->SetFrom(inputRawDepthImage, ORUtils::CPU_TO_CPU);
-		trackingPoses.push_back(*mainEngine->GetTrackingState()->pose_d);
-
 		sdkResetTimer(&timer_instant);
 		sdkStartTimer(&timer_instant);
 		sdkStartTimer(&timer_average);
@@ -279,6 +281,7 @@ public:
 		sdkStopTimer(&timer_instant);
 		sdkStopTimer(&timer_average);
 
+		trackingPoses.push_back(*mainEngine->GetTrackingState()->pose_d);
 		statisticsEngine.LogTimeStats(mainEngine->GetTimeStats());
 		statisticsEngine.LogPose(*mainEngine->GetTrackingState());
 		statisticsEngine.LogBlockAllocations(mainEngine->GetAllocationsPerDirection());
