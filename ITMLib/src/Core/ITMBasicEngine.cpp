@@ -17,6 +17,7 @@
 
 #include <ORUtils/NVTimer.h>
 #include <ORUtils/FileUtils.h>
+#include <Engines/Visualisation/Shared/ITMVisualisationEngine_Shared.h>
 
 using namespace ITMLib;
 
@@ -247,7 +248,8 @@ ITMBasicEngine::ProcessFrame(ITMUChar4Image* rgbImage, ITMShortImage* rawDepthIm
 
 		// Rescale input according to computed scale factor
 		if (trackingState->scaleFactor != 0.0f)
-			lowLevelEngine->RescaleDepthImage(view->depth, std::exp(trackingState->scaleFactor - trackingState->scaleFactors[0]));
+			lowLevelEngine->RescaleDepthImage(view->depth,
+			                                  std::exp(trackingState->scaleFactor - trackingState->scaleFactors[0]));
 
 #ifdef SCALE_EXPERIMENT
 		if (this->framesProcessed % SCALE_EXPERIMENT_NUM_SENSORS == 0)
@@ -449,6 +451,92 @@ ITMRenderError ITMBasicEngine::ComputeICPError()
 	                                                    square<float>(),
 	                                                    (float) 0,
 	                                                    thrust::plus<float>()) / icpErrors.size());
+
+	return result;
+}
+
+ITMRenderError ITMBasicEngine::ComputePhotometricError()
+{
+	denseMapper->GetSceneReconstructionEngine()->FindVisibleBlocks(scene, trackingState->pose_d,
+	                                                               &(view->calib.intrinsics_d), renderState_live);
+	visualisationEngine->CreateExpectedDepths(scene, trackingState->pose_d, &(view->calib.intrinsics_d),
+	                                          renderState_live);
+	visualisationEngine->CreateICPMaps(scene, view, trackingState, renderState_live);
+	visualisationEngine->RenderImage(scene, trackingState->pose_d, &(view->calib.intrinsics_d),
+	                                 renderState_live, renderState_live->renderedImage,
+	                                 IITMVisualisationEngine::RENDER_COLOUR);
+
+	view->rgb->UpdateHostFromDevice();
+
+	ORUtils::Image<ORUtils::Vector4<float>> locations(trackingState->pointCloud->locations->noDims, true, false);
+	ORcudaSafeCall(
+		cudaMemcpy(locations.GetData(MEMORYDEVICE_CPU), trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CUDA),
+		           locations.dataSize * sizeof(Vector4f), cudaMemcpyDeviceToHost));
+	trackingState->pointCloud->normals->UpdateHostFromDevice();
+	const Vector4f* pointsRay = locations.GetData(MEMORYDEVICE_CPU);
+
+	ORUtils::Image<Vector4u> colors(view->rgb->noDims, true, false);
+
+	ORcudaSafeCall(
+		cudaMemcpy(colors.GetData(MEMORYDEVICE_CPU), renderState_live->renderedImage->GetData(MEMORYDEVICE_CUDA),
+		           colors.dataSize * sizeof(Vector4u), cudaMemcpyDeviceToHost));
+
+
+	const Vector4u* colorsImage = view->rgb->GetData(MEMORYDEVICE_CPU);
+
+	const Vector4u* colorsRender = colors.GetData(MEMORYDEVICE_CPU);
+	const Matrix4f& depthImageInvPose = trackingState->pose_d->GetInvM();
+	const Matrix4f& sceneRenderingPose = trackingState->pose_pointCloud->GetM();
+	Vector2i imgSize = view->calib.intrinsics_d.imgSize;
+
+	static int count = 0;
+
+//	ITMUChar4Image debugImg(view->rgb->noDims, true, false);
+	std::vector<float> errors, icpErrors;
+	for (int x = 0; x < imgSize.width; x++)
+		for (int y = 0; y < imgSize.height; y++)
+		{
+			float error;
+
+			int idx = PixelCoordsToIndex(x, y, view->calib.intrinsics_rgb.imgSize);
+
+			float intensityImage =
+				(0.299f * colorsImage[idx].x + 0.587f * colorsImage[idx].y + 0.114f * colorsImage[idx].z) / 255.f;
+			float intensityRender =
+				(0.299f * colorsRender[idx].x + 0.587f * colorsRender[idx].y + 0.114f * colorsRender[idx].z) / 255.f;
+
+			error = std::fabs(intensityImage - intensityRender);
+
+//			float b = MIN(fabs(error / 0.5), 1); // normalize
+//			debugImg.GetData(MEMORYDEVICE_CPU)[idx] = Vector4f(HSVtoRGB((1 - b) * 240, 1, 1) * 255, 255).toUChar();
+
+			bool isValidPoint = intensityRender > 0 and pointsRay[idx].w >= 0;
+			if (!isValidPoint)
+			{
+//				debugImg.GetData(MEMORYDEVICE_CPU)[idx] = Vector4u(0, 0, 0, 0);
+				continue;
+			}
+
+			errors.push_back(std::fabs(error));
+		}
+
+	char buf[256];
+//	sprintf(buf, "/tmp/error%04i.png", count);
+//	SaveImageToFile(&debugImg, buf);
+//	sprintf(buf, "/tmp/color%04i.png", count);
+//	SaveImageToFile(view->rgb, buf);
+//	sprintf(buf, "/tmp/color%04i_def.png", count);
+//	SaveImageToFile(&colors, buf);
+	count += 1;
+
+	ITMRenderError result;
+	result.MAE = thrust::reduce(errors.begin(), errors.end(), (float) 0, thrust::plus<float>()) / errors.size();
+	result.RMSE = std::sqrt(thrust::transform_reduce(errors.begin(), errors.end(),
+	                                                 square<float>(),
+	                                                 (float) 0,
+	                                                 thrust::plus<float>()) / errors.size());
+	result.icpMAE = 0;
+	result.icpRMSE = 0;
 
 	return result;
 }

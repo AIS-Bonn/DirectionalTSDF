@@ -65,6 +65,8 @@ public:
 
 	ITMRenderError ComputeICPError() override;
 
+	ITMRenderError ComputePhotometricError() override;
+
 	ITMTrackingState::TrackingResult
 	ProcessFrame(ITMUChar4Image* rgbImage, ITMShortImage* rawDepthImage, ITMIMUMeasurement* imuMeasurement,
 	             const ORUtils::SE3Pose* pose) override;

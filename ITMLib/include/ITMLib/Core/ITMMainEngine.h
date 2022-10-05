@@ -81,6 +81,9 @@ public:
 	virtual ITMRenderError ComputeICPError()
 	{ return ITMRenderError(); };
 
+	virtual ITMRenderError ComputePhotometricError()
+	{ return ITMRenderError(); };
+
 	/// Process a frame with rgb and depth images and optionally a corresponding imu measurement
 	virtual ITMTrackingState::TrackingResult
 	ProcessFrame(ITMUChar4Image* rgbImage, ITMShortImage* rawDepthImage, ITMIMUMeasurement* imuMeasurement,
