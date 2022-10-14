@@ -322,7 +322,7 @@ ITMICPTracker::ApplyDelta(const Eigen::Matrix<EigenT, 6, 1>& deltaSE3, Sophus::S
 			deltaSE3_ = deltaSE3;
 			break;
 	}
-	deltaT = Sophus::SE3<EigenT>::exp(deltaSE3) * deltaT;
+	deltaT = Sophus::SE3<EigenT>::exp(deltaSE3_) * deltaT;
 }
 
 void
@@ -375,20 +375,6 @@ ITMICPTracker::UpdatePoseQuality(int noValidPoints_old, const Eigen::Matrix<Eige
 
 void ITMICPTracker::TrackCameraSE3(ITMTrackingState* trackingState, const ITMView* view)
 {
-
-//	{
-//		// Store RGB error image
-//		this->SetEvaluationParams(0);
-//		Matrix4f deltaTMat = renderedScenePose * trackingState->pose_d->GetInvM();
-//		ITMUChar4Image image(view->depth->noDims, true, true);
-//		RenderRGBError(&image, deltaTMat);
-//		image.UpdateHostFromDevice();
-//		char str[256];
-//		sprintf(str, "Output/error/rgb_%04zu.png", trackingState->framesProcessed);
-//		SaveImageToFile(&image, str);
-//
-//		return;
-//	}
 
 	float f_old = 1e10;
 	float f_depth = 0, f_rgb = 0;

@@ -312,8 +312,7 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_Depth_Ab(float* A, float& b, fl
 
 	weight = 1;
 #ifdef USE_DEPTH_WEIGHT
-	weight *= (1.0 / pow(depthPoint_scene.z, 2) - 1.0 / (6*6)) / (1.0 / (0.1 * 0.1) - 1.0 / (6 * 6));
-//	weight *= CLAMP(1.0f / pow(depthPoint_scene.z + (1 - 0.1), 2), 0, 1);
+	weight *= CLAMP(1.0f / pow(depthPoint_scene.z + (1 - 0.1), 2), 0, 1);
 //	weight *= 1.0f / pow(depthPoint_scene.z, 2);
 //	weight *= CLAMP(1.0f / depthPoint_scene.z, 0, 1);
 #endif
