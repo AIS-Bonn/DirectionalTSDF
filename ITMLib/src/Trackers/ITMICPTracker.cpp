@@ -415,7 +415,7 @@ void ITMICPTracker::TrackCameraSE3(ITMTrackingState* trackingState, const ITMVie
 		noValidPoints_old = 0;
 
 		/// Levenber-Marquardt (Fletcher) damping alpha
-		float lambda = 1.0;
+		float lambda = -1.0;
 		float lambdaUp = 2.0;
 
 		for (int iterNo = 0; iterNo < noIterationsPerLevel[levelId]; iterNo++)
@@ -433,8 +433,6 @@ void ITMICPTracker::TrackCameraSE3(ITMTrackingState* trackingState, const ITMVie
 			if (parameters.useDepth or trackingState->framesProcessed <= 1)
 			{
 				noValidPoints = this->ComputeGandH_Depth(f_depth, nabla_depth.data(), hessian_depth.data(), deltaTMat);
-				if (noValidPoints < minNoPoints)
-					continue;
 				f_new = f_depth;
 				hessian_new = hessian_depth;
 				nabla_new = nabla_depth;
@@ -443,8 +441,6 @@ void ITMICPTracker::TrackCameraSE3(ITMTrackingState* trackingState, const ITMVie
 			if (parameters.useColour)
 			{
 				noValidPoints_rgb = this->ComputeGandH_RGB(f_rgb, nabla_rgb.data(), hessian_rgb.data(), deltaTMat);
-				if (noValidPoints_rgb < minNoPoints)
-					continue;
 				if (noValidPoints_rgb > 0)
 				{
 					float normalizationFactor = hessian_new.norm() / hessian_rgb.norm();
@@ -476,6 +472,8 @@ void ITMICPTracker::TrackCameraSE3(ITMTrackingState* trackingState, const ITMVie
 				nabla_good = nabla_new.cast<EigenT>();
 			}
 			Eigen::Matrix<EigenT, 6, 6> A = hessian_good;
+			if (lambda < 0) // initialize lambda (2004, Madsen, Methods For Non-Linear Least Squares Problems)
+				lambda = A.maxCoeff() * 1e-3;
 			A.diagonal() *= (1 + lambda);
 
 			// compute a update step and apply
@@ -521,13 +519,6 @@ void ITMICPTracker::TrackCameraSE3(ITMTrackingState* trackingState, const ITMVie
 
 		averageNegativeEntropyCounter++;
 		averageNegativeEntropy2 += (negativeEntropy - averageNegativeEntropy2) / averageNegativeEntropyCounter;
-
-//		std::cout << noValidPoints_rgb << std::endl;
-//		std::cout << negativeEntropy << std::endl;
-//		std::cout << noValidPoints_rgb << ", " << negativeEntropy << "\tratio: " << negativeEntropy / maxNegativeEntropy
-//		          << "  |  " << averageNegativeEntropy / maxNegativeEntropy
-//		          << "  |  " << negativeEntropy / averageNegativeEntropy2
-//		          << std::endl;
 	} else
 	{ // RGB tracking failed -> force new keyframe
 		lastNegativeEntropy = 0;
@@ -578,7 +569,7 @@ void ITMICPTracker::TrackCameraSim3(ITMTrackingState* trackingState, const ITMVi
 		noValidPoints_old = 0;
 
 		/// Levenber-Marquardt (Fletcher) damping factor
-		float lambda = 1.0;
+		float lambda = -1.0;
 		float lambdaUp = 2.0;
 
 		for (int iterNo = 0; iterNo < noIterationsPerLevel[levelId]; iterNo++)
@@ -637,6 +628,8 @@ void ITMICPTracker::TrackCameraSim3(ITMTrackingState* trackingState, const ITMVi
 
 			// compute a new step
 			Eigen::Matrix<EigenT, 7, 7> A = hessian_good;
+			if (lambda < 0) // initialize lambda (2004, Madsen, Methods For Non-Linear Least Squares Problems)
+				lambda = A.maxCoeff() * 1e-3;
 			A.diagonal() *= (1 + lambda);
 			Eigen::Matrix<EigenT, 7, 1> delta = A.llt().solve(-nabla_good);
 
