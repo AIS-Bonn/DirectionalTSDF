@@ -744,26 +744,31 @@ RGBTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu,
 	{
 		for (int i = 0; i < noPara; i++) A[i] = 0.0f;
 		b = 0.0f;
-		weight = 1.0f;
+		weight = 0.0f;
 	}
 
 	__syncthreads();
 
 	if (!blockHasValidPoint) return;
 
+	L2Loss loss;
+//	HuberLoss loss(0.001);
+//	TukeyLoss loss(0.001);
+//	CauchyLoss loss(0.001);
+
+	float lossWeight = loss.Weight(b);
+
 	// reduction for valid number of points
 	parallelReduce<256>(accu[blockId].numPoints, (int) isValidPoint, threadId);
 
-//#define USE_COLOR_HUBER
-#ifndef USE_COLOR_HUBER
 	// reduction for error
-	parallelReduce<256>(accu[blockId].f, weight * b * b, threadId);
+	parallelReduce<256>(accu[blockId].f, weight * loss.Loss(b), threadId);
 
 	// reduction for nabla (b * A)
 	for (unsigned char paraId = 0; paraId < noPara; paraId += 3)
 	{
 		parallelReduceArray3<256>(accu[blockId].g + paraId,
-		                          (weight * b * Vector3f(A[paraId + 0], A[paraId + 1], A[paraId + 2])).v,
+		                          (lossWeight * weight * b * Vector3f(A[paraId + 0], A[paraId + 1], A[paraId + 2])).v,
 		                          threadId);
 	}
 
@@ -776,7 +781,7 @@ RGBTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu,
 #if (defined(__CUDACC__) && defined(__CUDA_ARCH__))
 #pragma unroll
 #endif
-		for (int c = 0; c <= r; c++, counter++) localHessian[counter] = weight * A[r] * A[c];
+		for (int c = 0; c <= r; c++, counter++) localHessian[counter] = lossWeight * A[r] * A[c];
 	}
 
 	//reduction for hessian
@@ -786,45 +791,6 @@ RGBTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu,
 		                          localHessian + paraId,
 		                          threadId);
 	}
-
-#else
-
-	// reduction for valid number of points
-	parallelReduce<256>(accu[blockId].numPoints, (int) isValidPoint, threadId);
-
-	const float delta = 0.1;
-
-	// reduction for error
-	parallelReduce<256>(accu[blockId].f, weight * huber(b, delta), threadId);
-
-	// reduction for nabla (b * A)
-	for (unsigned char paraId = 0; paraId < noPara; paraId += 3)
-	{
-		parallelReduceArray3<256>(accu[blockId].g + paraId,
-		                          (weight * huber_deriv(b, delta) * Vector3f(A[paraId + 0], A[paraId + 1], A[paraId + 2])).v,
-		                          threadId);
-	}
-
-	float localHessian[noParaSQ];
-#if (defined(__CUDACC__) && defined(__CUDA_ARCH__))
-#pragma unroll
-#endif
-	for (unsigned char r = 0, counter = 0; r < noPara; r++)
-	{
-#if (defined(__CUDACC__) && defined(__CUDA_ARCH__))
-#pragma unroll
-#endif
-		for (int c = 0; c <= r; c++, counter++) localHessian[counter] = weight * huber_deriv2(b, delta) * A[r] * A[c];
-	}
-
-	//reduction for hessian
-	for (unsigned char paraId = 0; paraId < noParaSQ; paraId += 3)
-	{
-		parallelReduceArray3<256>(accu[blockId].h + paraId,
-		                          localHessian + paraId,
-		                          threadId);
-	}
-#endif
 }
 
 template<bool shortIteration, bool rotationOnly>
@@ -871,22 +837,27 @@ depthTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu,
 	{
 		for (int i = 0; i < noPara; i++) A[i] = 0.0f;
 		b = 0.0f;
-		weight = 1.0f;
+		weight = 0.0f;
 	}
 
-//#define USE_DEPTH_HUBER
-#ifndef USE_DEPTH_HUBER
+	L2Loss loss;
+//	HuberLoss loss(0.001);
+//	TukeyLoss loss(0.001);
+//	CauchyLoss loss(0.001);
+
+	float lossWeight = loss.Weight(b);
+
 	// reduction for valid number of points
 	parallelReduce<256>(accu[blockId].numPoints, (int) isValidPoint, threadId);
 
 	// reduction for error
-	parallelReduce<256>(accu[blockId].f, weight * b * b, threadId);
+	parallelReduce<256>(accu[blockId].f, weight * loss.Loss(b), threadId);
 
 	// reduction for nabla (b * A)
 	for (unsigned char paraId = 0; paraId < noPara; paraId += 3)
 	{
 		parallelReduceArray3<256>(accu[blockId].g + paraId,
-		                          (weight * b * Vector3f(A[paraId + 0], A[paraId + 1], A[paraId + 2])).v,
+		                          (lossWeight * weight * b * Vector3f(A[paraId + 0], A[paraId + 1], A[paraId + 2])).v,
 		                          threadId);
 	}
 
@@ -899,7 +870,7 @@ depthTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu,
 #if (defined(__CUDACC__) && defined(__CUDA_ARCH__))
 #pragma unroll
 #endif
-		for (int c = 0; c <= r; c++, counter++) localHessian[counter] = weight * A[r] * A[c];
+		for (int c = 0; c <= r; c++, counter++) localHessian[counter] = lossWeight * weight * A[r] * A[c];
 	}
 
 	//reduction for hessian
@@ -909,46 +880,6 @@ depthTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu,
 		                          localHessian + paraId,
 		                          threadId);
 	}
-
-#else
-
-	const float delta = distThresh;
-
-	// reduction for valid number of points
-	parallelReduce<256>(accu[blockId].numPoints, (int) isValidPoint, threadId);
-
-	// reduction for error
-	parallelReduce<256>(accu[blockId].f, weight * huber(b, delta), threadId);
-
-	// reduction for nabla (b * A)
-	for (unsigned char paraId = 0; paraId < noPara; paraId += 3)
-	{
-		parallelReduceArray3<256>(accu[blockId].g + paraId,
-		                          (huber_deriv(b, delta) * weight *
-		                           Vector3f(A[paraId + 0], A[paraId + 1], A[paraId + 2])).v,
-		                          threadId);
-	}
-
-	float localHessian[noParaSQ];
-#if (defined(__CUDACC__) && defined(__CUDA_ARCH__))
-#pragma unroll
-#endif
-	for (unsigned char r = 0, counter = 0; r < noPara; r++)
-	{
-#if (defined(__CUDACC__) && defined(__CUDA_ARCH__))
-#pragma unroll
-#endif
-		for (int c = 0; c <= r; c++, counter++) localHessian[counter] = huber_deriv2(b, delta) * weight * A[r] * A[c];
-	}
-
-	//reduction for hessian
-	for (unsigned char paraId = 0; paraId < noParaSQ; paraId += 3)
-	{
-		parallelReduceArray3<256>(accu[blockId].h + paraId,
-		                          localHessian + paraId,
-		                          threadId);
-	}
-#endif
 }
 
 __global__ void

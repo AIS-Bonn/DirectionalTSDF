@@ -1,6 +1,9 @@
 //
 // Created by Malte Splietker on 02.06.21.
 //
+// Loss functions and weights to use with normal least squares solver. From
+// Babin 2019, Analysis of Robust Functions for Registration Algorithms
+//
 
 #pragma once
 
@@ -71,6 +74,7 @@ _CPU_AND_GPU_CODE_ inline void computeDepthPointAndColour(
 
 /**
  * Huber-like? loss
+ * Used by ExtendedTracker
  */
 _CPU_AND_GPU_CODE_ inline float rho(float r, float huber_b)
 {
@@ -81,6 +85,7 @@ _CPU_AND_GPU_CODE_ inline float rho(float r, float huber_b)
 
 /**
  * First derivative of Huber loss
+ * Used by ExtendedTracker
  */
 _CPU_AND_GPU_CODE_ inline float rho_deriv(float r, float huber_b)
 {
@@ -89,37 +94,104 @@ _CPU_AND_GPU_CODE_ inline float rho_deriv(float r, float huber_b)
 
 /**
  * Second derivative of Huber loss
+ * Used by ExtendedTracker
  */
 _CPU_AND_GPU_CODE_ inline float rho_deriv2(float r, float huber_b)
 {
 	return fabs(r) < huber_b ? 2.0f : 0.0f;
 }
 
-/**
- * Huber loss
- */
-_CPU_AND_GPU_CODE_ inline float huber(float r, float delta)
+class LossFunction
 {
-	float r_abs = fabs(r);
-	if (r_abs < delta)
-		return 0.5 * r * r;
-	return delta * r_abs - 0.5 * delta * delta;
-}
+public:
+	_CPU_AND_GPU_CODE_ virtual float Loss(float e) = 0;
 
-/**
- * Huber loss
- */
-_CPU_AND_GPU_CODE_ inline float huber_deriv(float r, float delta)
-{
-	return CLAMP(r, -delta, delta);
-}
+	_CPU_AND_GPU_CODE_ virtual float Weight(float e) = 0;
+};
 
-/**
- * Huber loss
- */
-_CPU_AND_GPU_CODE_ inline float huber_deriv2(float r, float delta)
+
+class L2Loss : public LossFunction
 {
-	return fabs(r) < delta ? 1.0f : 0.0f;
-}
+public:
+	_CPU_AND_GPU_CODE_ inline float Loss(float e) override
+	{
+		return e * e * 0.5;
+	}
+
+	_CPU_AND_GPU_CODE_ inline float Weight(float e) override
+	{
+		return 1;
+	}
+};
+
+class HuberLoss : public LossFunction
+{
+public:
+	float k = 0;
+
+	_CPU_AND_GPU_CODE_ explicit HuberLoss(float k) : k(k)
+	{}
+
+	_CPU_AND_GPU_CODE_ inline float Loss(float e) override
+	{
+		float r_abs = fabs(e);
+		if (r_abs < k)
+			return 0.5f * e * e;
+		return k * (r_abs - 0.5f * k);
+	}
+
+	_CPU_AND_GPU_CODE_ inline float Weight(float e) override
+	{
+		float r_abs = fabs(e);
+		if (r_abs < k)
+			return 1;
+		return k / r_abs;
+	}
+};
+
+class TukeyLoss : public LossFunction
+{
+public:
+	float k = 0;
+
+	_CPU_AND_GPU_CODE_ explicit TukeyLoss(float k) : k(k)
+	{}
+
+	_CPU_AND_GPU_CODE_ inline float Loss(float e) override
+	{
+		if (fabs(e) < k)
+			return k * k * (1 - pow(1 - (e / k) * (e / k), 3)) / 2;
+		return k * k / 2;
+	}
+
+	_CPU_AND_GPU_CODE_ inline float Weight(float e) override
+	{
+		if (fabs(e) < k)
+		{
+			float a = (1 - (e / k) * (e / k));
+			return a * a;
+		}
+		return 0;
+	}
+};
+
+class CauchyLoss : public LossFunction
+{
+public:
+	float k = 0;
+
+	_CPU_AND_GPU_CODE_ explicit CauchyLoss(float k) : k(k)
+	{}
+
+	_CPU_AND_GPU_CODE_ inline float Loss(float e) override
+	{
+		return 0.5f * k * k * logf(1 + (e / k) * (e / k));
+	}
+
+	_CPU_AND_GPU_CODE_ inline float Weight(float e) override
+	{
+		return 1 / (1 + (e / k) * (e / k));
+	}
+};
 
 } // ITMLib
