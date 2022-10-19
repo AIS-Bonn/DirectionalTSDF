@@ -432,15 +432,15 @@ template<typename T>
 inline void memsetKernel(T* devPtr, const T val, size_t nwords)
 {
 	dim3 blockSize(256);
-	dim3 gridSize((int) ceil((float) nwords / (float) blockSize.x));
+	dim3 gridSize((int) std::ceil((float) nwords / (float) blockSize.x));
 	if (gridSize.x <= 65535)
 	{
 		memsetKernel_device<T> <<<gridSize, blockSize>>>(devPtr, val, nwords);
 		ORcudaKernelCheck;
 	} else
 	{
-		gridSize.x = (int) ceil(sqrt((float) gridSize.x));
-		gridSize.y = (int) ceil((float) nwords / (float) (blockSize.x * gridSize.x));
+		gridSize.x = (int) std::ceil(std::sqrt((float) gridSize.x));
+		gridSize.y = (int) std::ceil((float) nwords / (float) (blockSize.x * gridSize.x));
 		memsetKernelLarge_device<T> <<<gridSize, blockSize>>>(devPtr, val, nwords);
 		ORcudaKernelCheck;
 	}

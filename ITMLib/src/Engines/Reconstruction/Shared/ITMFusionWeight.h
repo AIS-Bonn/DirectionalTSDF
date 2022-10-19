@@ -13,8 +13,8 @@ namespace ITMLib
 _CPU_AND_GPU_CODE_
 inline float depthNoiseSigma(float z, float theta)
 {
-	return 0.0012 + 0.019 * (z - 0.4) * (z - 0.4) +
-	       0.0001 / sqrt(z) * theta * theta / ((0.5 * M_PI - theta) * (0.5 * M_PI - theta));
+	return 0.0012f + 0.019f * (z - 0.4f) * (z - 0.4f) +
+	       0.0001f / std::sqrt(z) * theta * theta / ((0.5f * float(M_PI) - theta) * (0.5f * float(M_PI) - theta));
 }
 
 _CPU_AND_GPU_CODE_
@@ -56,7 +56,7 @@ inline float weightVisibility(float distance, const ITMSceneParams& sceneParams)
 	// CM3D CopyMe3D: Scanning and Printing Persons in 3D
 	if (distance > 0)
 		return 1;
-	return MAX(0.1, exp(-(distance * distance) / (sceneParams.mu * sceneParams.mu)));
+	return MAX(0.1f, std::exp(-(distance * distance) / (sceneParams.mu * sceneParams.mu)));
 }
 
 _CPU_AND_GPU_CODE_

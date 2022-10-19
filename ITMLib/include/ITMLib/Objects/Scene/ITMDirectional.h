@@ -102,7 +102,7 @@ inline float DirectionAngle(const Vector3f& normal, TSDFDirection direction)
 {
 	float angleCos = dot(normal, TSDFDirectionVector[static_cast<TSDFDirection_type>(direction)]);
 	angleCos = MAX(MIN(angleCos, 1), -1);
-	return acos(angleCos);
+	return std::acos(angleCos);
 }
 
 /**

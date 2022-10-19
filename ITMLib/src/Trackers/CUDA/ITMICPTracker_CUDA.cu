@@ -121,8 +121,8 @@ ITMICPTracker_CUDA::ITMICPTracker_CUDA(Vector2i imgSize_d, Vector2i imgSize_rgb,
                                        const ITMLowLevelEngine* lowLevelEngine)
 	: ITMICPTracker(imgSize_d, imgSize_rgb, parameters, lowLevelEngine, MEMORYDEVICE_CUDA)
 {
-	dim3 gridSize((int) ceil(imgSize_d.x / 16.0f),
-	              (int) ceil(imgSize_d.y / 16.0f));
+	dim3 gridSize((int) std::ceil(imgSize_d.x / 16.0f),
+	              (int) std::ceil(imgSize_d.y / 16.0f));
 	size_t numBlocks = gridSize.x * gridSize.y;
 	ORcudaSafeCall(cudaMalloc(&accumulator_device, numBlocks * sizeof(AccuCell)));
 }
@@ -175,8 +175,8 @@ ITMICPTracker_CUDA::ComputeGandHSim3_Depth(float& f, Eigen::Matrix<EigenT, 7, 7>
 	Vector2i viewImageSize = viewHierarchy_depth->GetLevel(levelId)->data->noDims;
 
 	dim3 blockSize(16, 16);
-	dim3 gridSize((int) ceil((float) viewImageSize.x / (float) blockSize.x),
-	              (int) ceil((float) viewImageSize.y / (float) blockSize.y));
+	dim3 gridSize((int) std::ceil((float) viewImageSize.x / (float) blockSize.x),
+	              (int) std::ceil((float) viewImageSize.y / (float) blockSize.y));
 
 	size_t numBlocks = gridSize.x * gridSize.y;
 
@@ -221,8 +221,8 @@ ITMICPTracker_CUDA::ComputeGandHSim3_RGB(float& f, Eigen::Matrix<EigenT, 7, 7>& 
 	Vector2i viewImageSize = viewHierarchy_depth->GetLevel(levelId)->data->noDims;
 
 	dim3 blockSize(16, 16);
-	dim3 gridSize((int) ceil((float) viewImageSize.x / (float) blockSize.x),
-	              (int) ceil((float) viewImageSize.y / (float) blockSize.y));
+	dim3 gridSize((int) std::ceil((float) viewImageSize.x / (float) blockSize.x),
+	              (int) std::ceil((float) viewImageSize.y / (float) blockSize.y));
 
 	size_t numBlocks = gridSize.x * gridSize.y;
 
@@ -327,8 +327,8 @@ int ITMICPTracker_CUDA::ComputeGandH_Depth(float& f, float* nabla, float* hessia
 	int noPara = shortIteration ? 3 : 6;
 
 	dim3 blockSize(16, 16);
-	dim3 gridSize((int) ceil((float) viewImageSize.x / (float) blockSize.x),
-	              (int) ceil((float) viewImageSize.y / (float) blockSize.y));
+	dim3 gridSize((int) std::ceil((float) viewImageSize.x / (float) blockSize.x),
+	              (int) std::ceil((float) viewImageSize.y / (float) blockSize.y));
 
 	size_t numBlocks = gridSize.x * gridSize.y;
 	ORcudaSafeCall(cudaMemset(accumulator_device, 0, numBlocks * sizeof(AccuCell)));
@@ -408,8 +408,8 @@ int ITMICPTracker_CUDA::ComputeGandH_RGB(float& f, float* nabla, float* hessian,
 	int noPara = shortIteration ? 3 : 6;
 
 	dim3 blockSize(16, 16);
-	dim3 gridSize((int) ceil((float) imageSize_depth.x / (float) blockSize.x),
-	              (int) ceil((float) imageSize_depth.y / (float) blockSize.y));
+	dim3 gridSize((int) std::ceil((float) imageSize_depth.x / (float) blockSize.x),
+	              (int) std::ceil((float) imageSize_depth.y / (float) blockSize.y));
 	size_t numBlocks = gridSize.x * gridSize.y;
 
 	ORcudaSafeCall(cudaMemset(accumulator_device, 0, numBlocks * sizeof(AccuCell)));
@@ -489,8 +489,8 @@ void ITMICPTracker_CUDA::RenderRGBError(ITMUChar4Image* image_out, const Matrix4
 	int noPara = shortIteration ? 3 : 6;
 
 	dim3 blockSize(16, 16);
-	dim3 gridSize((int) ceil((float) imageSize_depth.x / (float) blockSize.x),
-	              (int) ceil((float) imageSize_depth.y / (float) blockSize.y));
+	dim3 gridSize((int) std::ceil((float) imageSize_depth.x / (float) blockSize.x),
+	              (int) std::ceil((float) imageSize_depth.y / (float) blockSize.y));
 	size_t numBlocks = gridSize.x * gridSize.y;
 
 	ORcudaSafeCall(cudaMemset(accumulator_device, 0, numBlocks * sizeof(AccuCell)));
@@ -548,8 +548,8 @@ void ITMLib::ITMICPTracker_CUDA::ComputeDepthPointAndIntensity(ITMFloat4Image* p
 	float* intensityOut = intensity_out->GetData(MEMORYDEVICE_CUDA);
 
 	dim3 blockSize(16, 16);
-	dim3 gridSize((int) ceil((float) imageSize_depth.x / (float) blockSize.x),
-	              (int) ceil((float) imageSize_depth.y / (float) blockSize.y));
+	dim3 gridSize((int) std::ceil((float) imageSize_depth.x / (float) blockSize.x),
+	              (int) std::ceil((float) imageSize_depth.y / (float) blockSize.y));
 
 	computeDepthPointAndColour_device<<<gridSize, blockSize>>>(pointsOut, intensityOut, intensityIn, depths,
 	                                                           imageSize_rgb, imageSize_depth, intrinsics_rgb,

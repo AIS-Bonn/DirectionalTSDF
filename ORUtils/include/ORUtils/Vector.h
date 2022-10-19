@@ -254,7 +254,7 @@ namespace ORUtils {
 		}
 
 		_CPU_AND_GPU_CODE_ inline Vector3<float> normalised() const {
-			float norm = 1.0f / sqrt((float)(this->x * this->x + this->y * this->y + this->z * this->z));
+			float norm = 1.0f / std::sqrt((float)(this->x * this->x + this->y * this->y + this->z * this->z));
 			return Vector3<float>((float)this->x * norm, (float)this->y * norm, (float)this->z * norm);
 		}
 
@@ -829,7 +829,7 @@ namespace ORUtils {
 
 	// return the length of the provided vector
 	template< class T> _CPU_AND_GPU_CODE_ inline typename T::value_type length(const T &vec) {
-		return sqrt(dot(vec, vec));
+		return std::sqrt(dot(vec, vec));
 	}
 
 	// return the normalized version of the vector

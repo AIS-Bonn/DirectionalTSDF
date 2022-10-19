@@ -133,7 +133,7 @@ public:
 			cudaMemcpy(allocationStats_device, &this->allocationStats, sizeof(AllocationStats), cudaMemcpyHostToDevice));
 
 		dim3 blockSize(256, 1);
-		dim3 gridSize((int) ceil((float) N / (float) (blockSize.x * 256)), 256);
+		dim3 gridSize((int) std::ceil((float) N / (float) (blockSize.x * 256)), 256);
 		allocateBlocks_device<<<gridSize, blockSize>>>(this->getMap(), allocationStats_device, this->voxels, blocks, N,
 		                                               this->allocatedBlocksMax);
 		ORcudaKernelCheck;

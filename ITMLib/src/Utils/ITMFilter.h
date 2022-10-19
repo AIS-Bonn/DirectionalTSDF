@@ -14,7 +14,7 @@ namespace ITMLib
 _CPU_AND_GPU_CODE_
 inline float gaussD(float factor, int x, int y)
 {
-	return exp(-((x * x + y * y) * factor));
+	return std::exp(-(float(x * x + y * y) * factor));
 }
 
 /**
@@ -24,7 +24,7 @@ inline float gaussD(float factor, int x, int y)
 _CPU_AND_GPU_CODE_
 inline float gaussR(float factor, float dist)
 {
-	return exp(-(dist * dist) * factor);
+	return std::exp(-(dist * dist) * factor);
 }
 
 /** Performs bilateral filtering for a single normal pixel
@@ -126,7 +126,7 @@ computeDepthBilateralFiltered(const float* depth, const float sigma_d, const flo
 			if (value < 0)
 				continue;
 
-			const float weight = gaussD(sigma_d_factor, i - x, j - y) * gaussR(sigma_r_factor, fabs(value - center));
+			const float weight = gaussD(sigma_d_factor, i - x, j - y) * gaussR(sigma_r_factor, std::abs(value - center));
 
 			sum += weight * value;
 			sum_weight += weight;

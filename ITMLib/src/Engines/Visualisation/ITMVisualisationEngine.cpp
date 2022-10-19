@@ -115,7 +115,7 @@ void ITMVisualisationEngine::ComputeRenderingTSDF(const Scene* scene, const ORUt
 	{
 		Vector3f v1 = pose->GetR() * Vector3f(1, 0, 0);
 		Vector3f v2 = lastTSDFCombinePose.GetR() * Vector3f(1, 0, 0);
-		float relativePoseAngle = acos(MAX(MIN(dot(v1, v2), 1), -1));
+		float relativePoseAngle = std::acos(MAX(MIN(dot(v1, v2), 1), -1));
 		if (frameCounter < 5 // initialization phase, many changes in TSDFBase
 		    or frameCounter - lastTSDFCombineFrameCounter > 50 // update sometimes, even if camera static
 		    or ORUtils::length(lastTSDFCombinePose.GetT() - pose->GetT()) > 0.05 // update, if camera translates

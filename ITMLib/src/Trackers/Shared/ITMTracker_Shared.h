@@ -78,7 +78,7 @@ _CPU_AND_GPU_CODE_ inline void computeDepthPointAndColour(
  */
 _CPU_AND_GPU_CODE_ inline float rho(float r, float huber_b)
 {
-	float tmp = fabs(r) - huber_b;
+	float tmp = std::abs(r) - huber_b;
 	tmp = MAX(tmp, 0.0f);
 	return r * r - tmp * tmp;
 }
@@ -98,7 +98,7 @@ _CPU_AND_GPU_CODE_ inline float rho_deriv(float r, float huber_b)
  */
 _CPU_AND_GPU_CODE_ inline float rho_deriv2(float r, float huber_b)
 {
-	return fabs(r) < huber_b ? 2.0f : 0.0f;
+	return std::abs(r) < huber_b ? 2.0f : 0.0f;
 }
 
 class LossFunction
@@ -134,7 +134,7 @@ public:
 
 	_CPU_AND_GPU_CODE_ inline float Loss(float e) override
 	{
-		float r_abs = fabs(e);
+		float r_abs = std::abs(e);
 		if (r_abs < k)
 			return 0.5f * e * e;
 		return k * (r_abs - 0.5f * k);
@@ -142,7 +142,7 @@ public:
 
 	_CPU_AND_GPU_CODE_ inline float Weight(float e) override
 	{
-		float r_abs = fabs(e);
+		float r_abs = std::abs(e);
 		if (r_abs < k)
 			return 1;
 		return k / r_abs;
@@ -159,14 +159,14 @@ public:
 
 	_CPU_AND_GPU_CODE_ inline float Loss(float e) override
 	{
-		if (fabs(e) < k)
-			return k * k * (1 - pow(1 - (e / k) * (e / k), 3)) / 2;
+		if (std::abs(e) < k)
+			return k * k * (1 - powf(1 - (e / k) * (e / k), 3)) / 2;
 		return k * k / 2;
 	}
 
 	_CPU_AND_GPU_CODE_ inline float Weight(float e) override
 	{
-		if (fabs(e) < k)
+		if (std::abs(e) < k)
 		{
 			float a = (1 - (e / k) * (e / k));
 			return a * a;

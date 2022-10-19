@@ -132,7 +132,7 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_RGB_Ab(float* A, float& residua
 	if (fabs(diff) > intensityThresh) return false;
 	if (fabs(gradient_reference.x) < minGradient || fabs(gradient_reference.y) < minGradient) return false;
 
-	const float sobelScale = 1.0f / pow(2, 3); // from Kintinuous
+	const float sobelScale = 1.0f / std::pow(2, 3); // from Kintinuous
 	gradient_reference *= sobelScale;
 
 	weight = 1;
@@ -143,8 +143,8 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_RGB_Ab(float* A, float& residua
 //	weight *= 50.0f * sqrt(ORUtils::dot(gradient_reference, gradient_reference));
 
 #ifdef USE_DEPTH_WEIGHT
-	weight *= CLAMP(1.0f / pow(depthPoint_scene.z + (1 - 0.1), 2), 0, 1);
-//	weight *= CLAMP(1.0f / pow(depthPoint_scene.z, 2), 0, 1);
+	weight *= CLAMP(1.0f / std::pow(depthPoint_scene.z + (1 - 0.1), 2), 0, 1);
+//	weight *= CLAMP(1.0f / std::pow(depthPoint_scene.z, 2), 0, 1);
 //		weight *= CLAMP(1.0f / depthPoint_scene.z, 0, 1);
 #endif
 
@@ -312,8 +312,8 @@ _CPU_AND_GPU_CODE_ inline bool computePerPointGH_Depth_Ab(float* A, float& b, fl
 
 	weight = 1;
 #ifdef USE_DEPTH_WEIGHT
-	weight *= CLAMP(1.0f / pow(depthPoint_scene.z + (1 - 0.1), 2), 0, 1);
-//	weight *= 1.0f / pow(depthPoint_scene.z, 2);
+	weight *= CLAMP(1.0f / std::pow(depthPoint_scene.z + (1 - 0.1), 2), 0, 1);
+//	weight *= 1.0f / std::pow(depthPoint_scene.z, 2);
 //	weight *= CLAMP(1.0f / depthPoint_scene.z, 0, 1);
 #endif
 
@@ -403,8 +403,8 @@ _CPU_AND_GPU_CODE_ inline bool computeSim3Derivative_Depth(MatrixXf<1, 7>& J, fl
 
 	weight = 1;
 #ifdef USE_DEPTH_WEIGHT
-	weight *= CLAMP(1.0f / pow(depthPoint_scene.z + (1 - 0.1), 2), 0, 1);
-//	weight *= CLAMP(1.0f / pow(depthPoint_scene.z, 2), 0, 1);
+	weight *= CLAMP(1.0f / std::pow(depthPoint_scene.z + (1 - 0.1), 2), 0, 1);
+//	weight *= CLAMP(1.0f / std::pow(depthPoint_scene.z, 2), 0, 1);
 //	weight *= CLAMP(1.0f / depthPoint_scene.z, 0, 1);
 #endif
 
@@ -480,13 +480,13 @@ _CPU_AND_GPU_CODE_ inline bool computeSim3Derivative_RGB(MatrixXf<1, 7>& J, floa
 	if (fabs(diff) > intensityThresh) return false;
 	if (fabs(gradient_reference.x) < minGradient || fabs(gradient_reference.y) < minGradient) return false;
 
-	const float sobelScale = 1.0f / pow(2, 3); // from Kintinuous
+	const float sobelScale = 1.0f / std::pow(2, 3); // from Kintinuous
 	gradient_reference *= sobelScale;
 
 	weight = 1;
 #ifdef USE_DEPTH_WEIGHT
-	weight *= CLAMP(1.0f / pow(depthPoint_scene.z + (1 - 0.1), 2), 0, 1);
-//	weight *= CLAMP(1.0f / pow(depthPoint_reference.z, 2), 0, 1);
+	weight *= CLAMP(1.0f / std::pow(depthPoint_scene.z + (1 - 0.1), 2), 0, 1);
+//	weight *= CLAMP(1.0f / std::pow(depthPoint_reference.z, 2), 0, 1);
 //	weight *= CLAMP(1.0f / depthPoint_scene.z, 0, 1);
 #endif
 
