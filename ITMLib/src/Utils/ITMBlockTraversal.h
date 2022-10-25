@@ -31,7 +31,9 @@ struct BlockTraversal
 		  step_size(Vector3i(dir.x > 0 ? 1 : -1,
 		                     dir.y > 0 ? 1 : -1,
 		                     dir.z > 0 ? 1 : -1)),
-		  tDelta(fabs(block_size / direction.x), fabs(block_size / direction.y), fabs(block_size / direction.z))
+		  tDelta(direction.x == 0 ? MAXFLOAT : std::abs(block_size / direction.x),
+		         direction.y == 0 ? MAXFLOAT : std::abs(block_size / direction.y),
+		         direction.z == 0 ? MAXFLOAT : std::abs(block_size / direction.z))
 	{
 		if (ORUtils::length(direction) == 0)
 		{
@@ -48,18 +50,18 @@ struct BlockTraversal
 
 		// Initialize with distance along ray to first x/y/z block borders
 		tMax = Vector3f(
-			fabs(
+			std::abs(
 				direction.x > 0 ?
 				(block_size - inner_block_offset.x) / direction.x :
-				direction.x == 0 ? 0xffffffff : inner_block_offset.x / direction.x),
-			fabs(
+				direction.x == 0 ? MAXFLOAT : inner_block_offset.x / direction.x),
+			std::abs(
 				direction.y > 0 ?
 				(block_size - inner_block_offset.y) / direction.y :
-				direction.y == 0 ? 0xffffffff : inner_block_offset.y / direction.y),
-			fabs(
+				direction.y == 0 ? MAXFLOAT : inner_block_offset.y / direction.y),
+			std::abs(
 				direction.z > 0 ?
 				(block_size - inner_block_offset.z) / direction.z :
-				direction.z == 0 ? 0xffffffff : inner_block_offset.z / direction.z)
+				direction.z == 0 ? MAXFLOAT : inner_block_offset.z / direction.z)
 		);
 		next_block = WorldToBlocki(origin);
 		distance = 0;
@@ -105,29 +107,42 @@ struct BlockTraversal
 		// Distance along the ray to next block
 		distance = fminf(fminf(tMax.x, tMax.y), tMax.z);
 
-		if (tMax.x < tMax.y)
-		{
-			if (tMax.x < tMax.z)
-			{
-				next_block.x += step_size.x;
-				tMax.x += tDelta.x;
-			} else
-			{
-				next_block.z += step_size.z;
-				tMax.z += tDelta.z;
-			}
-		} else
-		{
-			if (tMax.y < tMax.z)
-			{
-				next_block.y += step_size.y;
-				tMax.y += tDelta.y;
-			} else
-			{
-				next_block.z += step_size.z;
-				tMax.z += tDelta.z;
-			}
-		}
+//		if (tMax.x < tMax.y)
+//		{
+//			if (tMax.x < tMax.z)
+//			{
+//				next_block.x += step_size.x;
+//				tMax.x += tDelta.x;
+//			} else
+//			{
+//				next_block.z += step_size.z;
+//				tMax.z += tDelta.z;
+//			}
+//		} else
+//		{
+//			if (tMax.y < tMax.z)
+//			{
+//				next_block.y += step_size.y;
+//				tMax.y += tDelta.y;
+//			} else
+//			{
+//				next_block.z += step_size.z;
+//				tMax.z += tDelta.z;
+//			}
+//		}
+
+		// CUDA optimized version of the above (no branching)
+		bool c_xy = tMax.x < tMax.y;
+		bool c_xz = tMax.x < tMax.z;
+		bool c_yz = tMax.y < tMax.z;
+		next_block.x += int(c_xy && c_xz) * step_size.x;
+		tMax.x += float(c_xy && c_xz) * tDelta.x;
+
+		next_block.y += int(!c_xy && c_yz) * step_size.y;
+		tMax.y += float(!c_xy && c_yz) * tDelta.y;
+
+		next_block.z += int((c_xy && !c_xz) || (!c_xy && !c_yz)) * step_size.z;
+		tMax.z += float((c_xy && !c_xz) || (!c_xy && !c_yz)) * tDelta.z;
 	}
 
 	_CPU_AND_GPU_CODE_

@@ -152,7 +152,6 @@ _CPU_AND_GPU_CODE_ inline void computeNormalAndAngleTSDF(bool& foundPoint, const
 
 	Vector3f lightDirection = (point - lightSource).normalised();
 	angle = dot(outNormal, -lightDirection);
-	if (angle <= 0.0) foundPoint = false;
 }
 
 template<bool useSmoothing>
@@ -727,7 +726,7 @@ processPixelError(Vector4u* outRendering, const Vector4f* pointsRay, const Vecto
  * @return
  */
 template<template<typename, typename...> class Map, typename... Args>
-_CPU_AND_GPU_CODE_ ITMVoxel
+_CPU_AND_GPU_CODE_ inline ITMVoxel
 combineDirectionalTSDFViewPoint(const Vector3f voxelPos,
                                 const Map<ITMIndexDirectional, ITMVoxel*, Args...>& tsdf,
                                 const Matrix4f invM, const float voxelSize, const float mu, const int maxW)
@@ -838,8 +837,8 @@ combineDirectionalTSDFViewPoint(const Vector3f voxelPos,
 	if (freeSpaceWeight > 0
 	    and ((hasGradient and hasFreeSpaceGradient
 	          and dot(gradientFreeSpace, gradientCombined) <
-	              0.707 // if same surface, use normal combination instead of free space (prevent dents in surface)
-	          and dot(gradientFreeSpace, gradientCombined) > -0.707 // if opposite surface, don't carve
+	              0.707f // if same surface, use normal combination instead of free space (prevent dents in surface)
+	          and dot(gradientFreeSpace, gradientCombined) > -0.707f // if opposite surface, don't carve
 	         ) or (not hasGradient and not hasFreeSpaceGradient)))
 	{
 		combinedVoxel.sdf = ITMVoxel::floatToValue(freeSpaceSDF);

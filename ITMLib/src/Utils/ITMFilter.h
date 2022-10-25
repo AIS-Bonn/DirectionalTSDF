@@ -53,23 +53,16 @@ computeNormalBilateralFiltered(const Vector4f* normals, const float sigma_d, con
 	Vector3f sum(0, 0, 0);
 	float sum_weight = 0.0f;
 
-	float sigma_d_factor = 1 / (2.0f * sigma_d * sigma_d);
-	float sigma_r_factor = 1 / (2.0f * sigma_r * sigma_r);
+	const float sigma_d_factor = 1 / (2.0f * sigma_d * sigma_d);
+	const float sigma_r_factor = 1 / (2.0f * sigma_r * sigma_r);
 
-	for (int i = x - radius; i <= x + radius; i++)
+	for (int i = MAX(0, x - radius); i <= MIN(imgSize.x - 1, x + radius); i++)
 	{
-		for (int j = y - radius; j <= y + radius; j++)
+		for (int j = MAX(0, y - radius); j <= MIN(imgSize.y - 1, y + radius); j++)
 		{
-			if (i < 0 or j < 0 or i >= imgSize.x or j >= imgSize.y)
-				continue;
-
 			const Vector4f value = normals[j * imgSize.x + i];
-
-			if (value.w == -1)
-				continue;
-
-			const float weight =
-				gaussD(sigma_d_factor, i - x, j - y) * gaussR(sigma_r_factor, length((value - center).toVector3()));
+			const float weight = static_cast<float>(value.w != -1) * gaussD(sigma_d_factor, i - x, j - y) *
+			                     gaussR(sigma_r_factor, length((value - center).toVector3()));
 
 			sum += weight * value.toVector3();
 			sum_weight += weight;
@@ -109,24 +102,18 @@ computeDepthBilateralFiltered(const float* depth, const float sigma_d, const flo
 	float sum = 0;
 	float sum_weight = 0.0f;
 
-	float sigma_d_factor = 1 / (2.0f * sigma_d * sigma_d);
+	const float sigma_d_factor = 1 / (2.0f * sigma_d * sigma_d);
 //	float sigma_r_factor = 1 / (2.0f * sigma_r * sigma_r);
-	float sigma_r_factor = 1 / (2.0f * sigma_r * sigma_r * center *
-	                            center); // depth-dependent gradient filter (further away->higher noise->higher sigma_r)
+	const float sigma_r_factor = 1 / (2.0f * sigma_r * sigma_r * center *
+	                                  center); // depth-dependent gradient filter (further away->higher noise->higher sigma_r)
 
-	for (int i = x - radius; i <= x + radius; i++)
+	for (int i = MAX(0, x - radius); i <= MIN(imgSize.x - 1, x + radius); i++)
 	{
-		for (int j = y - radius; j <= y + radius; j++)
+		for (int j = MAX(0, y - radius); j <= MIN(imgSize.y - 1, y + radius); j++)
 		{
-			if (i < 0 or j < 0 or i >= imgSize.x or j >= imgSize.y)
-				continue;
-
 			const float value = depth[j * imgSize.x + i];
-
-			if (value < 0)
-				continue;
-
-			const float weight = gaussD(sigma_d_factor, i - x, j - y) * gaussR(sigma_r_factor, std::abs(value - center));
+			const float weight = static_cast<float>(value >= 0) * gaussD(sigma_d_factor, i - x, j - y) *
+			                     gaussR(sigma_r_factor, std::abs(value - center));
 
 			sum += weight * value;
 			sum_weight += weight;

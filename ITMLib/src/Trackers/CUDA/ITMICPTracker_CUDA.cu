@@ -117,12 +117,15 @@ __global__ void RGBTrackerOneLevel_g_rt_device(RGBKernelParameters para);
 
 // host methods
 
+#define BlockSideLength 16
+dim3 computationBlockSize(BlockSideLength, BlockSideLength);
+
 ITMICPTracker_CUDA::ITMICPTracker_CUDA(Vector2i imgSize_d, Vector2i imgSize_rgb, const Parameters& parameters,
                                        const ITMLowLevelEngine* lowLevelEngine)
 	: ITMICPTracker(imgSize_d, imgSize_rgb, parameters, lowLevelEngine, MEMORYDEVICE_CUDA)
 {
-	dim3 gridSize((int) std::ceil(imgSize_d.x / 16.0f),
-	              (int) std::ceil(imgSize_d.y / 16.0f));
+	dim3 gridSize((int) std::ceil((float) imgSize_d.x / (float) computationBlockSize.x),
+	              (int) std::ceil((float) imgSize_d.y / (float) computationBlockSize.y));
 	size_t numBlocks = gridSize.x * gridSize.y;
 	ORcudaSafeCall(cudaMalloc(&accumulator_device, numBlocks * sizeof(AccuCell)));
 }
@@ -174,9 +177,8 @@ ITMICPTracker_CUDA::ComputeGandHSim3_Depth(float& f, Eigen::Matrix<EigenT, 7, 7>
 	Vector4f viewIntrinsics = viewHierarchy_depth->GetLevel(levelId)->intrinsics;
 	Vector2i viewImageSize = viewHierarchy_depth->GetLevel(levelId)->data->noDims;
 
-	dim3 blockSize(16, 16);
-	dim3 gridSize((int) std::ceil((float) viewImageSize.x / (float) blockSize.x),
-	              (int) std::ceil((float) viewImageSize.y / (float) blockSize.y));
+	dim3 gridSize((int) std::ceil((float) viewImageSize.x / (float) computationBlockSize.x),
+	              (int) std::ceil((float) viewImageSize.y / (float) computationBlockSize.y));
 
 	size_t numBlocks = gridSize.x * gridSize.y;
 
@@ -184,7 +186,7 @@ ITMICPTracker_CUDA::ComputeGandHSim3_Depth(float& f, Eigen::Matrix<EigenT, 7, 7>
 	ORcudaSafeCall(cudaMalloc(&accumulator_device, numBlocks * sizeof(AccumulatorSim3)));
 	ORcudaSafeCall(cudaMemset(accumulator_device, 0, numBlocks * sizeof(AccumulatorSim3)));
 
-	Sim3DerivativeDepth_device << < gridSize, blockSize >> >(accumulator_device, depth, pointsMap, normalsMap,
+	Sim3DerivativeDepth_device << < gridSize, computationBlockSize >> >(accumulator_device, depth, pointsMap, normalsMap,
 		sceneIntrinsics, sceneImageSize, viewIntrinsics, viewImageSize,
 		deltaT, renderedScenePose, distThresh[levelId]);
 	reduceAccumulatorSim3<1024><<<1, 1024>>>(accumulator_device, numBlocks);
@@ -220,9 +222,8 @@ ITMICPTracker_CUDA::ComputeGandHSim3_RGB(float& f, Eigen::Matrix<EigenT, 7, 7>& 
 {
 	Vector2i viewImageSize = viewHierarchy_depth->GetLevel(levelId)->data->noDims;
 
-	dim3 blockSize(16, 16);
-	dim3 gridSize((int) std::ceil((float) viewImageSize.x / (float) blockSize.x),
-	              (int) std::ceil((float) viewImageSize.y / (float) blockSize.y));
+	dim3 gridSize((int) std::ceil((float) viewImageSize.x / (float) computationBlockSize.x),
+	              (int) std::ceil((float) viewImageSize.y / (float) computationBlockSize.y));
 
 	size_t numBlocks = gridSize.x * gridSize.y;
 
@@ -231,7 +232,7 @@ ITMICPTracker_CUDA::ComputeGandHSim3_RGB(float& f, Eigen::Matrix<EigenT, 7, 7>& 
 	ORcudaSafeCall(cudaMemset(accumulator_device, 0, numBlocks * sizeof(AccumulatorSim3)));
 
 
-	Sim3DerivativeRGB_device << < gridSize, blockSize >> >(
+	Sim3DerivativeRGB_device << < gridSize, computationBlockSize >> >(
 		accumulator_device,
 			reprojectedPointsHierarchy->GetLevel(levelId)->data->GetData(MEMORYDEVICE_CUDA),
 			projectedIntensityHierarchy->GetLevel(levelId)->data->GetData(MEMORYDEVICE_CUDA),
@@ -326,9 +327,8 @@ int ITMICPTracker_CUDA::ComputeGandH_Depth(float& f, float* nabla, float* hessia
 
 	int noPara = shortIteration ? 3 : 6;
 
-	dim3 blockSize(16, 16);
-	dim3 gridSize((int) std::ceil((float) viewImageSize.x / (float) blockSize.x),
-	              (int) std::ceil((float) viewImageSize.y / (float) blockSize.y));
+	dim3 gridSize((int) std::ceil((float) viewImageSize.x / (float) computationBlockSize.x),
+	              (int) std::ceil((float) viewImageSize.y / (float) computationBlockSize.y));
 
 	size_t numBlocks = gridSize.x * gridSize.y;
 	ORcudaSafeCall(cudaMemset(accumulator_device, 0, numBlocks * sizeof(AccuCell)));
@@ -348,19 +348,19 @@ int ITMICPTracker_CUDA::ComputeGandH_Depth(float& f, float* nabla, float* hessia
 	switch (iterationType)
 	{
 		case TRACKER_ITERATION_ROTATION:
-			depthTrackerOneLevel_g_rt_device<true, true> << < gridSize, blockSize >> >(args);
+			depthTrackerOneLevel_g_rt_device<true, true> << < gridSize, computationBlockSize >> >(args);
 			ORcudaKernelCheck;
 			reduceAccumulator<true, 1024><<<1, 1024>>>(accumulator_device, numBlocks);
 			ORcudaKernelCheck;
 			break;
 		case TRACKER_ITERATION_TRANSLATION:
-			depthTrackerOneLevel_g_rt_device<true, false> << < gridSize, blockSize >> >(args);
+			depthTrackerOneLevel_g_rt_device<true, false> << < gridSize, computationBlockSize >> >(args);
 			ORcudaKernelCheck;
 			reduceAccumulator<true, 1024><<<1, 1024>>>(accumulator_device, numBlocks);
 			ORcudaKernelCheck;
 			break;
 		case TRACKER_ITERATION_BOTH:
-			depthTrackerOneLevel_g_rt_device<false, false> << < gridSize, blockSize >> >(args);
+			depthTrackerOneLevel_g_rt_device<false, false> << < gridSize, computationBlockSize >> >(args);
 			ORcudaKernelCheck;
 			reduceAccumulator<false, 1024><<<1, 1024>>>(accumulator_device, numBlocks);
 			ORcudaKernelCheck;
@@ -407,9 +407,8 @@ int ITMICPTracker_CUDA::ComputeGandH_RGB(float& f, float* nabla, float* hessian,
 	                      || iterationType == TRACKER_ITERATION_TRANSLATION;
 	int noPara = shortIteration ? 3 : 6;
 
-	dim3 blockSize(16, 16);
-	dim3 gridSize((int) std::ceil((float) imageSize_depth.x / (float) blockSize.x),
-	              (int) std::ceil((float) imageSize_depth.y / (float) blockSize.y));
+	dim3 gridSize((int) std::ceil((float) imageSize_depth.x / (float) computationBlockSize.x),
+	              (int) std::ceil((float) imageSize_depth.y / (float) computationBlockSize.y));
 	size_t numBlocks = gridSize.x * gridSize.y;
 
 	ORcudaSafeCall(cudaMemset(accumulator_device, 0, numBlocks * sizeof(AccuCell)));
@@ -434,19 +433,19 @@ int ITMICPTracker_CUDA::ComputeGandH_RGB(float& f, float* nabla, float* hessian,
 	switch (iterationType)
 	{
 		case TRACKER_ITERATION_ROTATION:
-			RGBTrackerOneLevel_g_rt_device<true, true> << < gridSize, blockSize >> >(args);
+			RGBTrackerOneLevel_g_rt_device<true, true> << < gridSize, computationBlockSize >> >(args);
 			ORcudaKernelCheck;
 			reduceAccumulator<true, 1024><<<1, 1024>>>(accumulator_device, numBlocks);
 			ORcudaKernelCheck;
 			break;
 		case TRACKER_ITERATION_TRANSLATION:
-			RGBTrackerOneLevel_g_rt_device<true, false> << < gridSize, blockSize >> >(args);
+			RGBTrackerOneLevel_g_rt_device<true, false> << < gridSize, computationBlockSize >> >(args);
 			ORcudaKernelCheck;
 			reduceAccumulator<true, 1024><<<1, 1024>>>(accumulator_device, numBlocks);
 			ORcudaKernelCheck;
 			break;
 		case TRACKER_ITERATION_BOTH:
-			RGBTrackerOneLevel_g_rt_device<false, false> << < gridSize, blockSize >> >(args);
+			RGBTrackerOneLevel_g_rt_device<false, false> << < gridSize, computationBlockSize >> >(args);
 			ORcudaKernelCheck;
 			reduceAccumulator<false, 1024><<<1, 1024>>>(accumulator_device, numBlocks);
 			ORcudaKernelCheck;
@@ -488,9 +487,8 @@ void ITMICPTracker_CUDA::RenderRGBError(ITMUChar4Image* image_out, const Matrix4
 	                      || iterationType == TRACKER_ITERATION_TRANSLATION;
 	int noPara = shortIteration ? 3 : 6;
 
-	dim3 blockSize(16, 16);
-	dim3 gridSize((int) std::ceil((float) imageSize_depth.x / (float) blockSize.x),
-	              (int) std::ceil((float) imageSize_depth.y / (float) blockSize.y));
+	dim3 gridSize((int) std::ceil((float) imageSize_depth.x / (float) computationBlockSize.x),
+	              (int) std::ceil((float) imageSize_depth.y / (float) computationBlockSize.y));
 	size_t numBlocks = gridSize.x * gridSize.y;
 
 	ORcudaSafeCall(cudaMemset(accumulator_device, 0, numBlocks * sizeof(AccuCell)));
@@ -512,7 +510,7 @@ void ITMICPTracker_CUDA::RenderRGBError(ITMUChar4Image* image_out, const Matrix4
 	args.intensityThresh = colourThresh[levelId];
 	args.minGradient = parameters.minColourGradient;
 
-	RGBTrackerErrorImage_device << < gridSize, blockSize >> >(image_out->GetData(MEMORYDEVICE_CUDA), args, 0.05);
+	RGBTrackerErrorImage_device << < gridSize, computationBlockSize >> >(image_out->GetData(MEMORYDEVICE_CUDA), args, 0.05);
 	ORcudaKernelCheck;
 }
 
@@ -547,11 +545,10 @@ void ITMLib::ITMICPTracker_CUDA::ComputeDepthPointAndIntensity(ITMFloat4Image* p
 	Vector4f* pointsOut = points_out->GetData(MEMORYDEVICE_CUDA);
 	float* intensityOut = intensity_out->GetData(MEMORYDEVICE_CUDA);
 
-	dim3 blockSize(16, 16);
-	dim3 gridSize((int) std::ceil((float) imageSize_depth.x / (float) blockSize.x),
-	              (int) std::ceil((float) imageSize_depth.y / (float) blockSize.y));
+	dim3 gridSize((int) std::ceil((float) imageSize_depth.x / (float) computationBlockSize.x),
+	              (int) std::ceil((float) imageSize_depth.y / (float) computationBlockSize.y));
 
-	computeDepthPointAndColour_device<<<gridSize, blockSize>>>(pointsOut, intensityOut, intensityIn, depths,
+	computeDepthPointAndColour_device<<<gridSize, computationBlockSize>>>(pointsOut, intensityOut, intensityIn, depths,
 	                                                           imageSize_rgb, imageSize_depth, intrinsics_rgb,
 	                                                           intrinsics_depth, T_depthToRGB);
 	ORcudaKernelCheck;
@@ -759,15 +756,15 @@ RGBTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu,
 	float lossWeight = loss.Weight(b);
 
 	// reduction for valid number of points
-	parallelReduce<256>(accu[blockId].numPoints, (int) isValidPoint, threadId);
+	parallelReduce<BlockSideLength * BlockSideLength>(accu[blockId].numPoints, (int) isValidPoint, threadId);
 
 	// reduction for error
-	parallelReduce<256>(accu[blockId].f, weight * loss.Loss(b), threadId);
+	parallelReduce<BlockSideLength * BlockSideLength>(accu[blockId].f, weight * loss.Loss(b), threadId);
 
 	// reduction for nabla (b * A)
 	for (unsigned char paraId = 0; paraId < noPara; paraId += 3)
 	{
-		parallelReduceArray3<256>(accu[blockId].g + paraId,
+		parallelReduceArray3<BlockSideLength * BlockSideLength>(accu[blockId].g + paraId,
 		                          (lossWeight * weight * b * Vector3f(A[paraId + 0], A[paraId + 1], A[paraId + 2])).v,
 		                          threadId);
 	}
@@ -787,7 +784,7 @@ RGBTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu,
 	//reduction for hessian
 	for (unsigned char paraId = 0; paraId < noParaSQ; paraId += 3)
 	{
-		parallelReduceArray3<256>(accu[blockId].h + paraId,
+		parallelReduceArray3<BlockSideLength * BlockSideLength>(accu[blockId].h + paraId,
 		                          localHessian + paraId,
 		                          threadId);
 	}
@@ -848,15 +845,15 @@ depthTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu,
 	float lossWeight = loss.Weight(b);
 
 	// reduction for valid number of points
-	parallelReduce<256>(accu[blockId].numPoints, (int) isValidPoint, threadId);
+	parallelReduce<BlockSideLength * BlockSideLength>(accu[blockId].numPoints, (int) isValidPoint, threadId);
 
 	// reduction for error
-	parallelReduce<256>(accu[blockId].f, weight * loss.Loss(b), threadId);
+	parallelReduce<BlockSideLength * BlockSideLength>(accu[blockId].f, weight * loss.Loss(b), threadId);
 
 	// reduction for nabla (b * A)
 	for (unsigned char paraId = 0; paraId < noPara; paraId += 3)
 	{
-		parallelReduceArray3<256>(accu[blockId].g + paraId,
+		parallelReduceArray3<BlockSideLength * BlockSideLength>(accu[blockId].g + paraId,
 		                          (lossWeight * weight * b * Vector3f(A[paraId + 0], A[paraId + 1], A[paraId + 2])).v,
 		                          threadId);
 	}
@@ -876,7 +873,7 @@ depthTrackerOneLevel_g_rt_device_main(ITMICPTracker_CUDA::AccuCell* accu,
 	//reduction for hessian
 	for (unsigned char paraId = 0; paraId < noParaSQ; paraId += 3)
 	{
-		parallelReduceArray3<256>(accu[blockId].h + paraId,
+		parallelReduceArray3<BlockSideLength * BlockSideLength>(accu[blockId].h + paraId,
 		                          localHessian + paraId,
 		                          threadId);
 	}
@@ -929,12 +926,12 @@ Sim3DerivativeDepth_device(AccumulatorSim3* accumulator,
 		weight = 1;
 	}
 
-	parallelReduce<256>(accumulator[blockId].numPoints, (int) isValidPoint, threadId);
-	parallelReduce<256>(accumulator[blockId].f, weight * r * r, threadId);
+	parallelReduce<BlockSideLength * BlockSideLength>(accumulator[blockId].numPoints, (int) isValidPoint, threadId);
+	parallelReduce<BlockSideLength * BlockSideLength>(accumulator[blockId].f, weight * r * r, threadId);
 
 	MatrixXf<1, 7> localG = weight * (J * r);
-	parallelReduceArray4<256>(accumulator[blockId].g, localG.m, threadId);
-	parallelReduceArray3<256>(accumulator[blockId].g + 4, localG.m + 4, threadId);
+	parallelReduceArray4<BlockSideLength * BlockSideLength>(accumulator[blockId].g, localG.m, threadId);
+	parallelReduceArray3<BlockSideLength * BlockSideLength>(accumulator[blockId].g + 4, localG.m + 4, threadId);
 
 	const int sizeH = 7 + 6 + 5 + 4 + 3 + 2 + 1; // size of lower triangle matrix
 	float localHessian[sizeH];
@@ -948,7 +945,7 @@ Sim3DerivativeDepth_device(AccumulatorSim3* accumulator,
 	//reduction for hessian
 	for (unsigned char offset = 0; offset < sizeH; offset += 4)
 	{
-		parallelReduceArray4<256>(accumulator[blockId].H + offset,
+		parallelReduceArray4<BlockSideLength * BlockSideLength>(accumulator[blockId].H + offset,
 		                          localHessian + offset,
 		                          threadId);
 	}
@@ -1004,12 +1001,12 @@ Sim3DerivativeRGB_device(AccumulatorSim3* accumulator,
 		weight = 1;
 	}
 
-	parallelReduce<256>(accumulator[blockId].numPoints, (int) isValidPoint, threadId);
-	parallelReduce<256>(accumulator[blockId].f, weight * r * r, threadId);
+	parallelReduce<BlockSideLength * BlockSideLength>(accumulator[blockId].numPoints, (int) isValidPoint, threadId);
+	parallelReduce<BlockSideLength * BlockSideLength>(accumulator[blockId].f, weight * r * r, threadId);
 
 	MatrixXf<1, 7> localG = weight * (J * r);
-	parallelReduceArray4<256>(accumulator[blockId].g, localG.m, threadId);
-	parallelReduceArray3<256>(accumulator[blockId].g + 4, localG.m + 4, threadId);
+	parallelReduceArray4<BlockSideLength * BlockSideLength>(accumulator[blockId].g, localG.m, threadId);
+	parallelReduceArray3<BlockSideLength * BlockSideLength>(accumulator[blockId].g + 4, localG.m + 4, threadId);
 
 	const int sizeH = 7 + 6 + 5 + 4 + 3 + 2 + 1; // size of lower triangle matrix
 	float localHessian[sizeH];
@@ -1023,7 +1020,7 @@ Sim3DerivativeRGB_device(AccumulatorSim3* accumulator,
 	//reduction for hessian
 	for (unsigned char offset = 0; offset < sizeH; offset += 4)
 	{
-		parallelReduceArray4<256>(accumulator[blockId].H + offset,
+		parallelReduceArray4<BlockSideLength * BlockSideLength>(accumulator[blockId].H + offset,
 		                          localHessian + offset,
 		                          threadId);
 	}

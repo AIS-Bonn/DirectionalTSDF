@@ -408,9 +408,6 @@ void ITMICPTracker::TrackCameraSE3(ITMTrackingState* trackingState, const ITMVie
 		this->SetEvaluationParams(levelId);
 		if (iterationType == TRACKER_ITERATION_NONE) continue;
 
-		const float minNoPoints = 0.05f * viewHierarchy_depth->GetLevel(levelId)->data->noDims.width *
-		                          viewHierarchy_depth->GetLevel(levelId)->data->noDims.height;
-
 		f_old = 1e20f;
 		noValidPoints_old = 0;
 
@@ -559,8 +556,6 @@ void ITMICPTracker::TrackCameraSim3(ITMTrackingState* trackingState, const ITMVi
 	deltaT.setScale(std::exp(trackingState->scaleFactor));
 	Sophus::Sim3<EigenT> lastKnownGoodDeltaT(deltaT);
 
-	const float weightNormalizer = 1 / (1 + parameters.colourWeight);
-
 	for (int levelId = viewHierarchy_depth->GetNoLevels() - 1; levelId >= 0; levelId--)
 	{
 		this->SetEvaluationParams(levelId);
@@ -663,8 +658,6 @@ void ITMICPTracker::TrackCameraSim3(ITMTrackingState* trackingState, const ITMVi
 	}
 
 	// write back estimated invPose and scale
-	Eigen::Matrix<EigenT, 7, 1> tangent = deltaT.inverse().log();
-
 	trackingState->scaleFactor = std::log(deltaT.scale());
 
 	Eigen::Matrix<EigenT, 4, 4> se3UpdateMat = Eigen::Matrix<EigenT, 4, 4>::Identity();

@@ -458,7 +458,7 @@ template<typename T>
 inline void fillArrayKernel(T* devPtr, size_t nwords)
 {
 	dim3 blockSize(256);
-	dim3 gridSize((int) ceil((float) nwords / (float) blockSize.x));
+	dim3 gridSize((int) std::ceil((float) nwords / (float) blockSize.x));
 	fillArrayKernel_device<T> <<<gridSize, blockSize>>>(devPtr, nwords);
 	ORcudaKernelCheck;
 }

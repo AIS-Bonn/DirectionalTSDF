@@ -11,7 +11,7 @@ namespace ITMLib
 /** \brief
     Stores the information of a single voxel in the volume
 */
-struct ITMVoxel_f_rgb
+struct alignas(16) ITMVoxel_f_rgb
 {
 	typedef float WeightType;
 
@@ -57,7 +57,7 @@ struct ITMVoxel_f_rgb
 /** \brief
     Stores the information of a single voxel in the volume
 */
-struct ITMVoxel_s_rgb
+struct __align__(16) ITMVoxel_s_rgb
 {
 	typedef ushort WeightType;
 
@@ -86,8 +86,6 @@ struct ITMVoxel_s_rgb
 	short sdf;
 	/** Number of fused observations that make up @p sdf. */
 	WeightType w_depth;
-	/** Padding that may or may not improve performance on certain GPUs */
-	//uchar pad;
 	/** RGB colour information stored for this voxel. */
 	Vector3u clr;
 	/** Number of observations that made up @p clr. */
@@ -102,7 +100,7 @@ struct ITMVoxel_s_rgb
 	}
 };
 
-struct ITMVoxel_s
+struct __align__(4) ITMVoxel_s
 {
 	typedef ushort WeightType;
 
@@ -131,8 +129,6 @@ struct ITMVoxel_s
 	short sdf;
 	/** Number of fused observations that make up @p sdf. */
 	WeightType w_depth;
-	/** Padding that may or may not improve performance on certain GPUs */
-	//uchar pad;
 
 	_CPU_AND_GPU_CODE_ ITMVoxel_s()
 	{
@@ -141,7 +137,7 @@ struct ITMVoxel_s
 	}
 };
 
-struct ITMVoxel_f
+struct __align__(8) ITMVoxel_f
 {
 	typedef float WeightType;
 
@@ -170,8 +166,6 @@ struct ITMVoxel_f
 	float sdf;
 	/** Number of fused observations that make up @p sdf. */
 	WeightType w_depth;
-	/** Padding that may or may not improve performance on certain GPUs */
-	//uchar pad;
 
 	_CPU_AND_GPU_CODE_ ITMVoxel_f()
 	{

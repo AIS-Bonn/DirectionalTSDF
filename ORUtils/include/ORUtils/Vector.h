@@ -8,12 +8,13 @@
 #include <ORUtils/MathUtils.h>
 #include <ORUtils/PlatformIndependence.h>
 
+#include <vector_types.h>
 namespace ORUtils {
 	//////////////////////////////////////////////////////////////////////////
 	//						Basic Vector Structure
 	//////////////////////////////////////////////////////////////////////////
 
-	template <class T> struct Vector2_{
+	template <class T> struct alignas(MAX(4, 2 * sizeof(T))) Vector2_{
 		union {
 			struct { T x, y; }; // standard names for components
 			struct { T s, t; }; // standard names for components
@@ -22,7 +23,7 @@ namespace ORUtils {
 		};
 	};
 
-	template <class T> struct Vector3_{
+	template <class T> struct alignas(4 * sizeof(T)) Vector3_{
 		union {
 			struct{ T x, y, z; }; // standard names for components
 			struct{ T r, g, b; }; // standard names for components
@@ -31,7 +32,7 @@ namespace ORUtils {
 		};
 	};
 
-	template <class T> struct Vector4_ {
+	template <class T> struct alignas(4 * sizeof(T)) Vector4_ {
 		union {
 			struct { T x, y, z, w; }; // standard names for components
 			struct { T r, g, b, a; }; // standard names for components
@@ -58,6 +59,8 @@ namespace ORUtils {
 	{
 	public:
 		typedef T value_type;
+		static const int SIZE = 2;
+
 		_CPU_AND_GPU_CODE_ inline int size() const { return 2; }
 
 		////////////////////////////////////////////////////////
@@ -197,6 +200,8 @@ namespace ORUtils {
 	{
 	public:
 		typedef T value_type;
+		static const int SIZE = 3;
+
 		_CPU_AND_GPU_CODE_ inline int size() const { return 3; }
 
 		////////////////////////////////////////////////////////
@@ -392,6 +397,7 @@ namespace ORUtils {
 	{
 	public:
 		typedef T value_type;
+		static const int SIZE = 4;
 		_CPU_AND_GPU_CODE_ inline int size() const { return 4; }
 
 		////////////////////////////////////////////////////////
@@ -534,6 +540,7 @@ namespace ORUtils {
 	{
 	public:
 		typedef T value_type;
+		static const int SIZE = 6;
 		_CPU_AND_GPU_CODE_ inline int size() const { return 6; }
 
 		////////////////////////////////////////////////////////
@@ -670,6 +677,7 @@ namespace ORUtils {
 	{
 	public:
 		typedef T value_type;
+		static const int SIZE = s;
 		enum { value_size = s };
 		_CPU_AND_GPU_CODE_ inline int size() const { return value_size; }
 
@@ -822,12 +830,15 @@ namespace ORUtils {
 	// compute the dot product of two vectors
 	template<class T> _CPU_AND_GPU_CODE_ inline typename T::value_type dot(const T &lhs, const T &rhs) {
 		typename T::value_type r = 0;
-		for (int i = 0; i < lhs.size(); i++)
+#ifdef __CUDA_ARCH__
+#pragma unroll
+#endif
+		for (int i = 0; i < T::SIZE; i++)
 			r += lhs[i] * rhs[i];
 		return r;
 	}
 
-	// return the length of the provided vector
+// return the length of the provided vector
 	template< class T> _CPU_AND_GPU_CODE_ inline typename T::value_type length(const T &vec) {
 		return std::sqrt(dot(vec, vec));
 	}
@@ -849,7 +860,10 @@ namespace ORUtils {
 	//component wise min
 	template< class T> _CPU_AND_GPU_CODE_ inline T minV(const T &lhs, const T &rhs) {
 		T rv;
-		for (int i = 0; i < lhs.size(); i++)
+#ifdef __CUDA_ARCH__
+#pragma unroll
+#endif
+		for (int i = 0; i < T::SIZE; i++)
 			rv[i] = min(lhs[i], rhs[i]);
 		return rv;
 	}
@@ -858,7 +872,10 @@ namespace ORUtils {
 	template< class T>
 	_CPU_AND_GPU_CODE_ inline T maxV(const T &lhs, const T &rhs)	{
 		T rv;
-		for (int i = 0; i < lhs.size(); i++)
+#ifdef __CUDA_ARCH__
+#pragma unroll
+#endif
+		for (int i = 0; i < T::SIZE; i++)
 			rv[i] = max(lhs[i], rhs[i]);
 		return rv;
 	}

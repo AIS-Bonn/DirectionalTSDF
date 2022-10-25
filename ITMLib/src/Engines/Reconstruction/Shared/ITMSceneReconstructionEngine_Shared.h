@@ -107,7 +107,7 @@ computeUpdatedVoxelDepthInfo(ITMVoxel& voxel, const TSDFDirection direction,
 				float directionWeight = DirectionWeight(directionAngle);
 				newW = combinedWeight(depth_measure, distance, normal_camera.toVector3(), viewRay_camera, sceneParams) *
 				       directionWeight;
-//				newW *= (ORUtils::dot(normal_camera.toVector3(), -viewRay_camera) > 0.3); // don't fuse too steep angles in directional, as unreliable
+//				newW *= (ORUtils::dot(normal_camera.toVector3(), -viewRay_camera) > 0.3f); // don't fuse too steep angles in directional, as unreliable
 //				if (distance > 0 and directionAngle > direction_angle_threshold and directionAngle < M_PI_2)
 //					newW = 0.01f * weightNormal(normal_camera.toVector3(), viewRay_camera);
 			} else
@@ -227,7 +227,7 @@ computeUpdatedVoxelColorInfo(TVoxel& voxel, const TSDFDirection direction,
 //				depthWeight_new *= static_cast<float>(DirectionAngle(-pixelRay_world, direction) < 2 * M_PI_4);
 
 //				depthWeight_new *=  DirectionWeight(DirectionAngle(-pixelRay_world, direction));
-				depthWeight_new *= (M_PI_2 - DirectionAngle(-pixelRay_world, direction)) / M_PI_2;
+				depthWeight_new *= (float(M_PI_2) - DirectionAngle(-pixelRay_world, direction)) / float(M_PI_2);
 			}
 
 			// Check if pixel near to depth gap (large offset to neighboring pixels) in which case, don't carve (retain edges of objects)
@@ -237,13 +237,13 @@ computeUpdatedVoxelColorInfo(TVoxel& voxel, const TSDFDirection direction,
 //			for (int i = 1; i < ceil(voxelSizeImage / 2) and not dontCarve; i++)
 			{
 				dontCarve |=
-					fabs(depth_measure - depth[imgCoords_d.x + i + (imgCoords_d.y + 0) * imgSize_d.width]) > sceneParams.mu;
+					std::abs(depth_measure - depth[imgCoords_d.x + i + (imgCoords_d.y + 0) * imgSize_d.width]) > sceneParams.mu;
 				dontCarve |=
-					fabs(depth_measure - depth[imgCoords_d.x - i + (imgCoords_d.y + 0) * imgSize_d.width]) > sceneParams.mu;
+					std::abs(depth_measure - depth[imgCoords_d.x - i + (imgCoords_d.y + 0) * imgSize_d.width]) > sceneParams.mu;
 				dontCarve |=
-					fabs(depth_measure - depth[imgCoords_d.x + 0 + (imgCoords_d.y + i) * imgSize_d.width]) > sceneParams.mu;
+					std::abs(depth_measure - depth[imgCoords_d.x + 0 + (imgCoords_d.y + i) * imgSize_d.width]) > sceneParams.mu;
 				dontCarve |=
-					fabs(depth_measure - depth[imgCoords_d.x + 0 + (imgCoords_d.y - i) * imgSize_d.width]) > sceneParams.mu;
+					std::abs(depth_measure - depth[imgCoords_d.x + 0 + (imgCoords_d.y - i) * imgSize_d.width]) > sceneParams.mu;
 
 				dontCarve |= depth[imgCoords_d.x + i + (imgCoords_d.y + 0) * imgSize_d.width] <= 0;
 				dontCarve |= depth[imgCoords_d.x - i + (imgCoords_d.y + 0) * imgSize_d.width] <= 0;
@@ -375,9 +375,9 @@ _CPU_AND_GPU_CODE_ static void voxelProjectionCarveSpace(const ITMVoxel& voxel,
 		return;
 
 	/// Find relevant image area
-	Vector2f voxelBR_image = project(pt_camera.toVector3() + Vector3f(1, 1, 0) * 0.5 * sceneParams.voxelSize,
+	Vector2f voxelBR_image = project(pt_camera.toVector3() + Vector3f(1, 1, 0) * 0.5f * sceneParams.voxelSize,
 	                                 projParams_d);
-	Vector2f voxelUL_image = project(pt_camera.toVector3() - Vector3f(1, 1, 0) * 0.5 * sceneParams.voxelSize,
+	Vector2f voxelUL_image = project(pt_camera.toVector3() - Vector3f(1, 1, 0) * 0.5f * sceneParams.voxelSize,
 	                                 projParams_d);
 
 	// TODO: check which pixels are used
@@ -405,17 +405,17 @@ _CPU_AND_GPU_CODE_ static void voxelProjectionCarveSpace(const ITMVoxel& voxel,
 			// get measured depth from image
 			float depthValue = depth[idx];
 			Vector4f normal_camera = depthNormals[idx];
-			if (depthValue <= 0.0 or normal_camera.w != 1) continue;
+			if (depthValue <= 0.0f or normal_camera.w != 1) continue;
 
 			// Normal too steep -> don't carve (because unreliable)
 			// discard voxel (return) completely because neighboring normals not reliable
-			if (ORUtils::dot(normal_camera.toVector3(), Vector3f(0, 0, -1)) < 0.337)
+			if (ORUtils::dot(normal_camera.toVector3(), Vector3f(0, 0, -1)) < 0.337f)
 				return;
 
 			Vector3f normal_world = normalCameraToWorld(normal_camera, invM_d);
 			Vector3f rayDirection_camera = reprojectImagePoint(x, y, depthValue, invProjParams_d).normalised();
 			Vector3f rayDirection_world = normalCameraToWorld(Vector4f(rayDirection_camera, 0), invM_d);
-			float carveSurfaceOffset = fabs(1.0 / dot(normal_world, rayDirection_world)) * sceneParams.mu;
+			float carveSurfaceOffset = std::abs(1.0f / dot(normal_world, rayDirection_world)) * sceneParams.mu;
 
 			// check whether voxel needs updating
 			float eta = depthValue - pt_camera.z;
@@ -468,10 +468,10 @@ inline void rayCastCarveSpace(const int x, const int y, const Vector2i imgSize, 
 
 	Vector3f normal_world = normalCameraToWorld(normal_camera, invM_d);
 	float carveDistance = ORUtils::length(pt_world - rayStart_world)
-	                      - fabs(1.0 / dot(normal_world, rayDirection_world)) * mu;
+	                      - std::abs(1.0f / dot(normal_world, rayDirection_world)) * mu;
 
 	// Decrease distance by depth noise model (std. dev * 3)
-	carveDistance -= depthNoiseSigma(depthValue, fabs(1.0 - dot(normal_world, -rayDirection_world)) * M_PI * 0.5) * 3;
+	carveDistance -= depthNoiseSigma(depthValue, std::abs(1.0f - dot(normal_world, -rayDirection_world)) * float(M_PI) * 0.5f) * 3;
 
 	BlockTraversal blockTraversal(rayStart_world, rayDirection_world, carveDistance, voxelSize, true);
 	while (blockTraversal.HasNextBlock())
@@ -488,6 +488,9 @@ inline void rayCastCarveSpace(const int x, const int y, const Vector2i imgSize, 
 		/// find and update voxels
 		if (fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL)
 		{
+#ifdef __CUDA_ARCH__
+#pragma unroll
+#endif
 			for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
 			{
 				auto it = summingVoxelMap.find(blockIdx);
@@ -557,7 +560,7 @@ inline void rayCastUpdate(const int x, const int y, const Vector2i imgSize_d, co
 		return;
 
 	// Normal too steep -> don't update (because unreliable)
-//	if (ORUtils::dot(normal_camera.toVector3(), Vector3f(0, 0, -1)) < 0.707)
+//	if (ORUtils::dot(normal_camera.toVector3(), Vector3f(0, 0, -1)) < 0.707f)
 //		return;
 
 	Vector3f pt_world = (invM_d * pt_sensor).toVector3();
@@ -588,7 +591,7 @@ inline void rayCastUpdate(const int x, const int y, const Vector2i imgSize_d, co
 	}
 
 	// FIXME: why add block to start?? (its offset without, but why?)
-	BlockTraversal blockTraversalBefore(pt_world + Vector3f(1, 1, 1) * voxelSize / 2, rayDirectionBefore, 1.25 * mu,
+	BlockTraversal blockTraversalBefore(pt_world + Vector3f(1, 1, 1) * voxelSize / 2, rayDirectionBefore, 1.25f * mu,
 	                                    voxelSize, true);
 	BlockTraversal blockTraversalBehind(pt_world + Vector3f(1, 1, 1) * voxelSize / 2, rayDirectionBehind, mu, voxelSize,
 	                                    true);
@@ -614,7 +617,7 @@ inline void rayCastUpdate(const int x, const int y, const Vector2i imgSize_d, co
 		{
 			distance = SIGN(ORUtils::dot(voxelSurfaceOffset, normal_world)) * ORUtils::length(voxelSurfaceOffset);
 		}
-		distance = MAX(-1.0, MIN(1.0f, distance / mu));
+		distance = MAX(-1.0f, MIN(1.0f, distance / mu));
 
 		float weight = 1;
 		float voxelSideLengthCamera = voxelSize / (invProjParams_d.x * depthValue); // in pixels
@@ -622,6 +625,9 @@ inline void rayCastUpdate(const int x, const int y, const Vector2i imgSize_d, co
 		/// find and update voxels
 		if (fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL)
 		{
+#ifdef __CUDA_ARCH__
+#pragma unroll
+#endif
 			for (TSDFDirection_type direction = 0; direction < N_DIRECTIONS; direction++)
 			{
 				if (angles[direction] > direction_angle_threshold)
@@ -787,9 +793,12 @@ findAllocationBlocks(Set<TIndex, Args...>& allocationBlocks,
 
 		if (fusionParams.tsdfMode == TSDFMode::TSDFMODE_DIRECTIONAL)
 		{
+#ifdef __CUDA_ARCH__
+#pragma unroll
+#endif
 			for (TSDFDirection_type directionIdx = 0; directionIdx < N_DIRECTIONS; directionIdx++)
 			{
-				if (angles[directionIdx] > M_PI_4 * 1.05) // some minimal overlap against corner cases
+				if (angles[directionIdx] > float(M_PI_4) * 1.05f) // some minimal overlap against corner cases
 					continue;
 //				if (DirectionWeight(angles[directionIdx]) <= 0)
 //					continue;

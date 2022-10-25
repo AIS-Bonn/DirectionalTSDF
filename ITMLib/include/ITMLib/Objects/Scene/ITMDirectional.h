@@ -13,7 +13,7 @@ _CPU_AND_GPU_CODE_
 const static size_t N_DIRECTIONS = 6;
 
 _CPU_AND_GPU_CODE_
-const static float direction_angle_threshold = 1.25 * M_PI_4;
+const static float direction_angle_threshold = 1.1f * float(M_PI_4);
 
 enum class TSDFDirection : std::uint8_t
 {
@@ -118,7 +118,7 @@ inline void ComputeDirectionAngle(const Vector3f& normal, float* angles)
 	for (size_t i = 0; i < 3; i++)
 	{
 		angles[2 * i] = DirectionAngle(normal, TSDFDirection(2 * i));
-		angles[2 * i + 1] = M_PI - angles[2 * i]; // opposite direction -> opposite angle
+		angles[2 * i + 1] = float(M_PI) - angles[2 * i]; // opposite direction -> opposite angle
 	}
 }
 
@@ -127,13 +127,13 @@ inline float DirectionWeight(float angle)
 {
 	float width = direction_angle_threshold;
 
-	if (width <= M_PI_4 + 1e-6)
+	if (width <= float(M_PI_4) + 1e-6)
 	{
 		return 1 - MIN(angle / width, 1);
 	}
 
-	width /= M_PI_2;
-	angle /= M_PI_2;
+	width /= float(M_PI_2);
+	angle /= float(M_PI_2);
 	return 1 - MIN((MAX(angle, 1 - width) - (1 - width)) / (2 * width - 1), 1);
 }
 
