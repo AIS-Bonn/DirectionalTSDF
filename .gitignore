@@ -17,6 +17,7 @@ Files/Teddy/Frames
 Output/
 State/
 *.tags
+**/__pycache__/
 
 # QtCreator CMake
 CMakeLists.txt.user*
