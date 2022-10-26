@@ -510,22 +510,27 @@ void UIEngine::printPixelInformation(int x, int y)
 		1 - (c4.y - p_window.y - c1.y) / (c4.y - c1.y)
 		);
 
-	Vector2i imgSize = mainEngine->GetImageSize();
+	Vector2i imgSize;
+	if (freeviewActive)
+		imgSize = freeviewIntrinsics.imgSize;
+	else
+		imgSize = mainEngine->GetImageSize();
 	Vector2i idx_image(imgSize.width * p_image.x, imgSize.height * p_image.y);
 	if (idx_image.x < 0 or idx_image.x >= imgSize.width or idx_image.y < 0 or idx_image.y >= imgSize.height)
 		return;
 
-	Vector4f point(0, 0, 0, 0);
+	Vector4f point;
 	if (freeviewActive)
 	{
 		if (appData->internalSettings->deviceType == ITMLibSettings::DEVICE_CUDA)
 		{
 			ORUtils::Image<Vector4f> image(mainEngine->GetRenderStateFreeview()->raycastResult->noDims, MEMORYDEVICE_CPU);
 			image.SetFrom(mainEngine->GetRenderStateFreeview()->raycastResult, ORUtils::CUDA_TO_CPU);
-			point = image.GetData(MEMORYDEVICE_CPU)[mainEngine->GetImageSize().width * idx_image.y + idx_image.x];
+
+			point = image.GetData(MEMORYDEVICE_CPU)[imgSize.width * idx_image.y + idx_image.x];
 		}
 		else
-			point = mainEngine->GetRenderStateFreeview()->raycastResult->GetData(MEMORYDEVICE_CPU)[mainEngine->GetImageSize().width * idx_image.y + idx_image.x];
+			point = mainEngine->GetRenderStateFreeview()->raycastResult->GetData(MEMORYDEVICE_CPU)[imgSize.width * idx_image.y + idx_image.x];
 	}
 	else
 	{
@@ -533,10 +538,10 @@ void UIEngine::printPixelInformation(int x, int y)
 		{
 			ORUtils::Image<Vector4f> image(mainEngine->GetRenderState()->raycastResult->noDims, MEMORYDEVICE_CPU);
 			image.SetFrom(mainEngine->GetRenderState()->raycastResult, ORUtils::CUDA_TO_CPU);
-			point = image.GetData(MEMORYDEVICE_CPU)[mainEngine->GetImageSize().width * idx_image.y + idx_image.x];
+			point = image.GetData(MEMORYDEVICE_CPU)[imgSize.width * idx_image.y + idx_image.x];
 		}
 		else
-			point = mainEngine->GetRenderState()->raycastResult->GetData(MEMORYDEVICE_CPU)[mainEngine->GetImageSize().width * idx_image.y + idx_image.x];
+			point = mainEngine->GetRenderState()->raycastResult->GetData(MEMORYDEVICE_CPU)[imgSize.width * idx_image.y + idx_image.x];
 	}
 
 	if (point.w <= 0)

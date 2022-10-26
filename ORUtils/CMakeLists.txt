@@ -29,7 +29,7 @@ ELSE()
 ENDIF()
 ADD_LIBRARY(ITMLib::${targetname} ALIAS ${targetname})
 TARGET_SOURCES(${targetname} PRIVATE ${sources})
-TARGET_LINK_LIBRARIES(${targetname} ${PNG_LIBRARIES})
+INCLUDE(${PROJECT_SOURCE_DIR}/cmake/LinkPNG.cmake)
 
 TARGET_INCLUDE_DIRECTORIES(${targetname}
   PUBLIC
