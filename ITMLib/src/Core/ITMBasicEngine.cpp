@@ -189,20 +189,6 @@ ITMBasicEngine::ProcessFrame(ITMUChar4Image* rgbImage, ITMShortImage* rawDepthIm
 	this->timeStats.Reset();
 	ITMTimer timer;
 
-	if (view)
-	{
-#if SCALE_EXPERIMENT == 3
-		ITMRGBDCalib calibration;
-
-		char path[256];
-		sprintf(path, "dataset/calib_%02i.txt", this->framesProcessed);
-
-		readRGBDCalib(path, calibration);
-		view->Initialize(calibration, rgbImage->noDims, rawDepthImage->noDims, true);
-		trackingState->scaleFactor = 0;
-#endif
-	}
-
 	bool computeNormals = true;
 //	(
 //		settings->fusionParams.useWeighting or
@@ -238,11 +224,6 @@ ITMBasicEngine::ProcessFrame(ITMUChar4Image* rgbImage, ITMShortImage* rawDepthIm
 
 	if (!pose or settings->refinePoses)
 	{
-#ifdef SCALE_EXPERIMENT
-		// set to scale factor estimate for current sensor
-		trackingState->scaleFactor = trackingState->scaleFactors[this->framesProcessed % SCALE_EXPERIMENT_NUM_SENSORS];
-#endif
-
 		// track pose (or refine, if pose given)
 		if (trackingActive) trackingController->Track(trackingState, view);
 
@@ -250,26 +231,6 @@ ITMBasicEngine::ProcessFrame(ITMUChar4Image* rgbImage, ITMShortImage* rawDepthIm
 		if (trackingState->scaleFactor != 0.0f)
 			lowLevelEngine->RescaleDepthImage(view->depth,
 			                                  std::exp(trackingState->scaleFactor - trackingState->scaleFactors[0]));
-
-#ifdef SCALE_EXPERIMENT
-		if (this->framesProcessed % SCALE_EXPERIMENT_NUM_SENSORS == 0)
-		{
-			trackingState->scaleFactors[this->framesProcessed % SCALE_EXPERIMENT_NUM_SENSORS] = trackingState->scaleFactor;
-			trackingState->scaleFactor = 0;
-		}
-		else
-		{
-			trackingState->scaleFactor = trackingState->scaleFactor - trackingState->scaleFactors[0]; // use sensor 0 to remove bias (fix to 1, compensate rest)
-			trackingState->scaleFactors[this->framesProcessed % SCALE_EXPERIMENT_NUM_SENSORS] = trackingState->scaleFactor;
-		}
-
-//		printf("%f, %f, %f, %f, %f\n",
-//		       1.0,
-//		       std::exp(trackingState->scaleFactors[1]),
-//		       std::exp(trackingState->scaleFactors[2]),
-//		       std::exp(trackingState->scaleFactors[3]),
-//		       std::exp(trackingState->scaleFactors[4]));
-#endif
 	}
 
 	if (trackingState->trackerResult == ITMTrackingState::TRACKING_GOOD) consecutiveGoodFrames++;

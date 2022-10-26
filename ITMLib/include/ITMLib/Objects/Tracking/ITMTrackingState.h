@@ -39,8 +39,6 @@ public:
 	/// Current scale factor for depth camera
 	float scaleFactor = 0;
 
-	float scaleFactors[SCALE_EXPERIMENT_NUM_SENSORS];
-
 	float f_depth = 0;
 	float f_rgb = 0;
 

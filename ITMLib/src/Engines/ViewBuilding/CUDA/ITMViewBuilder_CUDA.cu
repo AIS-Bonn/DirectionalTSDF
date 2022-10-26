@@ -71,35 +71,6 @@ void ITMViewBuilder_CUDA::UpdateView(ITMView** view_ptr, ITMUChar4Image* rgbImag
 
 	Vector2f affine = view->calib.disparityCalib.GetParams();
 
-#if SCALE_EXPERIMENT == 2
-//	float scales[] = {1, 1.1, 0.95, 1.05, 0.9};
-	float scales[] = {1, 1.05, 0.975, 1.025, 0.95};
-
-	affine.x /= scales[count % SCALE_EXPERIMENT_NUM_SENSORS];
-
-	// change scaling every Nth frame
-	count++;
-	if (count > 0 and count % 20 == 5)
-	{
-		// change scaling
-//		affine.x /= 1.1;
-
-		// cut off part of image
-//		this->shortImage->UpdateHostFromDevice();
-//		short* data = this->shortImage->GetData(MEMORYDEVICE_CPU);
-//		for (int x = 0; x < 300; x++)
-//		{
-//			for (int y = 0; y < this->shortImage->noDims.height; y++)
-//			{
-//				int idx = PixelCoordsToIndex(x, y, this->shortImage->noDims);
-//				data[idx] = 0;
-//			}
-//		}
-//		this->shortImage->UpdateDeviceFromHost();
-	}
-#endif
-
-
 	switch (view->calib.disparityCalib.GetType())
 	{
 		case ITMDisparityCalib::TRAFO_KINECT:
