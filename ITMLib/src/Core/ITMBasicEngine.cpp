@@ -214,12 +214,6 @@ ITMBasicEngine::ProcessFrame(ITMUChar4Image* rgbImage, ITMShortImage* rawDepthIm
 	{
 		trackingState->trackerResult = ITMTrackingState::TRACKING_GOOD;
 		trackingState->pose_d->SetFrom(pose);
-//		if (rawDepthImage->noDims.width == 2000)
-//		{
-//			Vector3f trans, rot;
-//			pose->GetParams(trans, rot);
-//			trackingState->pose_d->SetFrom(trans * (view->calib.disparityCalib.GetParams().x / 0.001), rot);
-//		}
 	}
 
 	if (!pose or settings->refinePoses)
@@ -229,8 +223,7 @@ ITMBasicEngine::ProcessFrame(ITMUChar4Image* rgbImage, ITMShortImage* rawDepthIm
 
 		// Rescale input according to computed scale factor
 		if (trackingState->scaleFactor != 0.0f)
-			lowLevelEngine->RescaleDepthImage(view->depth,
-			                                  std::exp(trackingState->scaleFactor - trackingState->scaleFactors[0]));
+			lowLevelEngine->RescaleDepthImage(view->depth, std::exp(trackingState->scaleFactor));
 	}
 
 	if (trackingState->trackerResult == ITMTrackingState::TRACKING_GOOD) consecutiveGoodFrames++;
