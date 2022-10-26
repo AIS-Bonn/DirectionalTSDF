@@ -36,7 +36,7 @@ IF (WITH_CUDA)
   IF (MSVC_IDE)
     OPTION(ENABLE_CUDA_DEBUGGING "Enable CUDA debugging?" OFF)
     IF (ENABLE_CUDA_DEBUGGING)
-      SET(ITM_CUDA_NVCC_FLAGS -G; ${ITM_CUDA_NVCC_FLAGS})
+      SET(ITM_CUDA_NVCC_FLAGS "-G ${ITM_CUDA_NVCC_FLAGS}")
     ENDIF ()
   ENDIF ()
 
@@ -46,7 +46,7 @@ IF (WITH_CUDA)
     # the host flag -std=c++11 is automatically propagated to nvcc. Manually setting it prevents
     # the project from building.
     IF (${CMAKE_VERSION} VERSION_LESS 3.5)
-      SET(ITM_CUDA_NVCC_FLAGS -std=c++14; ${ITM_CUDA_NVCC_FLAGS})
+      SET(ITM_CUDA_NVCC_FLAGS "-std=c++14 ${ITM_CUDA_NVCC_FLAGS}")
     ENDIF ()
   ENDIF ()
 
