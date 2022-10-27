@@ -8,7 +8,6 @@
 #include <ORUtils/MathUtils.h>
 #include <ORUtils/PlatformIndependence.h>
 
-#include <vector_types.h>
 namespace ORUtils {
 	//////////////////////////////////////////////////////////////////////////
 	//						Basic Vector Structure

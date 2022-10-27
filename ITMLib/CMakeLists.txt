@@ -4,6 +4,8 @@
 
 SET(targetname ITMLib)
 
+FIND_PACKAGE(Eigen3 REQUIRED)
+
 INCLUDE(${PROJECT_SOURCE_DIR}/cmake/UseCUDA.cmake)
 INCLUDE(${PROJECT_SOURCE_DIR}/cmake/UseOpenMP.cmake)
 
@@ -37,7 +39,7 @@ ENDIF ()
 ADD_LIBRARY(ITMLib::${targetname} ALIAS ${targetname})
 
 TARGET_SOURCES(${targetname} PRIVATE ${sources})
-TARGET_LINK_LIBRARIES(${targetname} ITMLib::ORUtils ITMLib::FernRelocLib yaml::yaml stdgpu::stdgpu stdc++fs)
+TARGET_LINK_LIBRARIES(${targetname} ITMLib::ORUtils ITMLib::FernRelocLib yaml::yaml stdgpu::stdgpu stdc++fs Eigen3::Eigen)
 
 TARGET_COMPILE_OPTIONS(${targetname} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:
   ${ITM_CUDA_NVCC_FLAGS}
@@ -47,7 +49,6 @@ TARGET_INCLUDE_DIRECTORIES(${targetname}
   PUBLIC
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/${CMAKE_INSTALL_INCLUDEDIR}>
-  $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/External/eigen>
   $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/External/Sophus>
   PRIVATE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
@@ -71,6 +72,5 @@ INSTALL(EXPORT ${targetname}Targets
   NAMESPACE ITMLib::
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ITMLib
   )
-
 
 ADD_SUBDIRECTORY(test)

@@ -57,7 +57,7 @@ struct alignas(16) ITMVoxel_f_rgb
 /** \brief
     Stores the information of a single voxel in the volume
 */
-struct __align__(16) ITMVoxel_s_rgb
+struct alignas(16) ITMVoxel_s_rgb
 {
 	typedef ushort WeightType;
 
@@ -100,7 +100,7 @@ struct __align__(16) ITMVoxel_s_rgb
 	}
 };
 
-struct __align__(4) ITMVoxel_s
+struct alignas(4) ITMVoxel_s
 {
 	typedef ushort WeightType;
 
@@ -137,7 +137,7 @@ struct __align__(4) ITMVoxel_s
 	}
 };
 
-struct __align__(8) ITMVoxel_f
+struct alignas(8) ITMVoxel_f
 {
 	typedef float WeightType;
 
