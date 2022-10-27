@@ -1,0 +1,15 @@
+name: dtsdf 
+channels: 
+  - conda-forge
+dependencies:
+  - cudatoolkit-dev=11.4
+  - clang=10.0
+  - cmake=3.18
+  - eigen
+  - freeglut
+  - zlib
+  - libpng
+  - libglu
+variables:
+  CC: clang
+  CXX: clang++
