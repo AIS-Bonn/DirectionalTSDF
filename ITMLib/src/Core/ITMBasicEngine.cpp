@@ -339,7 +339,8 @@ ITMRenderError ITMBasicEngine::ComputeICPError()
 	                                                               &(view->calib.intrinsics_d), renderState_live);
 	visualisationEngine->CreateExpectedDepths(scene, trackingState->pose_d, &(view->calib.intrinsics_d),
 	                                          renderState_live);
-	visualisationEngine->CreateICPMaps(scene, view, trackingState, renderState_live);
+	visualisationEngine->CreateICPMaps(scene, view->calib.intrinsics_d, trackingState->pose_d, trackingState->pointCloud, renderState_live);
+	trackingState->pose_pointCloud = trackingState->pose_d;
 //	visualisationEngine->RenderTrackingError(renderState_live->renderedImage, trackingState, view);
 
 	view->depth->UpdateHostFromDevice();
@@ -415,7 +416,8 @@ ITMRenderError ITMBasicEngine::ComputePhotometricError()
 	                                                               &(view->calib.intrinsics_d), renderState_live);
 	visualisationEngine->CreateExpectedDepths(scene, trackingState->pose_d, &(view->calib.intrinsics_d),
 	                                          renderState_live);
-	visualisationEngine->CreateICPMaps(scene, view, trackingState, renderState_live);
+	visualisationEngine->CreateICPMaps(scene, view->calib.intrinsics_d, trackingState->pose_d, trackingState->pointCloud, renderState_live);
+	trackingState->pose_pointCloud = trackingState->pose_d;
 	visualisationEngine->RenderImage(scene, trackingState->pose_d, &(view->calib.intrinsics_d),
 	                                 renderState_live, renderState_live->renderedImage,
 	                                 IITMVisualisationEngine::RENDER_COLOUR);
@@ -554,7 +556,8 @@ void ITMBasicEngine::GetImage(ITMUChar4Image* out, const GetImageType getImageTy
 			renderState_live->renderedImage->ChangeDims(view->calib.intrinsics_d.imgSize);
 			visualisationEngine->CreateExpectedDepths(scene, trackingState->pose_d, &(view->calib.intrinsics_d),
 			                                          renderState_live);
-			visualisationEngine->CreateICPMaps(scene, view, trackingState, renderState_live);
+			visualisationEngine->CreateICPMaps(scene, view->calib.intrinsics_d, trackingState->pose_d, trackingState->pointCloud, renderState_live);
+			trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
 			visualisationEngine->RenderTrackingError(renderState_live->renderedImage, trackingState, view);
 			out->ChangeDims(renderState_live->renderedImage->noDims);
 			if (settings->deviceType == ITMLibSettings::DEVICE_CUDA)
@@ -589,6 +592,15 @@ void ITMBasicEngine::GetImage(ITMUChar4Image* out, const GetImageType getImageTy
 		case ITMMainEngine::InfiniTAM_IMAGE_UNKNOWN:
 			break;
 	}
+}
+
+void ITMBasicEngine::GetPointCloud(ITMPointCloud* out, const ORUtils::SE3Pose* pose,
+                                   const ITMIntrinsics* intrinsics, bool normalsFromSDF)
+{
+	ORUtils::SE3Pose pose_rgb(view->calib.trafo_rgb_to_depth.calib_inv * pose->GetM());
+	visualisationEngine->CreateExpectedDepths(scene, &pose_rgb, &(view->calib.intrinsics_rgb), renderState_live);
+	visualisationEngine->CreatePointCloud(scene, view->calib.intrinsics_rgb, &pose_rgb, out,
+	                                      renderState_live, settings->skipPoints);
 }
 
 void ITMBasicEngine::turnOnIntegration()

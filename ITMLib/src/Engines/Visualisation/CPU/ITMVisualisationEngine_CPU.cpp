@@ -245,22 +245,20 @@ void ITMVisualisationEngine_CPU::RenderImage(const Scene* scene,
 	}
 }
 
-void ITMVisualisationEngine_CPU::CreatePointCloud(const Scene* scene,
-                                                  const ITMView* view,
-                                                  ITMTrackingState* trackingState,
+void ITMVisualisationEngine_CPU::CreatePointCloud(const Scene* scene, const ITMIntrinsics intrinsics,
+                                                  const ORUtils::SE3Pose* pose, ITMPointCloud* pointCloud,
                                                   ITMRenderState* renderState, bool skipPoints) const
 {
 	Vector2i imgSize = renderState->raycastResult->noDims;
-	Matrix4f invM = trackingState->pose_d->GetInvM() * view->calib.trafo_rgb_to_depth.calib;
+	Matrix4f invM = pose->GetInvM();
 
 	// this one is generally done for the colour tracker, so yes, update
 	// the list of visible blocks if possible
-	GenericRaycast(scene, imgSize, invM, view->calib.intrinsics_rgb.projectionParamsSimple.all, renderState, true);
-	trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
+	GenericRaycast(scene, imgSize, invM, intrinsics.projectionParamsSimple.all, renderState, true);
 
-	trackingState->pointCloud->noTotalPoints = RenderPointCloud(
-		trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CPU),
-		trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CPU),
+	pointCloud->noTotalPoints = RenderPointCloud(
+		pointCloud->locations->GetData(MEMORYDEVICE_CPU),
+		pointCloud->colours->GetData(MEMORYDEVICE_CPU),
 		renderState->raycastResult->GetData(MEMORYDEVICE_CPU),
 		GetRenderingTSDF(scene)->toCPU()->getMap(),
 		skipPoints,
@@ -271,22 +269,19 @@ void ITMVisualisationEngine_CPU::CreatePointCloud(const Scene* scene,
 }
 
 
-void ITMVisualisationEngine_CPU::CreateICPMaps(const Scene* scene,
-                                               const ITMView* view,
-                                               ITMTrackingState* trackingState,
-                                               ITMRenderState* renderState) const
+void ITMVisualisationEngine_CPU::CreateICPMaps(const Scene* scene, const ITMIntrinsics intrinsics, const ORUtils::SE3Pose* pose,
+                                               ITMPointCloud* pointCloud, ITMRenderState* renderState) const
 {
 	Vector2i imgSize = renderState->raycastResult->noDims;
-	Matrix4f invM = trackingState->pose_d->GetInvM();
+	Matrix4f invM = pose->GetInvM();
 
 	// this one is generally done for the ICP tracker, so yes, update
 	// the list of visible blocks if possible
-	GenericRaycast(scene, imgSize, invM, view->calib.intrinsics_d.projectionParamsSimple.all, renderState, true);
-	trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
+	GenericRaycast(scene, imgSize, invM, intrinsics.projectionParamsSimple.all, renderState, true);
 
 	Vector3f lightSource = Vector3f(invM.getColumn(3)) / scene->sceneParams->voxelSize;
-	trackingState->pointCloud->locations->SetFrom(renderState->raycastResult, ORUtils::CPU_TO_CPU);
-	trackingState->pointCloud->normals->SetFrom(renderState->raycastNormals, ORUtils::CPU_TO_CPU);
+	pointCloud->locations->SetFrom(renderState->raycastResult, ORUtils::CPU_TO_CPU);
+	pointCloud->normals->SetFrom(renderState->raycastNormals, ORUtils::CPU_TO_CPU);
 }
 
 void ITMVisualisationEngine_CPU::ForwardRender(const Scene* scene,

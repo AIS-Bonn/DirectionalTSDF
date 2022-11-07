@@ -304,21 +304,18 @@ void ITMVisualisationEngine_CUDA::ForwardRender(const Scene* scene,
 	}
 }
 
-void ITMVisualisationEngine_CUDA::CreatePointCloud(const Scene* scene,
-                                                   const ITMView* view,
-                                                   ITMTrackingState* trackingState,
-                                                   ITMRenderState* renderState,
-                                                   bool skipPoints) const
+void ITMVisualisationEngine_CUDA::CreatePointCloud(const Scene* scene, const ITMIntrinsics intrinsics,
+                                                   const ORUtils::SE3Pose* pose, ITMPointCloud* pointCloud,
+                                                   ITMRenderState* renderState, bool skipPoints) const
 {
 	Vector2i imgSize = renderState->raycastResult->noDims;
-	Matrix4f invM = trackingState->pose_d->GetInvM();
+	Matrix4f invM = pose->GetInvM();
 
-	GenericRaycast(scene, imgSize, invM, view->calib.intrinsics_rgb.projectionParamsSimple.all, renderState, true);
-	trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
+	GenericRaycast(scene, imgSize, invM, intrinsics.projectionParamsSimple.all, renderState, true);
 
 	ORcudaSafeCall(cudaMemsetAsync(noTotalPoints_device, 0, sizeof(uint)));
 
-	Vector4f* colours = trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CUDA);
+	Vector4f* colours = pointCloud->colours->GetData(MEMORYDEVICE_CUDA);
 	Vector4f* pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CUDA);
 
 	dim3 cudaBlockSize(8, 8);
@@ -329,11 +326,11 @@ void ITMVisualisationEngine_CUDA::CreatePointCloud(const Scene* scene,
 		scene->sceneParams->voxelSize, imgSize);
 	ORcudaKernelCheck;
 
-	trackingState->pointCloud->locations->SetFrom(renderState->raycastResult, ORUtils::CUDA_TO_CUDA);
-	trackingState->pointCloud->normals->SetFrom(renderState->raycastNormals, ORUtils::CUDA_TO_CUDA);
+	pointCloud->locations->SetFrom(renderState->raycastResult, ORUtils::CUDA_TO_CUDA);
+	pointCloud->normals->SetFrom(renderState->raycastNormals, ORUtils::CUDA_TO_CUDA);
 
 	ORcudaSafeCall(
-		cudaMemcpy(&trackingState->pointCloud->noTotalPoints, noTotalPoints_device, sizeof(uint), cudaMemcpyDeviceToHost));
+		cudaMemcpy(&pointCloud->noTotalPoints, noTotalPoints_device, sizeof(uint), cudaMemcpyDeviceToHost));
 }
 
 void ITMVisualisationEngine_CUDA::FindSurface(const Scene* scene,
@@ -346,17 +343,17 @@ void ITMVisualisationEngine_CUDA::FindSurface(const Scene* scene,
 }
 
 void ITMVisualisationEngine_CUDA::CreateICPMaps(const Scene* scene,
-                                                const ITMView* view,
-                                                ITMTrackingState* trackingState,
+                                                const ITMIntrinsics intrinsics,
+                                                const ORUtils::SE3Pose* pose,
+                                                ITMPointCloud* pointCloud,
                                                 ITMRenderState* renderState) const
 {
 	Vector2i imgSize = renderState->raycastResult->noDims;
-	Matrix4f invM = trackingState->pose_d->GetInvM();
+	Matrix4f invM = pose->GetInvM();
 
-	GenericRaycast(scene, imgSize, invM, view->calib.intrinsics_d.projectionParamsSimple.all, renderState, true);
-	trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
-	trackingState->pointCloud->locations->SetFrom(renderState->raycastResult, ORUtils::CUDA_TO_CUDA);
-	trackingState->pointCloud->normals->SetFrom(renderState->raycastNormals, ORUtils::CUDA_TO_CUDA);
+	GenericRaycast(scene, imgSize, invM, intrinsics.projectionParamsSimple.all, renderState, true);
+	pointCloud->locations->SetFrom(renderState->raycastResult, ORUtils::CUDA_TO_CUDA);
+	pointCloud->normals->SetFrom(renderState->raycastNormals, ORUtils::CUDA_TO_CUDA);
 }
 
 void ITMVisualisationEngine_CUDA::RenderTrackingError(ITMUChar4Image* outRendering,

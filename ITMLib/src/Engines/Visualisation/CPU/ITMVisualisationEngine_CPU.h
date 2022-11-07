@@ -24,11 +24,11 @@ public:
 	                 IITMVisualisationEngine::RenderImageType type,
 	                 IITMVisualisationEngine::RenderRaycastSelection raycastType) const override;
 
-	void CreatePointCloud(const Scene* scene, const ITMView* view,
-	                      ITMTrackingState* trackingState, ITMRenderState* renderState, bool skipPoints) const override;
+	void CreatePointCloud(const Scene* scene, ITMIntrinsics intrinsics, const ORUtils::SE3Pose* pose,
+	                      ITMPointCloud* pointCloud, ITMRenderState* renderState, bool skipPoints) const override;
 
-	void CreateICPMaps(const Scene* scene, const ITMView* view,
-	                   ITMTrackingState* trackingState, ITMRenderState* renderState) const override;
+	void CreateICPMaps(const Scene* scene, ITMIntrinsics intrinsics, const ORUtils::SE3Pose* pose,
+	                   ITMPointCloud* pointCloud, ITMRenderState* renderState) const override;
 
 	void ForwardRender(const Scene* scene, const ITMView* view,
 	                   ITMTrackingState* trackingState, ITMRenderState* renderState) const override;

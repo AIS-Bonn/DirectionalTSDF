@@ -98,14 +98,14 @@ public:
 	/** Create a point cloud as required by the
 	ITMLib::Engine::ITMColorTracker classes.
 	*/
-	virtual void CreatePointCloud(const Scene* scene, const ITMView* view, ITMTrackingState* trackingState,
-	                              ITMRenderState* renderState, bool skipPoints) const = 0;
+	virtual void CreatePointCloud(const Scene* scene, ITMIntrinsics intrinsics, const ORUtils::SE3Pose* pose,
+	                              ITMPointCloud* pointCloud, ITMRenderState* renderState, bool skipPoints) const = 0;
 
 	/** Create an image of reference points and normals as
 	required by the ITMLib::Engine::ITMICPTracker classes.
 	*/
-	virtual void CreateICPMaps(const Scene* scene, const ITMView* view, ITMTrackingState* trackingState,
-	                           ITMRenderState* renderState) const = 0;
+	virtual void CreateICPMaps(const Scene* scene, ITMIntrinsics intrinsics, const ORUtils::SE3Pose* pose,
+	                           ITMPointCloud* pointCloud, ITMRenderState* renderState) const = 0;
 
 	/** Create an image of reference points and normals as
 	required by the ITMLib::Engine::ITMICPTracker classes.

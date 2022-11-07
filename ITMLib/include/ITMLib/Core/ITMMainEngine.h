@@ -96,6 +96,9 @@ public:
 	GetImage(ITMUChar4Image* out, const GetImageType getImageType, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics,
 	         bool normalsFromSDF) = 0;
 
+	virtual void
+	GetPointCloud(ITMPointCloud* out, const ORUtils::SE3Pose* pose, const ITMIntrinsics* intrinsics, bool normalsFromSDF) = 0;
+
 	/// Extracts a mesh from the current scene and saves it to the model file specified by the file name
 	virtual void SaveSceneToMesh(const char* fileName)
 	{};

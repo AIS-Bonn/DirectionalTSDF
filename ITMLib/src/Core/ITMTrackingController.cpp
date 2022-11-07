@@ -32,7 +32,9 @@ void ITMTrackingController::Prepare(ITMTrackingState* trackingState, const Scene
 	{
 		ORUtils::SE3Pose pose_rgb(view->calib.trafo_rgb_to_depth.calib_inv * trackingState->pose_d->GetM());
 		visualisationEngine->CreateExpectedDepths(scene, &pose_rgb, &(view->calib.intrinsics_rgb), renderState);
-		visualisationEngine->CreatePointCloud(scene, view, trackingState, renderState, settings->skipPoints);
+		visualisationEngine->CreatePointCloud(scene, view->calib.intrinsics_rgb, &pose_rgb, trackingState->pointCloud,
+		                                      renderState, settings->skipPoints);
+		trackingState->pose_pointCloud = trackingState->pose_d;
 		trackingState->age_pointCloud = 0;
 		trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
 	} else
@@ -41,7 +43,8 @@ void ITMTrackingController::Prepare(ITMTrackingState* trackingState, const Scene
 
 		if (requiresFullRendering)
 		{
-			visualisationEngine->CreateICPMaps(scene, view, trackingState, renderState);
+			visualisationEngine->CreateICPMaps(scene, view->calib.intrinsics_d, trackingState->pose_d, trackingState->pointCloud, renderState);
+			trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
 			trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
 			if (trackingState->age_pointCloud == -1) trackingState->age_pointCloud = -2;
 			else trackingState->age_pointCloud = 0;

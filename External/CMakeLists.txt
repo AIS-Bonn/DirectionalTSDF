@@ -4,6 +4,7 @@ include(ExternalProject)
 
 
 set(YAML_CPP_BUILD_TESTS OFF CACHE INTERNAL "")
+set(YAML_CPP_BUILD_TOOLS OFF CACHE INTERNAL "")
 add_subdirectory(yaml-cpp)
 
 # Exclude the examples from the build
