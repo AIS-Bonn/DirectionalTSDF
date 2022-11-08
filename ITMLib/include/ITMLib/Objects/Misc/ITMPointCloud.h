@@ -23,6 +23,15 @@ public:
 		normals = new ORUtils::Image<Vector4f>(imgSize, memoryType);
 	}
 
+	explicit ITMPointCloud(Vector2i imgSize, bool allocate_CPU, bool allocate_CUDA)
+	{
+		this->noTotalPoints = 0;
+
+		locations = new ORUtils::Image<Vector4f>(imgSize, allocate_CPU, allocate_CUDA);
+		colours = new ORUtils::Image<Vector4f>(imgSize, allocate_CPU, allocate_CUDA);
+		normals = new ORUtils::Image<Vector4f>(imgSize, allocate_CPU, allocate_CUDA);
+	}
+
 	void Resize(const Vector2i size)
 	{
 		locations->ChangeDims(size);
