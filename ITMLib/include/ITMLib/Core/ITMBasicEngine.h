@@ -5,6 +5,7 @@
 #include <ITMLib/Core/ITMDenseMapper.h>
 #include <ITMLib/Core/ITMMainEngine.h>
 #include <ITMLib/Core/ITMTrackingController.h>
+#include <ITMLib/Engines/ITMEvaluationEngine.h>
 #include <ITMLib/Engines/ITMLowLevelEngine.h>
 #include <ITMLib/Engines/ITMMeshingEngine.h>
 #include <ITMLib/Engines/ITMViewBuilder.h>
@@ -25,6 +26,7 @@ private:
 
 	ITMLowLevelEngine* lowLevelEngine;
 	ITMVisualisationEngine* visualisationEngine;
+	ITMEvaluationEngine* evaluationEngine;
 
 	ITMMeshingEngine* meshingEngine;
 

@@ -11,3 +11,5 @@
 // 0 render using fused colors
 // 1 render colors according to direction weight (debug)
 #define RENDER_DIRECTION_COLORS 0
+
+#define MAXFLOAT ((float)3.40282346638528860e+38)

@@ -12,6 +12,7 @@
 #include <ITMLib/Engines/ITMMeshingEngineFactory.h>
 #include <ITMLib/Engines/ITMViewBuilderFactory.h>
 #include <ITMLib/Engines/ITMVisualisationEngineFactory.h>
+#include <Engines/Evaluation/ITMEvaluationEngineFactory.h>
 #include <ITMLib/Trackers/ITMTrackerFactory.h>
 #include <Utils/ITMTimer.h>
 
@@ -33,6 +34,7 @@ ITMBasicEngine::ITMBasicEngine(const std::shared_ptr<const ITMLibSettings>& sett
 
 	const ITMLibSettings::DeviceType deviceType = settings->deviceType;
 
+	evaluationEngine = ITMEvaluationEngineFactory::MakeEngine(deviceType);
 	lowLevelEngine = ITMLowLevelEngineFactory::MakeLowLevelEngine(deviceType);
 	viewBuilder = ITMViewBuilderFactory::MakeViewBuilder(calib, deviceType);
 	visualisationEngine = ITMVisualisationEngineFactory::MakeVisualisationEngine(deviceType, settings);
@@ -339,73 +341,17 @@ ITMRenderError ITMBasicEngine::ComputeICPError()
 	                                                               &(view->calib.intrinsics_d), renderState_live);
 	visualisationEngine->CreateExpectedDepths(scene, trackingState->pose_d, &(view->calib.intrinsics_d),
 	                                          renderState_live);
-	visualisationEngine->CreateICPMaps(scene, view->calib.intrinsics_d, trackingState->pose_d, trackingState->pointCloud, renderState_live);
-	trackingState->pose_pointCloud = trackingState->pose_d;
+	visualisationEngine->CreateICPMaps(scene, view->calib.intrinsics_d, trackingState->pose_d, trackingState->pointCloud,
+	                                   renderState_live);
+	trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
 //	visualisationEngine->RenderTrackingError(renderState_live->renderedImage, trackingState, view);
 
-	view->depth->UpdateHostFromDevice();
-	ORUtils::Image<ORUtils::Vector4<float>> locations(trackingState->pointCloud->locations->noDims, true, false);
-	ORUtils::Image<ORUtils::Vector4<float>> normals(trackingState->pointCloud->normals->noDims, true, false);
+	const Matrix4f depthImageInvPose = trackingState->pose_d->GetInvM();
+	const Matrix4f sceneRenderingPose = trackingState->pose_pointCloud->GetM();
 
-	ORcudaSafeCall(
-		cudaMemcpy(locations.GetData(MEMORYDEVICE_CPU), trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CUDA),
-		           locations.dataSize * sizeof(Vector4f), cudaMemcpyDeviceToHost));
-	ORcudaSafeCall(
-		cudaMemcpy(normals.GetData(MEMORYDEVICE_CPU), trackingState->pointCloud->normals->GetData(MEMORYDEVICE_CUDA),
-		           normals.dataSize * sizeof(Vector4f), cudaMemcpyDeviceToHost));
-
-	trackingState->pointCloud->locations->UpdateHostFromDevice();
-	trackingState->pointCloud->normals->UpdateHostFromDevice();
-
-	float* depth = view->depth->GetData(MEMORYDEVICE_CPU);
-
-	const Vector4f* pointsRay = locations.GetData(MEMORYDEVICE_CPU);
-	const Vector4f* normalsRay = normals.GetData(MEMORYDEVICE_CPU);
-	const Matrix4f& depthImageInvPose = trackingState->pose_d->GetInvM();
-	const Matrix4f& sceneRenderingPose = trackingState->pose_pointCloud->GetM();
-	Vector2i imgSize = view->calib.intrinsics_d.imgSize;
-
-	std::vector<float> errors, icpErrors;
-	for (int x = 0; x < imgSize.width; x++)
-		for (int y = 0; y < imgSize.height; y++)
-		{
-			float A[6];
-			float error, icpError;
-			float weight;
-			bool isValidPoint = computePerPointGH_Depth_Ab<false, false>(
-				A, icpError, weight, x, y,
-				depthImageInvPose, sceneRenderingPose,
-				depth,
-				view->calib.intrinsics_d.imgSize, view->calib.intrinsics_d.projectionParamsSimple.all,
-				view->calib.intrinsics_d.imgSize, view->calib.intrinsics_d.projectionParamsSimple.all,
-				pointsRay, normalsRay, 100.0);
-
-			isValidPoint &= computePerPointError<false, false>(
-				error, x, y, depth,
-				view->calib.intrinsics_d.imgSize, view->calib.intrinsics_d.projectionParamsSimple.all,
-				view->calib.intrinsics_d.imgSize, view->calib.intrinsics_d.projectionParamsSimple.all,
-				depthImageInvPose, sceneRenderingPose,
-				pointsRay);
-
-			if (!isValidPoint)
-				continue;
-
-			errors.push_back(std::fabs(error));
-			icpErrors.push_back(std::fabs(icpError));
-		}
-
-	ITMRenderError result;
-	result.MAE = thrust::reduce(errors.begin(), errors.end(), (float) 0, thrust::plus<float>()) / errors.size();
-	result.RMSE = std::sqrt(thrust::transform_reduce(errors.begin(), errors.end(),
-	                                                 square<float>(),
-	                                                 (float) 0,
-	                                                 thrust::plus<float>()) / errors.size());
-	result.icpMAE =
-		thrust::reduce(icpErrors.begin(), icpErrors.end(), (float) 0, thrust::plus<float>()) / icpErrors.size();
-	result.icpRMSE = std::sqrt(thrust::transform_reduce(icpErrors.begin(), icpErrors.end(),
-	                                                    square<float>(),
-	                                                    (float) 0,
-	                                                    thrust::plus<float>()) / icpErrors.size());
+	ITMRenderError result = evaluationEngine->ComputeICPError(
+		*view->depth, *trackingState->pointCloud->locations, *trackingState->pointCloud->normals,
+		depthImageInvPose, sceneRenderingPose, view->calib.intrinsics_d);
 
 	return result;
 }
@@ -413,86 +359,22 @@ ITMRenderError ITMBasicEngine::ComputeICPError()
 ITMRenderError ITMBasicEngine::ComputePhotometricError()
 {
 	denseMapper->GetSceneReconstructionEngine()->FindVisibleBlocks(scene, trackingState->pose_d,
-	                                                               &(view->calib.intrinsics_d), renderState_live);
-	visualisationEngine->CreateExpectedDepths(scene, trackingState->pose_d, &(view->calib.intrinsics_d),
+	                                                               &(view->calib.intrinsics_rgb), renderState_live);
+	visualisationEngine->CreateExpectedDepths(scene, trackingState->pose_d, &(view->calib.intrinsics_rgb),
 	                                          renderState_live);
-	visualisationEngine->CreateICPMaps(scene, view->calib.intrinsics_d, trackingState->pose_d, trackingState->pointCloud, renderState_live);
-	trackingState->pose_pointCloud = trackingState->pose_d;
-	visualisationEngine->RenderImage(scene, trackingState->pose_d, &(view->calib.intrinsics_d),
+	visualisationEngine->CreateICPMaps(scene, view->calib.intrinsics_rgb, trackingState->pose_d, trackingState->pointCloud,
+	                                   renderState_live);
+	trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
+	visualisationEngine->RenderImage(scene, trackingState->pose_d, &(view->calib.intrinsics_rgb),
 	                                 renderState_live, renderState_live->renderedImage,
 	                                 IITMVisualisationEngine::RENDER_COLOUR);
 
-	view->rgb->UpdateHostFromDevice();
+	const Matrix4f depthImageInvPose = trackingState->pose_d->GetInvM();
+	const Matrix4f sceneRenderingPose = trackingState->pose_pointCloud->GetM();
 
-	ORUtils::Image<ORUtils::Vector4<float>> locations(trackingState->pointCloud->locations->noDims, true, false);
-	ORcudaSafeCall(
-		cudaMemcpy(locations.GetData(MEMORYDEVICE_CPU), trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CUDA),
-		           locations.dataSize * sizeof(Vector4f), cudaMemcpyDeviceToHost));
-	trackingState->pointCloud->normals->UpdateHostFromDevice();
-	const Vector4f* pointsRay = locations.GetData(MEMORYDEVICE_CPU);
-
-	ORUtils::Image<Vector4u> colors(view->rgb->noDims, true, false);
-
-	ORcudaSafeCall(
-		cudaMemcpy(colors.GetData(MEMORYDEVICE_CPU), renderState_live->renderedImage->GetData(MEMORYDEVICE_CUDA),
-		           colors.dataSize * sizeof(Vector4u), cudaMemcpyDeviceToHost));
-
-
-	const Vector4u* colorsImage = view->rgb->GetData(MEMORYDEVICE_CPU);
-
-	const Vector4u* colorsRender = colors.GetData(MEMORYDEVICE_CPU);
-	const Matrix4f& depthImageInvPose = trackingState->pose_d->GetInvM();
-	const Matrix4f& sceneRenderingPose = trackingState->pose_pointCloud->GetM();
-	Vector2i imgSize = view->calib.intrinsics_d.imgSize;
-
-	static int count = 0;
-
-//	ITMUChar4Image debugImg(view->rgb->noDims, true, false);
-	std::vector<float> errors, icpErrors;
-	for (int x = 0; x < imgSize.width; x++)
-		for (int y = 0; y < imgSize.height; y++)
-		{
-			float error;
-
-			int idx = PixelCoordsToIndex(x, y, view->calib.intrinsics_rgb.imgSize);
-
-			float intensityImage =
-				(0.299f * colorsImage[idx].x + 0.587f * colorsImage[idx].y + 0.114f * colorsImage[idx].z) / 255.f;
-			float intensityRender =
-				(0.299f * colorsRender[idx].x + 0.587f * colorsRender[idx].y + 0.114f * colorsRender[idx].z) / 255.f;
-
-			error = std::fabs(intensityImage - intensityRender);
-
-//			float b = MIN(fabs(error / 0.5), 1); // normalize
-//			debugImg.GetData(MEMORYDEVICE_CPU)[idx] = Vector4f(HSVtoRGB((1 - b) * 240, 1, 1) * 255, 255).toUChar();
-
-			bool isValidPoint = intensityRender > 0 and pointsRay[idx].w >= 0;
-			if (!isValidPoint)
-			{
-//				debugImg.GetData(MEMORYDEVICE_CPU)[idx] = Vector4u(0, 0, 0, 0);
-				continue;
-			}
-
-			errors.push_back(std::fabs(error));
-		}
-
-	char buf[256];
-//	sprintf(buf, "/tmp/error%04i.png", count);
-//	SaveImageToFile(&debugImg, buf);
-//	sprintf(buf, "/tmp/color%04i.png", count);
-//	SaveImageToFile(view->rgb, buf);
-//	sprintf(buf, "/tmp/color%04i_def.png", count);
-//	SaveImageToFile(&colors, buf);
-	count += 1;
-
-	ITMRenderError result;
-	result.MAE = thrust::reduce(errors.begin(), errors.end(), (float) 0, thrust::plus<float>()) / errors.size();
-	result.RMSE = std::sqrt(thrust::transform_reduce(errors.begin(), errors.end(),
-	                                                 square<float>(),
-	                                                 (float) 0,
-	                                                 thrust::plus<float>()) / errors.size());
-	result.icpMAE = 0;
-	result.icpRMSE = 0;
+	ITMRenderError result = evaluationEngine->ComputePhotometricError(
+		*view->rgb, *renderState_live->renderedImage, *trackingState->pointCloud->locations,
+		depthImageInvPose, sceneRenderingPose, view->calib.intrinsics_rgb);
 
 	return result;
 }
@@ -556,7 +438,8 @@ void ITMBasicEngine::GetImage(ITMUChar4Image* out, const GetImageType getImageTy
 			renderState_live->renderedImage->ChangeDims(view->calib.intrinsics_d.imgSize);
 			visualisationEngine->CreateExpectedDepths(scene, trackingState->pose_d, &(view->calib.intrinsics_d),
 			                                          renderState_live);
-			visualisationEngine->CreateICPMaps(scene, view->calib.intrinsics_d, trackingState->pose_d, trackingState->pointCloud, renderState_live);
+			visualisationEngine->CreateICPMaps(scene, view->calib.intrinsics_d, trackingState->pose_d,
+			                                   trackingState->pointCloud, renderState_live);
 			trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
 			visualisationEngine->RenderTrackingError(renderState_live->renderedImage, trackingState, view);
 			out->ChangeDims(renderState_live->renderedImage->noDims);
