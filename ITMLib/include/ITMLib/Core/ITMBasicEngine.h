@@ -19,8 +19,6 @@ namespace ITMLib
 class ITMBasicEngine : public ITMMainEngine
 {
 private:
-	std::shared_ptr<const ITMLibSettings> settings;
-
 	bool trackingActive, fusionActive, mainProcessingActive, trackingInitialised;
 	int framesProcessed, consecutiveGoodFrames, relocalisationCount;
 

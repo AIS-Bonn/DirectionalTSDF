@@ -43,46 +43,97 @@ void UIEngine::glutReshape(int w, int h)
 
 void UIEngine::displayHelp()
 {
-//	UIEngine *uiEngine = UIEngine::Instance();
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    {
+        glLoadIdentity();
 
-	glMatrixMode(GL_PROJECTION);
-	glPushMatrix();
-	{
-		glLoadIdentity();
-
-		const static unsigned char helpString[] = "Fusion\n"
-		                                          "n   - process single frame\n"
-		                                          "b   - process continuously\n"
-		                                          "t   - activate/deactivate integration\n"
-		                                          "r   - reset scene\n"
-		                                          "Esc - exit\n"
-		                                          "\n"
-		                                          "Display Options\n"
-		                                          "f   - activate/deactivate free view\n"
-		                                          "]/[ - change local map (MultiEngine only)\n"
-		                                          "c   - change color mode\n"
-		                                          "x   - change normal interpolation (SDF/image points)\n"
-		                                          "o   - display/hide world coordinate axes\n"
-		                                          "h/? - display/hide help\n"
-		                                          "\n"
-		                                          "File Operations\n"
-		                                          "i   - start/stop image recording\n"
-		                                          "v   - start/stop video recording\n"
-		                                          "e   - render and store per-pose error images\n"
-		                                          "m   - save scene mesh\n"
-		                                          "r   - reset scene\n"
-		                                          "k   - save scene to disk\n"
-		                                          "l   - load scene from disk\n";
+        const static unsigned char helpString[] = "Fusion\n"
+                                                  "n   - process single frame\n"
+                                                  "b   - process continuously\n"
+                                                  "t   - activate/deactivate integration\n"
+                                                  "r   - reset scene\n"
+                                                  "Esc - exit\n"
+                                                  "\n"
+                                                  "Display Options\n"
+                                                  "f   - activate/deactivate free view\n"
+                                                  "]/[ - change local map (MultiEngine only)\n"
+                                                  "c   - change color mode\n"
+                                                  "x   - change normal interpolation (SDF/image points)\n"
+                                                  "o   - display/hide world coordinate axes\n"
+                                                  "s   - display statistics\n"
+                                                  "h/? - display/hide help\n"
+                                                  "\n"
+                                                  "File Operations\n"
+                                                  "i   - start/stop image recording\n"
+                                                  "v   - start/stop video recording\n"
+                                                  "e   - render and store per-pose error images\n"
+                                                  "m   - save scene mesh\n"
+                                                  "r   - reset scene\n"
+                                                  "k   - save scene to disk\n"
+                                                  "l   - load scene from disk\n";
 
 
-		glLineWidth(2.5);
-		glTranslatef(-0.95, 0.95f, 0);
-		glScalef(0.00015,0.00025,1);
-		glColor3f(1.0f, 0.0f, 0.0f);
-		glutStrokeString(GLUT_STROKE_MONO_ROMAN, helpString);
-	}
-	glPopMatrix();
+        glLineWidth(2.5);
+        glTranslatef(-0.95, 0.95f, 0);
+        glScalef(0.00015,0.00025,1);
+        glColor3f(1.0f, 0.0f, 0.0f);
+        glutStrokeString(GLUT_STROKE_MONO_ROMAN, helpString);
+    }
+    glPopMatrix();
+}
 
+void UIEngine::displayStats()
+{
+    UIEngine *uiEngine = UIEngine::Instance();
+
+    const auto& time = uiEngine->mainEngine->GetTimeStats();
+    const auto* tracking = uiEngine->mainEngine->GetTrackingState();
+    const auto* allocations = uiEngine->mainEngine->GetAllocationsPerDirection();
+
+    std::stringstream ss;
+    ss << "tracking:\n";
+    ss << "    score:" << tracking->trackerScore << "\n";
+    ss << "    depth error:" << tracking->f_depth << "\n";
+    ss << "    color error:" << tracking->f_rgb << "\n";
+
+    ss << "\ntime:\n";
+    ss << "    preprocessing: " << time.preprocessing.GetSum() * 1000 << " ms\n";
+    ss << "    reconstruction: " << time.reconstruction.GetSum() * 1000 << " ms\n";
+    ss << "    tracking: " << time.tracking.GetSum() * 1000 << " ms\n";
+    ss << "    ----------------------------------------------\n";
+    ss << "    total: " << time.GetSum() * 1000 << " ms\n";
+
+    ss << "\nallocations: ";
+    if (uiEngine->mainEngine->GetSettings()->Directional())
+    {
+        int total_blocks = 0;
+        for (size_t i = 0; i < N_DIRECTIONS; i++)
+        {
+            total_blocks += allocations[i];
+            ss << allocations[i];
+            if (i < N_DIRECTIONS - 1)
+                ss << ", ";
+        }
+        ss << " - total: " << total_blocks << "\n";
+    }
+    else
+    {
+        ss << allocations[0] << "\n";
+    }
+
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    {
+        glLoadIdentity();
+
+        glLineWidth(2.0);
+        glTranslatef(-0.95, 0.95f, 0);
+        glScalef(0.00015,0.00025,1);
+        glColor3f(1.0f, 0.0f, 0.0f);
+        glutStrokeString(GLUT_STROKE_MONO_ROMAN, (const unsigned char*) ss.str().c_str());
+    }
+    glPopMatrix();
 }
 
 void UIEngine::displayAxes()
@@ -248,6 +299,9 @@ void UIEngine::glutDisplayFunction()
 
 	if (uiEngine->helpActive)
 		displayHelp();
+
+    if (uiEngine->statsActive)
+        displayStats();
 
 	glutSwapBuffers();
 	uiEngine->needsRefresh = false;
@@ -445,6 +499,12 @@ void UIEngine::glutKeyUpFunction(unsigned char key, int x, int y)
 		printf("done\n");
 	}
 	break;
+    case 's':
+    {
+        uiEngine->statsActive = !uiEngine->statsActive;
+        glutPostRedisplay();
+    }
+    break;
 	case 'r':
 	{
 		ITMBasicEngine *basicEngine = dynamic_cast<ITMBasicEngine*>(uiEngine->mainEngine);

@@ -24,7 +24,7 @@ using namespace ITMLib;
 
 ITMBasicEngine::ITMBasicEngine(const std::shared_ptr<const ITMLibSettings>& settings, const ITMRGBDCalib& calib,
                                Vector2i imgSize_rgb, Vector2i imgSize_d)
-	: settings(settings)
+    : ITMMainEngine(settings)
 {
 	if ((imgSize_d.x == -1) || (imgSize_d.y == -1)) imgSize_d = imgSize_rgb;
 

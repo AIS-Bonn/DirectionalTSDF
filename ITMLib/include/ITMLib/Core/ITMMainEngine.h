@@ -9,6 +9,8 @@
 #include <ITMLib/Trackers/ITMTracker.h>
 #include <ITMLib/Utils/ITMLibSettings.h>
 
+#include <utility>
+
 /** \mainpage
     This is the API reference documentation for InfiniTAM. For a general
     overview additional documentation can be found in the included Technical
@@ -112,12 +114,19 @@ public:
 
 	virtual ~ITMMainEngine() = default;
 
+	explicit ITMMainEngine(std::shared_ptr<const ITMLibSettings> settings) : settings(std::move(settings)) { }
+
 	virtual const unsigned int* GetAllocationsPerDirection() = 0;
 
 	[[nodiscard]] const ITMTimeStats& GetTimeStats() const
 	{
 		return timeStats;
 	}
+
+	[[nodiscard]] inline std::shared_ptr<const ITMLibSettings> GetSettings() const
+    {
+	    return settings;
+    }
 
 
 	/**
@@ -168,7 +177,8 @@ public:
 	}
 
 protected:
-	ITMTimeStats timeStats;
+    std::shared_ptr<const ITMLibSettings> settings;
+    ITMTimeStats timeStats;
 };
 
 } // namespace ITMLib

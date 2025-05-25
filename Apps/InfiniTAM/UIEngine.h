@@ -52,6 +52,7 @@ namespace InfiniTAM
 			bool freeviewActive;
 			bool integrationActive;
 			bool helpActive;
+            bool statsActive;
 			bool renderAxesActive;
 			ORUtils::SE3Pose freeviewPose;
 			ITMLib::ITMIntrinsics freeviewIntrinsics;
@@ -87,6 +88,7 @@ namespace InfiniTAM
 
 			static void displayAxes();
 			static void displayHelp();
+            static void displayStats();
 
 			/** Check if programm is stuck (e.g. infinit-loop in CUDA code) and exit, if necessary */
 			static void checkStuck(int value);
